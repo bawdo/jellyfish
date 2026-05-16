@@ -467,6 +467,50 @@ func TestRunUsersSendEmailRedirectsAllToOverride(t *testing.T) {
 	}
 }
 
+func TestRunUsersSendEmailDryRun(t *testing.T) {
+	client := &fakeClient{
+		users:      []iru.User{{ID: "u-1", Email: "alice@example.com"}},
+		devices:    []iru.Device{{DeviceID: "d-1", DeviceName: "MBP"}},
+		detections: []iru.Detection{{DeviceID: "d-1", CVEID: "CVE-A", Severity: "Critical", CVSSScore: 9.5}},
+	}
+	senderCalled := false
+	var stderr bytes.Buffer
+	opts := usersSendEmailOpts{
+		Emails:   "alice@example.com",
+		DryRun:   true,
+		Yes:      true,
+		NoCache:  true,
+		EmailNow: time.Date(2026, 5, 16, 0, 0, 0, 0, time.UTC),
+		// Profile intentionally not Gmail-configured: dry-run must not require it.
+		Profile:    config.Profile{Email: config.EmailConfig{From: "ops@example.com"}},
+		EmailFlags: emailFlagValues{From: "ops@example.com"},
+		KeychainGet: func() ([]byte, error) {
+			t.Fatal("KeychainGet must not be called in dry-run")
+			return nil, nil
+		},
+		NewSender: func(_ context.Context, _ []byte, _ string) (gmail.Sender, error) {
+			senderCalled = true
+			return nil, nil
+		},
+		gitEmail: fixedGitEmail("ops@example.com"),
+	}
+	if err := runUsersSendEmail(context.Background(), client, &stderr, opts); err != nil {
+		t.Fatalf("run: %v\nstderr=%s", err, stderr.String())
+	}
+	if senderCalled {
+		t.Fatal("NewSender must not be called in dry-run")
+	}
+	for _, want := range []string{
+		"DRY RUN",
+		"would-send: alice@example.com to=alice@example.com",
+		"summary: would-send=1 skipped=0 errors=0",
+	} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("stderr missing %q; got:\n%s", want, stderr.String())
+		}
+	}
+}
+
 func TestBulkCountersExitError(t *testing.T) {
 	cases := []struct {
 		name     string
