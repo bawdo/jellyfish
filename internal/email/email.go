@@ -38,6 +38,11 @@ type Options struct {
 
 	Message string // optional plain-text message; empty disables the message section
 
+	// Filterable headers; all optional. Empty string means "skip the header".
+	Report       string // command identity: "vulns-summary" | "user-show" | "users-send"
+	Version      string // jellyfish build version (internal/version.Version)
+	ListIDDomain string // explicit List-Id domain; empty falls back to domain of From
+
 	// Injected for tests; production leaves these zero so assembleMessage
 	// pulls from crypto/rand.
 	BoundaryOverride        string
