@@ -98,6 +98,21 @@ For each prompt: Enter keeps the current value; type a literal `-` to
 clear a field. Clearing the logo also deletes the copy under `logos/`
 (but never any file outside that directory).
 
+The `email:` block also accepts an optional `list_id_domain` key. When
+set, it becomes the value inside the `List-Id` header on every sent
+message; when unset, the domain part of `email.from` is used. Use this
+to give an org-wide audit identity that's distinct from the sending
+mailbox, e.g.:
+
+```yaml
+email:
+  from: jellyfish-noreply@example.com
+  list_id_domain: jellyfish.example.com
+```
+
+`jellyfish configure email` does not prompt for this value - edit
+`~/.config/jellyfish/config.yml` directly.
+
 ## Usage
 
 ### Vulnerability detections
@@ -359,6 +374,22 @@ security delete-generic-password -s jellyfish.secrets -a gmail_default
 Gmail-side failures surface via exit codes 2 (auth/permissions: bad JWT,
 DWD scope not granted, mailbox forbidden) and 4 (rate-limited or 5xx
 upstream).
+
+#### Filtering Jellyfish mail in Gmail
+
+Every Jellyfish-sent message carries a `List-Id` header derived from your
+`email.from` domain (or from `email.list_id_domain`; see above). Gmail's
+filter UI has a first-class `list:` operator for this - create a filter
+with `Has the words: list:example.com` (substitute your own
+domain) and label every Jellyfish mail in one rule.
+
+Per-command discrimination lives in the `X-Jellyfish-Report` header
+(values: `vulns-summary`, `user-show`, `users-send`). Gmail's filter UI
+does not expose arbitrary header search, but you can view the value in
+"Show original" or in any mail client that surfaces raw headers (sieve,
+mutt, server-side rules). Two more headers are set for audit:
+`X-Jellyfish-Tenant` (your Iru tenant subdomain) and `X-Jellyfish-Version`
+(the jellyfish build that sent the message).
 
 ### Bulk send via `users send-email`
 
