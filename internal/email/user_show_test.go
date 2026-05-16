@@ -239,3 +239,14 @@ func TestUserShowRoundTripParses(t *testing.T) {
 		t.Fatalf("ReadMessage: %v", err)
 	}
 }
+
+func TestNewUserShowRendererGoldenWithMessage(t *testing.T) {
+	var buf bytes.Buffer
+	opts := newPinnedUserShowOpts()
+	opts.Message = "Hi Alice -\n\nHere's your current exposure. Patch CVE-2025-12345 first - it's KEV-listed.\n\nSee https://example.com/runbook."
+	r := NewUserShowRenderer(opts)
+	if err := r.Render(&buf, sampleUserBundle()); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	goldenAssert(t, "user_show_with_message.golden.eml", buf.Bytes())
+}
