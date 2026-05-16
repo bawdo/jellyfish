@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"encoding/csv"
 	"errors"
@@ -202,4 +203,26 @@ func splitEmails(raw string) ([]string, error) {
 		return nil, errors.New("no email addresses in --emails")
 	}
 	return out, nil
+}
+
+// confirmSend prompts the operator before sending mail. Returns (true, nil)
+// when the operator confirms (or the prompt is short-circuited by --yes or
+// --dry-run). Returns (false, nil) on "n", blank, or EOF. Errors propagate
+// only on truly broken I/O.
+func confirmSend(stderr io.Writer, in io.Reader, count int, dryRun, yes bool) (bool, error) {
+	if dryRun {
+		_, _ = fmt.Fprintln(stderr, "DRY RUN - no mail will be sent")
+		return true, nil
+	}
+	if yes {
+		return true, nil
+	}
+	_, _ = fmt.Fprintf(stderr, "About to send vulnerability reports to %d users. Continue? [y/N] ", count)
+	br := bufio.NewReader(in)
+	line, err := br.ReadString('\n')
+	if err != nil && err != io.EOF {
+		return false, err
+	}
+	answer := strings.ToLower(strings.TrimSpace(line))
+	return answer == "y" || answer == "yes", nil
 }

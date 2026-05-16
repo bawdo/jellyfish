@@ -162,6 +162,43 @@ func TestReadCSVRecipientsErrors(t *testing.T) {
 	}
 }
 
+func TestConfirmSend(t *testing.T) {
+	cases := []struct {
+		name    string
+		input   string
+		dryRun  bool
+		yes     bool
+		count   int
+		wantOK  bool
+		wantOut string
+	}{
+		{name: "yes flag short-circuits", yes: true, count: 5, wantOK: true},
+		{name: "dry run short-circuits", dryRun: true, count: 5, wantOK: true, wantOut: "DRY RUN"},
+		{name: "answer y", input: "y\n", count: 3, wantOK: true, wantOut: "3 users"},
+		{name: "answer Y", input: "Y\n", count: 3, wantOK: true},
+		{name: "answer yes", input: "yes\n", count: 3, wantOK: true},
+		{name: "answer n", input: "n\n", count: 3, wantOK: false},
+		{name: "answer N", input: "N\n", count: 3, wantOK: false},
+		{name: "blank line", input: "\n", count: 3, wantOK: false},
+		{name: "EOF before answer", input: "", count: 3, wantOK: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
+			ok, err := confirmSend(&out, strings.NewReader(tc.input), tc.count, tc.dryRun, tc.yes)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+			if ok != tc.wantOK {
+				t.Fatalf("ok: got %v want %v (stderr=%q)", ok, tc.wantOK, out.String())
+			}
+			if tc.wantOut != "" && !strings.Contains(out.String(), tc.wantOut) {
+				t.Errorf("stderr missing %q; got %q", tc.wantOut, out.String())
+			}
+		})
+	}
+}
+
 func TestReadRecipientListDispatches(t *testing.T) {
 	csvPath := writeCSV(t, "in.csv", "email\na@x.com\n")
 
