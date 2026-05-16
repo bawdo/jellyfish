@@ -127,6 +127,19 @@ func runUsersSendEmail(ctx context.Context, client iruClient, stderr io.Writer, 
 		return err
 	}
 
+	confirmIn := opts.ConfirmReader
+	if confirmIn == nil {
+		confirmIn = os.Stdin
+	}
+	ok, err := confirmSend(stderr, confirmIn, len(recipients), opts.DryRun, opts.Yes)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		_, _ = fmt.Fprintln(stderr, "aborted: no mail sent")
+		return nil
+	}
+
 	templateDisplay := fmt.Sprintf("%d recipients", len(recipients))
 	if opts.EmailFlags.To != "" {
 		templateDisplay = opts.EmailFlags.To + " (redirect)"
@@ -166,19 +179,6 @@ func runUsersSendEmail(ctx context.Context, client iruClient, stderr io.Writer, 
 		return err
 	}
 
-	confirmIn := opts.ConfirmReader
-	if confirmIn == nil {
-		confirmIn = os.Stdin
-	}
-	ok, err := confirmSend(stderr, confirmIn, len(recipients), opts.DryRun, opts.Yes)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		_, _ = fmt.Fprintln(stderr, "aborted: no mail sent")
-		return nil
-	}
-
 	var counters bulkCounters
 	for _, inputEmail := range recipients {
 		bundle, rerr := resolveBundleForUser(ctx, client, inputEmail, allDetections)
@@ -210,13 +210,12 @@ func runUsersSendEmail(ctx context.Context, client iruClient, stderr io.Writer, 
 		}
 
 		userOpts := baseEmailOpts
-		userOpts.To = baseEmailOpts.To
 		if userOpts.To == "" {
 			userOpts.To = bundle.User.Email
 		}
 		if userOpts.To == "" {
 			_, _ = fmt.Fprintf(stderr, "error: %s no recipient address (user has no email and --email-to not set)\n", inputEmail)
-			counters.recordError(fmt.Errorf("no recipient"))
+			counters.recordError(fmt.Errorf("no recipient address for %s: %w", inputEmail, iru.ErrNotFound))
 			continue
 		}
 
