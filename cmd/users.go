@@ -208,7 +208,7 @@ func splitEmails(raw string) ([]string, error) {
 }
 
 // bulkCounters tallies per-row outcomes in the bulk send loop. The
-// worstExitCode value is a precedence indicator (higher = more severe);
+// worst value is a precedence indicator (higher = more severe);
 // exitError() converts that back to a wrapped sentinel that
 // classifyError understands.
 type bulkCounters struct {
