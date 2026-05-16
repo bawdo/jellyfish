@@ -13,6 +13,7 @@ import (
 
 	"github.com/bawdo/jellyfish/internal/config"
 	"github.com/bawdo/jellyfish/internal/email"
+	"github.com/bawdo/jellyfish/internal/version"
 )
 
 // emailFlagValues holds the literal flag inputs from cobra; empty string means
@@ -76,6 +77,8 @@ func resolveEmailOptions(flags emailFlagValues, prof config.Profile, lookupGit g
 		}
 	}
 	opts.LogoPath = firstNonEmpty(flags.LogoPath, prof.Email.LogoPath)
+	opts.Version = version.Version
+	opts.ListIDDomain = prof.Email.ListIDDomain
 
 	opts.From = firstNonEmpty(flags.From, prof.Email.From)
 	if opts.From == "" && lookupGit != nil {
