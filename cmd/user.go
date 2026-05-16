@@ -197,12 +197,7 @@ func runSendUserShow(ctx context.Context, stderr io.Writer, opts userShowOpts, b
 	}
 	emailOpts.Message = msg
 
-	var buf bytes.Buffer
-	if err := email.NewUserShowRendererWithStderr(emailOpts, stderr).Render(&buf, bundleToEmailInput(b)); err != nil {
-		return err
-	}
-
-	id, err := sender.Send(ctx, buf.Bytes())
+	id, err := sendUserBundle(ctx, sender, emailOpts, stderr, b)
 	if err != nil {
 		return err
 	}
@@ -345,4 +340,15 @@ func resolveBundleForUser(ctx context.Context, client iruClient, identifier stri
 		bundle.Devices[i] = DeviceWithDetections{Device: d, Detections: byDevice[d.DeviceID]}
 	}
 	return bundle, nil
+}
+
+// sendUserBundle renders a single user's email and sends it via the supplied
+// Gmail sender. Returns the gmail-id on success. Pre-condition: emailOpts.To
+// and emailOpts.Message (if any) are already set by the caller.
+func sendUserBundle(ctx context.Context, sender gmail.Sender, emailOpts email.Options, stderr io.Writer, b UserBundle) (string, error) {
+	var buf bytes.Buffer
+	if err := email.NewUserShowRendererWithStderr(emailOpts, stderr).Render(&buf, bundleToEmailInput(b)); err != nil {
+		return "", err
+	}
+	return sender.Send(ctx, buf.Bytes())
 }
