@@ -360,6 +360,68 @@ Gmail-side failures surface via exit codes 2 (auth/permissions: bad JWT,
 DWD scope not granted, mailbox forbidden) and 4 (rate-limited or 5xx
 upstream).
 
+### Bulk send via `users send-email`
+
+For mailing per-user vulnerability reports to a list of addresses in one
+invocation. Each recipient gets a report for their own devices; users with
+no devices or no active vulnerabilities are skipped (and logged to stderr).
+
+```bash
+# CSV with auto-detected `email` / `user_email` / `e-mail` column
+jellyfish users send-email --csv fleet.csv
+
+# CSV with a custom column
+jellyfish users send-email --csv fleet.csv --csv-email-column primary_contact
+
+# Comma-separated list
+jellyfish users send-email --emails alice@example.com,bob@example.com
+
+# Redirect every email to one address (test / audit mode)
+jellyfish users send-email --csv fleet.csv --email-to me@example.com
+
+# Dry-run: walk the list and print what would happen; no mail is sent
+jellyfish users send-email --csv fleet.csv --dry-run
+
+# Compose one message body, shared across every recipient
+jellyfish users send-email --csv fleet.csv --message
+```
+
+`--csv` and `--emails` are mutually exclusive. Email addresses are
+deduped case-insensitively (first-seen address wins for display). The
+detection walk runs once at the start of the batch and is reused for
+every recipient, so a 50-user run takes roughly the same wall time as
+one `user show` plus the per-user Gmail sends.
+
+By default the command prompts before sending:
+
+```
+About to send vulnerability reports to 47 users. Continue? [y/N]
+```
+
+Use `--yes` to skip the prompt in scripts.
+
+Stderr emits one record per recipient and a final summary line:
+
+```
+sent: alice@example.com to=alice@example.com gmail-id=msg-abc
+skip: bob@example.com no devices
+skip: carol@example.com no vulnerabilities
+error: dave@example.com user not found in Iru
+summary: sent=1 skipped=2 errors=1
+```
+
+`<input-email>` (the first column of each line) is always the address as
+supplied in the CSV / list, not the resolved recipient - useful for
+tracing each line back to a row in the source file.
+
+Unlike `user show --send-email`, the bulk command intentionally does not
+honour `email.default_to` from config. If you want every email redirected
+to one address, set `--email-to` explicitly so the redirect is visible
+in the command line.
+
+Exit codes follow the standard table below; the worst per-user outcome
+wins (auth > upstream > not-found).
+
 ### Exit codes
 
 | Code | Meaning |

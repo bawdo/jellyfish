@@ -106,48 +106,17 @@ func newUserShowCmd() *cobra.Command {
 }
 
 func runUserShow(ctx context.Context, client iruClient, w, stderr io.Writer, opts userShowOpts) error {
-	user, err := resolveUser(ctx, client, opts.Identifier)
-	if err != nil {
-		return err
-	}
-
-	devices, err := client.ListDevices(ctx, iru.DeviceFilters{UserID: user.ID})
-	if err != nil {
-		return err
-	}
-
-	// Iru's /detections endpoint doesn't honour any per-device filter, so we
-	// fetch all detections once and bucket them by device id. Single walk for
-	// the whole user view, regardless of how many devices the user owns.
-	deviceIDs := make(map[string]struct{}, len(devices))
-	for _, d := range devices {
-		deviceIDs[d.DeviceID] = struct{}{}
-	}
-
 	all, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache)
 	if err != nil {
 		return err
 	}
-
-	byDevice := make(map[string][]iru.Detection, len(devices))
-	for _, det := range all {
-		if _, ok := deviceIDs[det.DeviceID]; ok {
-			byDevice[det.DeviceID] = append(byDevice[det.DeviceID], det)
-		}
+	bundle, err := resolveBundleForUser(ctx, client, opts.Identifier, all)
+	if err != nil {
+		return err
 	}
-
-	bundle := UserBundle{User: user, Devices: make([]DeviceWithDetections, len(devices))}
-	for i, d := range devices {
-		bundle.Devices[i] = DeviceWithDetections{
-			Device:     d,
-			Detections: byDevice[d.DeviceID],
-		}
-	}
-
 	if opts.EmailFlags.Send {
 		return runSendUserShow(ctx, stderr, opts, bundle)
 	}
-
 	return renderUserBundle(w, stderr, opts, bundle)
 }
 
@@ -228,12 +197,7 @@ func runSendUserShow(ctx context.Context, stderr io.Writer, opts userShowOpts, b
 	}
 	emailOpts.Message = msg
 
-	var buf bytes.Buffer
-	if err := email.NewUserShowRendererWithStderr(emailOpts, stderr).Render(&buf, bundleToEmailInput(b)); err != nil {
-		return err
-	}
-
-	id, err := sender.Send(ctx, buf.Bytes())
+	id, err := sendUserBundle(ctx, sender, emailOpts, stderr, b)
 	if err != nil {
 		return err
 	}
@@ -344,4 +308,47 @@ func renderUserBundleCSV(w io.Writer, b UserBundle) error {
 		{Header: "detection_datetime", Extract: func(v any) string { return v.(row).detectionDatetime }},
 	})
 	return c.Render(w, rows)
+}
+
+// resolveBundleForUser fetches a user (by identifier - email or ID) plus
+// their devices and buckets the supplied pre-fetched detection list by
+// device ID. Returns iru.ErrNotFound when the user cannot be resolved.
+// Used by both the single-user `user show` pipeline (with allDetections
+// fetched per-call) and the bulk `users send-email` pipeline (where the
+// same detection list is reused across many users).
+func resolveBundleForUser(ctx context.Context, client iruClient, identifier string, allDetections []iru.Detection) (UserBundle, error) {
+	user, err := resolveUser(ctx, client, identifier)
+	if err != nil {
+		return UserBundle{}, err
+	}
+	devices, err := client.ListDevices(ctx, iru.DeviceFilters{UserID: user.ID})
+	if err != nil {
+		return UserBundle{}, err
+	}
+	deviceIDs := make(map[string]struct{}, len(devices))
+	for _, d := range devices {
+		deviceIDs[d.DeviceID] = struct{}{}
+	}
+	byDevice := make(map[string][]iru.Detection, len(devices))
+	for _, det := range allDetections {
+		if _, ok := deviceIDs[det.DeviceID]; ok {
+			byDevice[det.DeviceID] = append(byDevice[det.DeviceID], det)
+		}
+	}
+	bundle := UserBundle{User: user, Devices: make([]DeviceWithDetections, len(devices))}
+	for i, d := range devices {
+		bundle.Devices[i] = DeviceWithDetections{Device: d, Detections: byDevice[d.DeviceID]}
+	}
+	return bundle, nil
+}
+
+// sendUserBundle renders a single user's email and sends it via the supplied
+// Gmail sender. Returns the gmail-id on success. Pre-condition: emailOpts.To
+// and emailOpts.Message (if any) are already set by the caller.
+func sendUserBundle(ctx context.Context, sender gmail.Sender, emailOpts email.Options, stderr io.Writer, b UserBundle) (string, error) {
+	var buf bytes.Buffer
+	if err := email.NewUserShowRendererWithStderr(emailOpts, stderr).Render(&buf, bundleToEmailInput(b)); err != nil {
+		return "", err
+	}
+	return sender.Send(ctx, buf.Bytes())
 }
