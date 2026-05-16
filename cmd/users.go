@@ -159,6 +159,22 @@ func readCSVRecipients(path, columnOverride string) ([]string, error) {
 	return out, nil
 }
 
+// readRecipientList chooses between CSV and comma-list parsing based on
+// which flag is set. Exactly one of opts.CSVPath / opts.Emails must be
+// non-empty.
+func readRecipientList(opts usersSendEmailOpts) ([]string, error) {
+	switch {
+	case opts.CSVPath != "" && opts.Emails != "":
+		return nil, errors.New("--csv and --emails are mutually exclusive")
+	case opts.CSVPath != "":
+		return readCSVRecipients(opts.CSVPath, opts.CSVEmailColumn)
+	case opts.Emails != "":
+		return splitEmails(opts.Emails)
+	default:
+		return nil, errors.New("provide --csv or --emails")
+	}
+}
+
 // splitEmails parses a comma-separated list of email addresses, trimming
 // whitespace, skipping empty entries, deduping case-insensitively while
 // preserving first-seen order, and rejecting any entry without an "@".

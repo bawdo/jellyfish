@@ -161,3 +161,41 @@ func TestReadCSVRecipientsErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestReadRecipientListDispatches(t *testing.T) {
+	csvPath := writeCSV(t, "in.csv", "email\na@x.com\n")
+
+	t.Run("csv path", func(t *testing.T) {
+		got, err := readRecipientList(usersSendEmailOpts{CSVPath: csvPath})
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if !reflect.DeepEqual(got, []string{"a@x.com"}) {
+			t.Errorf("got %#v", got)
+		}
+	})
+
+	t.Run("emails string", func(t *testing.T) {
+		got, err := readRecipientList(usersSendEmailOpts{Emails: "a@x.com,b@x.com"})
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if !reflect.DeepEqual(got, []string{"a@x.com", "b@x.com"}) {
+			t.Errorf("got %#v", got)
+		}
+	})
+
+	t.Run("both set", func(t *testing.T) {
+		_, err := readRecipientList(usersSendEmailOpts{CSVPath: csvPath, Emails: "a@x.com"})
+		if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+			t.Fatalf("err: got %v", err)
+		}
+	})
+
+	t.Run("neither set", func(t *testing.T) {
+		_, err := readRecipientList(usersSendEmailOpts{})
+		if err == nil || !strings.Contains(err.Error(), "--csv or --emails") {
+			t.Fatalf("err: got %v", err)
+		}
+	})
+}
