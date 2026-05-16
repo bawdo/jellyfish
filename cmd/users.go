@@ -21,7 +21,7 @@ type usersSendEmailOpts struct {
 	Profile        config.Profile
 	EmailNow       time.Time
 	// Injected for tests:
-	gitEmail      gitEmailLookup
+	gitEmail      gitEmailLookup //nolint:unused // wired in by runUsersSendEmail body (Task 9)
 	KeychainGet   func() ([]byte, error)
 	NewSender     gmailNewSender
 	ConfirmReader io.Reader
