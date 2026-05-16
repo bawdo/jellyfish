@@ -277,6 +277,12 @@ func TestUserShowFlagsIncludeHeaderBGAndLogo(t *testing.T) {
 	if f := show.Flags().Lookup("email-logo"); f == nil {
 		t.Fatal("--email-logo flag is missing")
 	}
+	if f := show.Flags().Lookup("message"); f == nil {
+		t.Fatal("--message flag is missing")
+	}
+	if f := show.Flags().Lookup("message-file"); f == nil {
+		t.Fatal("--message-file flag is missing")
+	}
 }
 
 func findUserSubcommand(t *testing.T, parent *cobra.Command, name string) *cobra.Command {
@@ -288,4 +294,16 @@ func findUserSubcommand(t *testing.T, parent *cobra.Command, name string) *cobra
 	}
 	t.Fatalf("subcommand %q not found under %s", name, parent.Name())
 	return nil
+}
+
+func TestUserShowMessageRejectsNonEmailOutput(t *testing.T) {
+	root := newRootCmd()
+	root.SetArgs([]string{"user", "show", "alice@example.com", "--message", "-o", "csv"})
+	var stderr bytes.Buffer
+	root.SetErr(&stderr)
+	root.SetOut(&bytes.Buffer{})
+	err := root.Execute()
+	if err == nil || !strings.Contains(err.Error(), "requires email output") {
+		t.Fatalf("expected output-mode error, got %v", err)
+	}
 }

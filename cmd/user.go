@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -61,18 +62,22 @@ func newUserShowCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			outFmt, _ := cmd.Flags().GetString("output")
+			opts.EmailFlags = readEmailFlags(cmd)
+			hasEmailOutput := outFmt == "email" || opts.EmailFlags.Send
+			if err := validateMessageFlags(opts.EmailFlags, hasEmailOutput); err != nil {
+				return err
+			}
 			client, err := buildClient(cmd)
 			if err != nil {
 				return err
 			}
 			opts.Identifier = args[0]
 			opts.Output = outFmt
-			opts.EmailFlags = readEmailFlags(cmd)
 			if cmd.Flags().Changed("output") {
 				opts.ExplicitOutput = outFmt
 			}
 			opts.EmailNow = time.Now()
-			if outFmt == "email" || opts.EmailFlags.Send {
+			if hasEmailOutput {
 				prof, err := activeProfile(cmd)
 				if err != nil {
 					return err
@@ -95,6 +100,8 @@ func newUserShowCmd() *cobra.Command {
 	c.Flags().String("email-header-bg", "", "Email header background colour as #RRGGBB (default: email.header_bg or #2b3a55)")
 	c.Flags().String("email-logo", "", "Path to a PNG to show in the email header (default: email.logo_path)")
 	c.Flags().Bool("send-email", false, "Send the rendered email via Gmail (requires `jellyfish configure email` to be run first)")
+	c.Flags().Bool("message", false, "Open $VISUAL/$EDITOR to compose a message rendered above the email body")
+	c.Flags().String("message-file", "", "Read the email message body from a file (use - for stdin)")
 	return c
 }
 
@@ -176,6 +183,11 @@ func renderUserBundle(w io.Writer, stderr io.Writer, opts userShowOpts, b UserBu
 		if err != nil {
 			return err
 		}
+		msg, err := captureMessage(opts.EmailFlags, true, emailOpts.To, emailOpts.Subject, os.Stdin, stderr, nil)
+		if err != nil {
+			return err
+		}
+		emailOpts.Message = msg
 		return email.NewUserShowRendererWithStderr(emailOpts, stderr).Render(w, bundleToEmailInput(b))
 	default:
 		return fmt.Errorf("unsupported output format %q", opts.Output)
@@ -209,6 +221,12 @@ func runSendUserShow(ctx context.Context, stderr io.Writer, opts userShowOpts, b
 		return err
 	}
 	emailOpts.To = to
+
+	msg, err := captureMessage(opts.EmailFlags, true, emailOpts.To, emailOpts.Subject, os.Stdin, stderr, nil)
+	if err != nil {
+		return err
+	}
+	emailOpts.Message = msg
 
 	var buf bytes.Buffer
 	if err := email.NewUserShowRendererWithStderr(emailOpts, stderr).Render(&buf, bundleToEmailInput(b)); err != nil {
