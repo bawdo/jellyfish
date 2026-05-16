@@ -6,6 +6,8 @@ import (
 	"errors"
 	"io"
 	"net/mail"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -294,6 +296,42 @@ func findUserSubcommand(t *testing.T, parent *cobra.Command, name string) *cobra
 	}
 	t.Fatalf("subcommand %q not found under %s", name, parent.Name())
 	return nil
+}
+
+func TestUserShowEmailIncludesMessageFromFile(t *testing.T) {
+	dir := t.TempDir()
+	msgPath := filepath.Join(dir, "msg.txt")
+	if err := os.WriteFile(msgPath, []byte("plumbing check body\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	client := &fakeClient{
+		users:   []iru.User{{ID: "u-1", Name: "Alice", Email: "alice@example.com"}},
+		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "Alice MBP", SerialNumber: "SN1"}},
+		detections: []iru.Detection{
+			{DeviceID: "d-1", CVEID: "CVE-A", Severity: "Critical", CVSSScore: 9.5, Name: "x", Version: "1.0"},
+		},
+	}
+	buf := &bytes.Buffer{}
+	opts := userShowOpts{
+		Identifier: "u-1",
+		Output:     "email",
+		NoCache:    true,
+		EmailFlags: emailFlagValues{
+			From:        "alice@example.com",
+			To:          "alice@example.com",
+			Subject:     "test",
+			MessageFile: msgPath,
+		},
+		EmailNow: time.Date(2026, 5, 16, 0, 0, 0, 0, time.UTC),
+	}
+	if err := runUserShow(context.Background(), client, buf, io.Discard, opts); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "plumbing check body") {
+		t.Fatalf("rendered email does not contain message body; got:\n%s", out)
+	}
 }
 
 func TestUserShowMessageRejectsNonEmailOutput(t *testing.T) {
