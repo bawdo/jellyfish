@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/bawdo/jellyfish/internal/config"
 	"github.com/bawdo/jellyfish/internal/gmail"
 	"github.com/bawdo/jellyfish/internal/iru"
@@ -264,4 +266,26 @@ func TestUserShowSendEmailPropagatesSenderError(t *testing.T) {
 	if !errors.Is(err, gmail.ErrUnauthorized) {
 		t.Fatalf("expected ErrUnauthorized propagated; got %v", err)
 	}
+}
+
+func TestUserShowFlagsIncludeHeaderBGAndLogo(t *testing.T) {
+	c := newUserCmd()
+	show := findUserSubcommand(t, c, "show")
+	if f := show.Flags().Lookup("email-header-bg"); f == nil {
+		t.Fatal("--email-header-bg flag is missing")
+	}
+	if f := show.Flags().Lookup("email-logo"); f == nil {
+		t.Fatal("--email-logo flag is missing")
+	}
+}
+
+func findUserSubcommand(t *testing.T, parent *cobra.Command, name string) *cobra.Command {
+	t.Helper()
+	for _, sub := range parent.Commands() {
+		if sub.Name() == name {
+			return sub
+		}
+	}
+	t.Fatalf("subcommand %q not found under %s", name, parent.Name())
+	return nil
 }
