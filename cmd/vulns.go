@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -192,11 +193,15 @@ minutes; pass --no-cache to force a fresh fetch.`,
 			outFmt, _ := cmd.Flags().GetString("output")
 			opts.Output = outFmt
 			opts.EmailFlags = readEmailFlags(cmd)
+			hasEmailOutput := outFmt == "email" || opts.EmailFlags.Send
+			if err := validateMessageFlags(opts.EmailFlags, hasEmailOutput); err != nil {
+				return err
+			}
 			if cmd.Flags().Changed("output") {
 				opts.ExplicitOutput = outFmt
 			}
 			opts.EmailNow = time.Now()
-			if outFmt == "email" || opts.EmailFlags.Send {
+			if hasEmailOutput {
 				prof, err := activeProfile(cmd)
 				if err != nil {
 					return err
@@ -227,6 +232,8 @@ minutes; pass --no-cache to force a fresh fetch.`,
 	c.Flags().String("email-header-bg", "", "Email header background colour as #RRGGBB (default: email.header_bg or #2b3a55)")
 	c.Flags().String("email-logo", "", "Path to a PNG to show in the email header (default: email.logo_path)")
 	c.Flags().Bool("send-email", false, "Send the rendered email via Gmail (requires `jellyfish configure email` to be run first)")
+	c.Flags().Bool("message", false, "Open $VISUAL/$EDITOR to compose a message rendered above the email body")
+	c.Flags().String("message-file", "", "Read the email message body from a file (use - for stdin)")
 	return c
 }
 
@@ -305,6 +312,11 @@ func renderVulns(w io.Writer, stderr io.Writer, opts vulnsSummaryOpts, vs []iru.
 		if err != nil {
 			return err
 		}
+		msg, err := captureMessage(opts.EmailFlags, true, emailOpts.To, emailOpts.Subject, os.Stdin, stderr, nil)
+		if err != nil {
+			return err
+		}
+		emailOpts.Message = msg
 		return email.NewVulnSummaryRendererWithStderr(emailOpts, stderr).Render(w, vs)
 	}
 	r, err := output.For(opts.Output)
@@ -341,6 +353,12 @@ func runSendVulnsSummary(ctx context.Context, stderr io.Writer, opts vulnsSummar
 		return err
 	}
 	emailOpts.To = to
+
+	msg, err := captureMessage(opts.EmailFlags, true, emailOpts.To, emailOpts.Subject, os.Stdin, stderr, nil)
+	if err != nil {
+		return err
+	}
+	emailOpts.Message = msg
 
 	var buf bytes.Buffer
 	if err := email.NewVulnSummaryRendererWithStderr(emailOpts, stderr).Render(&buf, vs); err != nil {

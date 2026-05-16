@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/bawdo/jellyfish/internal/config"
 	"github.com/bawdo/jellyfish/internal/gmail"
 	"github.com/bawdo/jellyfish/internal/iru"
@@ -369,5 +371,40 @@ func TestResolveEmailOptionsRejectsInvalidHeaderBG(t *testing.T) {
 	_, err := resolveEmailOptions(flags, prof, func() (string, error) { return "", nil }, now)
 	if err == nil {
 		t.Fatal("expected error for invalid hex colour")
+	}
+}
+
+func TestVulnsSummaryHasMessageFlags(t *testing.T) {
+	root := newRootCmd()
+	var summary *cobra.Command
+	for _, top := range root.Commands() {
+		if top.Name() == "vulns" {
+			for _, sub := range top.Commands() {
+				if sub.Name() == "summary" {
+					summary = sub
+				}
+			}
+		}
+	}
+	if summary == nil {
+		t.Fatal("vulns summary command not found")
+	}
+	if f := summary.Flags().Lookup("message"); f == nil {
+		t.Fatal("--message flag is missing")
+	}
+	if f := summary.Flags().Lookup("message-file"); f == nil {
+		t.Fatal("--message-file flag is missing")
+	}
+}
+
+func TestVulnsSummaryMessageRejectsNonEmailOutput(t *testing.T) {
+	root := newRootCmd()
+	root.SetArgs([]string{"vulns", "summary", "--message", "-o", "csv"})
+	var stderr bytes.Buffer
+	root.SetErr(&stderr)
+	root.SetOut(&bytes.Buffer{})
+	err := root.Execute()
+	if err == nil || !strings.Contains(err.Error(), "requires email output") {
+		t.Fatalf("expected output-mode error, got %v", err)
 	}
 }
