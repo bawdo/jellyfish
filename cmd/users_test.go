@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"net/mail"
 	"os"
 	"path/filepath"
@@ -566,5 +567,51 @@ func TestRunUsersSendEmailAbortsOnPromptNo(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "aborted: no mail sent") {
 		t.Errorf("stderr missing abort line; got:\n%s", stderr.String())
+	}
+}
+
+// We exercise captureMessage's template-display by injecting a runEditor that
+// reads back what was written to the scratch file. To keep the test focused on
+// the synthesised display, we call captureMessage directly with the same
+// template-display string that runUsersSendEmail computes.
+func TestBulkTemplateDisplayCountOnly(t *testing.T) {
+	var scratchContents string
+	editor := func(path string) error {
+		// #nosec G304 - scratch path is what captureMessageViaEditor wrote.
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		scratchContents = string(b)
+		return os.WriteFile(path, []byte("body text"), 0o600)
+	}
+	flags := emailFlagValues{Message: true}
+	_, err := captureMessage(flags, true, "3 recipients", "Subject A", strings.NewReader(""), io.Discard, editor)
+	if err != nil {
+		t.Fatalf("captureMessage: %v", err)
+	}
+	if !strings.Contains(scratchContents, "# To: 3 recipients") {
+		t.Fatalf("scratch missing '# To: 3 recipients'; got:\n%s", scratchContents)
+	}
+}
+
+func TestBulkTemplateDisplayRedirect(t *testing.T) {
+	var scratchContents string
+	editor := func(path string) error {
+		// #nosec G304
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		scratchContents = string(b)
+		return os.WriteFile(path, []byte("body text"), 0o600)
+	}
+	flags := emailFlagValues{Message: true}
+	_, err := captureMessage(flags, true, "ops@example.com (redirect)", "Subject A", strings.NewReader(""), io.Discard, editor)
+	if err != nil {
+		t.Fatalf("captureMessage: %v", err)
+	}
+	if !strings.Contains(scratchContents, "# To: ops@example.com (redirect)") {
+		t.Fatalf("scratch missing redirect display; got:\n%s", scratchContents)
 	}
 }
