@@ -414,6 +414,59 @@ func TestRunUsersSendEmailExitCodePrecedence(t *testing.T) {
 	}
 }
 
+type recordingSender struct {
+	tos []string
+}
+
+func (r *recordingSender) Send(_ context.Context, raw []byte) (string, error) {
+	msg, err := mail.ReadMessage(bytes.NewReader(raw))
+	if err != nil {
+		return "", err
+	}
+	r.tos = append(r.tos, msg.Header.Get("To"))
+	return "msg-id", nil
+}
+
+func TestRunUsersSendEmailRedirectsAllToOverride(t *testing.T) {
+	// fakeClient.ListDevices ignores the UserID filter and returns the same
+	// slice for every call, so both alice and bob see the same device + CVE
+	// list. That is fine for this test - we only care that both sends land
+	// at the override To address.
+	client := &fakeClient{
+		users: []iru.User{
+			{ID: "u-1", Email: "alice@example.com"},
+			{ID: "u-2", Email: "bob@example.com"},
+		},
+		devices:    []iru.Device{{DeviceID: "d-1", DeviceName: "MBP"}},
+		detections: []iru.Detection{{DeviceID: "d-1", CVEID: "CVE-A", Severity: "Critical", CVSSScore: 9.5}},
+	}
+
+	rec := &recordingSender{}
+	var stderr bytes.Buffer
+	opts := usersSendEmailOpts{
+		Emails:      "alice@example.com,bob@example.com",
+		Yes:         true,
+		NoCache:     true,
+		EmailNow:    time.Date(2026, 5, 16, 0, 0, 0, 0, time.UTC),
+		Profile:     config.Profile{Email: config.EmailConfig{GmailConfigured: true, From: "ops@example.com"}},
+		EmailFlags:  emailFlagValues{From: "ops@example.com", To: "ops@example.com"},
+		KeychainGet: func() ([]byte, error) { return []byte(`{}`), nil },
+		NewSender:   func(_ context.Context, _ []byte, _ string) (gmail.Sender, error) { return rec, nil },
+		gitEmail:    fixedGitEmail(""),
+	}
+	if err := runUsersSendEmail(context.Background(), client, &stderr, opts); err != nil {
+		t.Fatalf("run: %v\nstderr=%s", err, stderr.String())
+	}
+	if len(rec.tos) != 2 {
+		t.Fatalf("want 2 sends; got %d\nstderr=%s", len(rec.tos), stderr.String())
+	}
+	for i, to := range rec.tos {
+		if to != "ops@example.com" {
+			t.Errorf("send[%d] To=%q; want ops@example.com", i, to)
+		}
+	}
+}
+
 func TestBulkCountersExitError(t *testing.T) {
 	cases := []struct {
 		name     string
