@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"context"
+	"encoding/csv"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -71,6 +73,90 @@ func newUsersSendEmailCmd() *cobra.Command {
 // tasks; current stub keeps the cobra wiring compilable.
 func runUsersSendEmail(_ context.Context, _ iruClient, _ io.Writer, _ usersSendEmailOpts) error {
 	return nil
+}
+
+// readCSVRecipients reads email addresses out of a CSV file. The CSV must
+// have a header row. If columnOverride is non-empty, the column matching
+// that exact name is used (case-insensitive). Otherwise, the first column
+// whose header (case-insensitively) is "email", "user_email", or "e-mail"
+// is used. Returns case-insensitively deduped emails in first-seen order.
+// A leading UTF-8 BOM on the first cell is stripped transparently.
+func readCSVRecipients(path, columnOverride string) ([]string, error) {
+	// #nosec G304 - path is supplied by the operator via --csv
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", path, err)
+	}
+	defer func() { _ = f.Close() }()
+	r := csv.NewReader(f)
+	r.FieldsPerRecord = -1 // tolerate ragged rows
+
+	header, err := r.Read()
+	if err == io.EOF {
+		return nil, fmt.Errorf("read %s: file is empty", path)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read %s header: %w", path, err)
+	}
+	if len(header) > 0 {
+		header[0] = strings.TrimPrefix(header[0], "\xef\xbb\xbf")
+	}
+
+	idx := -1
+	if columnOverride != "" {
+		for i, h := range header {
+			if strings.EqualFold(strings.TrimSpace(h), columnOverride) {
+				idx = i
+				break
+			}
+		}
+		if idx == -1 {
+			return nil, fmt.Errorf("--csv-email-column %q not present in %s header %v", columnOverride, path, header)
+		}
+	} else {
+		want := map[string]struct{}{"email": {}, "user_email": {}, "e-mail": {}}
+		for i, h := range header {
+			if _, ok := want[strings.ToLower(strings.TrimSpace(h))]; ok {
+				idx = i
+				break
+			}
+		}
+		if idx == -1 {
+			return nil, fmt.Errorf("no email column found in %s header %v (looked for email/user_email/e-mail; override with --csv-email-column)", path, header)
+		}
+	}
+
+	seen := make(map[string]struct{})
+	var out []string
+	for {
+		row, err := r.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("read %s row: %w", path, err)
+		}
+		if idx >= len(row) {
+			continue
+		}
+		addr := strings.TrimSpace(row[idx])
+		if addr == "" {
+			continue
+		}
+		if !strings.Contains(addr, "@") {
+			return nil, fmt.Errorf("%s: not a valid email address: %q", path, addr)
+		}
+		key := strings.ToLower(addr)
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, addr)
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("%s: no recipients after header", path)
+	}
+	return out, nil
 }
 
 // splitEmails parses a comma-separated list of email addresses, trimming
