@@ -261,3 +261,103 @@ func TestAssembleMessageNoLogoEmitsMultipartAlternative(t *testing.T) {
 		t.Errorf("no-logo path: got %q want multipart/alternative", mediaType)
 	}
 }
+
+func TestAssembleMessageEmitsListIdFromDomain(t *testing.T) {
+	hdr := messageHeaders{
+		From:    "ops@example.com",
+		To:      "alice@example.com",
+		Subject: "s",
+		Date:    time.Date(2026, 5, 16, 0, 0, 0, 0, time.UTC),
+	}
+	out, err := assembleMessage(hdr, "<p>x</p>", "x\n", "=_jf_X", "<i@b.c>", "", nil)
+	if err != nil {
+		t.Fatalf("assembleMessage: %v", err)
+	}
+	if !bytes.Contains(out, []byte("List-Id: <example.com>\r\n")) {
+		t.Fatalf("expected List-Id derived from From domain; got:\n%s", out)
+	}
+}
+
+func TestAssembleMessageHonoursExplicitListIDDomain(t *testing.T) {
+	hdr := messageHeaders{
+		From:         "ops@example.com",
+		To:           "a@b.c",
+		Subject:      "s",
+		Date:         time.Date(2026, 5, 16, 0, 0, 0, 0, time.UTC),
+		ListIDDomain: "jellyfish.example.com",
+	}
+	out, err := assembleMessage(hdr, "<p>x</p>", "x\n", "=_jf_X", "<i@b.c>", "", nil)
+	if err != nil {
+		t.Fatalf("assembleMessage: %v", err)
+	}
+	if !bytes.Contains(out, []byte("List-Id: <jellyfish.example.com>\r\n")) {
+		t.Fatalf("expected explicit List-Id; got:\n%s", out)
+	}
+	if bytes.Contains(out, []byte("List-Id: <example.com>\r\n")) {
+		t.Fatalf("expected explicit List-Id to override From-derived; got:\n%s", out)
+	}
+}
+
+func TestAssembleMessageEmitsAllXJellyfishHeaders(t *testing.T) {
+	hdr := messageHeaders{
+		From:    "ops@example.com",
+		To:      "a@b.c",
+		Subject: "s",
+		Date:    time.Date(2026, 5, 16, 0, 0, 0, 0, time.UTC),
+		Report:  "users-send",
+		Tenant:  "acme",
+		Version: "v1.2.3",
+	}
+	out, err := assembleMessage(hdr, "<p>x</p>", "x\n", "=_jf_X", "<i@b.c>", "", nil)
+	if err != nil {
+		t.Fatalf("assembleMessage: %v", err)
+	}
+	for _, want := range []string{
+		"X-Jellyfish-Report: users-send\r\n",
+		"X-Jellyfish-Tenant: acme\r\n",
+		"X-Jellyfish-Version: v1.2.3\r\n",
+	} {
+		if !bytes.Contains(out, []byte(want)) {
+			t.Errorf("missing header %q in output:\n%s", want, out)
+		}
+	}
+}
+
+func TestAssembleMessageSkipsEmptyXHeaders(t *testing.T) {
+	hdr := messageHeaders{
+		From:    "ops@example.com",
+		To:      "a@b.c",
+		Subject: "s",
+		Date:    time.Date(2026, 5, 16, 0, 0, 0, 0, time.UTC),
+		// Report, Tenant, Version all empty.
+	}
+	out, err := assembleMessage(hdr, "<p>x</p>", "x\n", "=_jf_X", "<i@b.c>", "", nil)
+	if err != nil {
+		t.Fatalf("assembleMessage: %v", err)
+	}
+	for _, unwanted := range []string{
+		"X-Jellyfish-Report:",
+		"X-Jellyfish-Tenant:",
+		"X-Jellyfish-Version:",
+	} {
+		if bytes.Contains(out, []byte(unwanted)) {
+			t.Errorf("did not expect header line containing %q; got:\n%s", unwanted, out)
+		}
+	}
+}
+
+func TestAssembleMessageSkipsListIDWhenNoFromDomain(t *testing.T) {
+	hdr := messageHeaders{
+		From:    "no-at-sign",
+		To:      "a@b.c",
+		Subject: "s",
+		Date:    time.Date(2026, 5, 16, 0, 0, 0, 0, time.UTC),
+	}
+	out, err := assembleMessage(hdr, "<p>x</p>", "x\n", "=_jf_X", "<i@b.c>", "", nil)
+	if err != nil {
+		t.Fatalf("assembleMessage: %v", err)
+	}
+	if bytes.Contains(out, []byte("List-Id:")) {
+		t.Fatalf("expected no List-Id when From has no @ and no explicit ListIDDomain; got:\n%s", out)
+	}
+}

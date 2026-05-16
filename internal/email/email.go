@@ -84,10 +84,14 @@ func validateLinkTemplate(label, tmpl string) error {
 
 // messageHeaders is the minimum set of headers assembleMessage writes.
 type messageHeaders struct {
-	From    string
-	To      string
-	Subject string
-	Date    time.Time
+	From         string
+	To           string
+	Subject      string
+	Date         time.Time
+	Report       string // X-Jellyfish-Report; empty -> skip
+	Tenant       string // X-Jellyfish-Tenant; empty -> skip
+	Version      string // X-Jellyfish-Version; empty -> skip
+	ListIDDomain string // List-Id domain; empty -> domainFromAddress(From); still empty -> skip
 }
 
 // assembleMessage produces a full RFC 5322 message. When logo is nil, the
@@ -124,6 +128,24 @@ func assembleMessage(
 	writeHeader("Date", h.Date.Format(time.RFC1123Z))
 	writeHeader("Message-ID", messageID)
 	writeHeader("MIME-Version", "1.0")
+	listDomain := h.ListIDDomain
+	if listDomain == "" {
+		if d := domainFromAddress(h.From); d != "" && d != "localhost" {
+			listDomain = d
+		}
+	}
+	if listDomain != "" {
+		writeHeader("List-Id", "<"+listDomain+">")
+	}
+	if h.Report != "" {
+		writeHeader("X-Jellyfish-Report", h.Report)
+	}
+	if h.Tenant != "" {
+		writeHeader("X-Jellyfish-Tenant", h.Tenant)
+	}
+	if h.Version != "" {
+		writeHeader("X-Jellyfish-Version", h.Version)
+	}
 	if logo == nil {
 		writeHeader("Content-Type", fmt.Sprintf("multipart/alternative; boundary=%q", sanitiseHeaderValue(innerBoundary)))
 	} else {
