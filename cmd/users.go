@@ -14,6 +14,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bawdo/jellyfish/internal/config"
+	"github.com/bawdo/jellyfish/internal/gmail"
+	"github.com/bawdo/jellyfish/internal/iru"
 )
 
 type usersSendEmailOpts struct {
@@ -203,6 +205,64 @@ func splitEmails(raw string) ([]string, error) {
 		return nil, errors.New("no email addresses in --emails")
 	}
 	return out, nil
+}
+
+// bulkCounters tallies per-row outcomes in the bulk send loop. The
+// worstExitCode value is a precedence indicator (higher = more severe);
+// exitError() converts that back to a wrapped sentinel that
+// classifyError understands.
+type bulkCounters struct {
+	sent, wouldSend, skipped, errs int //nolint:unused // wired in by runUsersSendEmail body (Task 9)
+	worst                          bulkExitClass
+}
+
+type bulkExitClass int
+
+const (
+	bulkOK bulkExitClass = iota
+	bulkNotFound
+	bulkUpstream
+	bulkAuth
+)
+
+func (c *bulkCounters) recordError(err error) {
+	c.errs++
+	switch {
+	case errors.Is(err, gmail.ErrUnauthorized), errors.Is(err, gmail.ErrForbidden),
+		errors.Is(err, iru.ErrUnauthorized), errors.Is(err, iru.ErrForbidden):
+		if c.worst < bulkAuth {
+			c.worst = bulkAuth
+		}
+	case errors.Is(err, gmail.ErrRateLimited), errors.Is(err, gmail.ErrUpstream),
+		errors.Is(err, iru.ErrRateLimited):
+		if c.worst < bulkUpstream {
+			c.worst = bulkUpstream
+		}
+	case errors.Is(err, iru.ErrNotFound):
+		if c.worst < bulkNotFound {
+			c.worst = bulkNotFound
+		}
+	default:
+		if c.worst < bulkUpstream {
+			c.worst = bulkUpstream
+		}
+	}
+}
+
+// exitError returns a sentinel error wrapped with the per-run error count.
+// Returns nil when no errors were recorded. classifyError in root.go maps
+// the wrapped sentinel back to the documented exit codes (2/3/4).
+func (c *bulkCounters) exitError() error {
+	switch c.worst {
+	case bulkAuth:
+		return fmt.Errorf("%d send(s) failed with auth/permission errors: %w", c.errs, gmail.ErrUnauthorized)
+	case bulkUpstream:
+		return fmt.Errorf("%d send(s) failed with upstream/rate-limit errors: %w", c.errs, gmail.ErrRateLimited)
+	case bulkNotFound:
+		return fmt.Errorf("%d user(s) not found in Iru: %w", c.errs, iru.ErrNotFound)
+	default:
+		return nil
+	}
 }
 
 // confirmSend prompts the operator before sending mail. Returns (true, nil)

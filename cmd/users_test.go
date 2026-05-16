@@ -2,11 +2,15 @@ package cmd
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/bawdo/jellyfish/internal/gmail"
+	"github.com/bawdo/jellyfish/internal/iru"
 )
 
 func TestUsersSendEmailRegistered(t *testing.T) {
@@ -235,4 +239,39 @@ func TestReadRecipientListDispatches(t *testing.T) {
 			t.Fatalf("err: got %v", err)
 		}
 	})
+}
+
+func TestBulkCountersExitError(t *testing.T) {
+	cases := []struct {
+		name     string
+		record   []error
+		want     error
+		wantNoOp bool
+	}{
+		{name: "no errors", wantNoOp: true},
+		{name: "user not found alone", record: []error{iru.ErrNotFound}, want: iru.ErrNotFound},
+		{name: "gmail auth alone", record: []error{gmail.ErrUnauthorized}, want: gmail.ErrUnauthorized},
+		{name: "gmail rate alone", record: []error{gmail.ErrRateLimited}, want: gmail.ErrRateLimited},
+		{name: "rate beats not-found", record: []error{iru.ErrNotFound, gmail.ErrRateLimited}, want: gmail.ErrRateLimited},
+		{name: "auth beats rate", record: []error{gmail.ErrRateLimited, gmail.ErrUnauthorized}, want: gmail.ErrUnauthorized},
+		{name: "auth beats not-found", record: []error{iru.ErrNotFound, gmail.ErrUnauthorized}, want: gmail.ErrUnauthorized},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var c bulkCounters
+			for _, e := range tc.record {
+				c.recordError(e)
+			}
+			got := c.exitError()
+			if tc.wantNoOp {
+				if got != nil {
+					t.Fatalf("expected nil; got %v", got)
+				}
+				return
+			}
+			if !errors.Is(got, tc.want) {
+				t.Fatalf("got %v; want errors.Is %v", got, tc.want)
+			}
+		})
+	}
 }
