@@ -294,6 +294,126 @@ func TestRunUsersSendEmailHappyPath(t *testing.T) {
 	}
 }
 
+func newOpts(t *testing.T, sender *fakeGmailSender) usersSendEmailOpts {
+	t.Helper()
+	return usersSendEmailOpts{
+		Yes:      true,
+		NoCache:  true,
+		EmailNow: time.Date(2026, 5, 16, 0, 0, 0, 0, time.UTC),
+		Profile:  config.Profile{Email: config.EmailConfig{GmailConfigured: true, From: "ops@example.com"}},
+		EmailFlags: emailFlagValues{
+			From: "ops@example.com",
+		},
+		KeychainGet: func() ([]byte, error) { return []byte(`{"type":"service_account"}`), nil },
+		NewSender:   func(_ context.Context, _ []byte, _ string) (gmail.Sender, error) { return sender, nil },
+		gitEmail:    fixedGitEmail("ops@example.com"),
+	}
+}
+
+func TestRunUsersSendEmailUserNotFound(t *testing.T) {
+	client := &fakeClient{} // no users
+	sender := &fakeGmailSender{}
+	var stderr bytes.Buffer
+	opts := newOpts(t, sender)
+	opts.Emails = "ghost@example.com"
+	err := runUsersSendEmail(context.Background(), client, &stderr, opts)
+	if !errors.Is(err, iru.ErrNotFound) {
+		t.Fatalf("err: got %v want ErrNotFound", err)
+	}
+	for _, want := range []string{
+		"error: ghost@example.com user not found in Iru",
+		"summary: sent=0 skipped=0 errors=1",
+	} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("stderr missing %q; got:\n%s", want, stderr.String())
+		}
+	}
+	if sender.sent != nil {
+		t.Error("sender should not have been called")
+	}
+}
+
+func TestRunUsersSendEmailSkipNoDevices(t *testing.T) {
+	client := &fakeClient{
+		users:   []iru.User{{ID: "u-1", Email: "alice@example.com"}},
+		devices: nil,
+	}
+	sender := &fakeGmailSender{}
+	var stderr bytes.Buffer
+	opts := newOpts(t, sender)
+	opts.Emails = "alice@example.com"
+	if err := runUsersSendEmail(context.Background(), client, &stderr, opts); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "skip: alice@example.com no devices") {
+		t.Errorf("stderr: %s", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "summary: sent=0 skipped=1 errors=0") {
+		t.Errorf("stderr: %s", stderr.String())
+	}
+	if sender.sent != nil {
+		t.Error("sender should not have been called")
+	}
+}
+
+func TestRunUsersSendEmailSkipNoVulns(t *testing.T) {
+	client := &fakeClient{
+		users:   []iru.User{{ID: "u-1", Email: "alice@example.com"}},
+		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "MBP"}},
+		// no detections for d-1
+	}
+	sender := &fakeGmailSender{}
+	var stderr bytes.Buffer
+	opts := newOpts(t, sender)
+	opts.Emails = "alice@example.com"
+	if err := runUsersSendEmail(context.Background(), client, &stderr, opts); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "skip: alice@example.com no vulnerabilities") {
+		t.Errorf("stderr: %s", stderr.String())
+	}
+}
+
+func TestRunUsersSendEmailGmailAuthError(t *testing.T) {
+	client := &fakeClient{
+		users:      []iru.User{{ID: "u-1", Email: "alice@example.com"}},
+		devices:    []iru.Device{{DeviceID: "d-1", DeviceName: "MBP"}},
+		detections: []iru.Detection{{DeviceID: "d-1", CVEID: "CVE-A", Severity: "Critical", CVSSScore: 9.5}},
+	}
+	sender := &fakeGmailSender{err: gmail.ErrUnauthorized}
+	var stderr bytes.Buffer
+	opts := newOpts(t, sender)
+	opts.Emails = "alice@example.com"
+	err := runUsersSendEmail(context.Background(), client, &stderr, opts)
+	if !errors.Is(err, gmail.ErrUnauthorized) {
+		t.Fatalf("err: got %v want gmail.ErrUnauthorized", err)
+	}
+	if !strings.Contains(stderr.String(), "error: alice@example.com gmail:") {
+		t.Errorf("stderr: %s", stderr.String())
+	}
+}
+
+func TestRunUsersSendEmailExitCodePrecedence(t *testing.T) {
+	// One user is missing (would be exit 3), one triggers gmail rate-limit
+	// (exit 4). Expected wrapped sentinel: gmail.ErrRateLimited (4 beats 3).
+	client := &fakeClient{
+		users:      []iru.User{{ID: "u-1", Email: "alice@example.com"}},
+		devices:    []iru.Device{{DeviceID: "d-1", DeviceName: "MBP"}},
+		detections: []iru.Detection{{DeviceID: "d-1", CVEID: "CVE-A", Severity: "Critical", CVSSScore: 9.5}},
+	}
+	sender := &fakeGmailSender{err: gmail.ErrRateLimited}
+	var stderr bytes.Buffer
+	opts := newOpts(t, sender)
+	opts.Emails = "ghost@example.com,alice@example.com"
+	err := runUsersSendEmail(context.Background(), client, &stderr, opts)
+	if !errors.Is(err, gmail.ErrRateLimited) {
+		t.Fatalf("err: got %v want gmail.ErrRateLimited (precedence 4 > 3)", err)
+	}
+	if !strings.Contains(stderr.String(), "summary: sent=0 skipped=0 errors=2") {
+		t.Errorf("stderr summary: %s", stderr.String())
+	}
+}
+
 func TestBulkCountersExitError(t *testing.T) {
 	cases := []struct {
 		name     string
