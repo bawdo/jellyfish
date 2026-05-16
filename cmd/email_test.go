@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/bawdo/jellyfish/internal/config"
-	"github.com/bawdo/jellyfish/internal/email"
 )
 
 func TestResolveEmailOptionsFlagsBeatConfig(t *testing.T) {
@@ -120,6 +119,3 @@ func TestGitUserEmailUsesPATHStub(t *testing.T) {
 func fixedGitEmail(value string) gitEmailLookup {
 	return func() (string, error) { return value, nil }
 }
-
-// silence unused import
-var _ = email.Options{}
