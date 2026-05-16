@@ -545,3 +545,26 @@ func TestBulkCountersExitError(t *testing.T) {
 		})
 	}
 }
+
+func TestRunUsersSendEmailAbortsOnPromptNo(t *testing.T) {
+	client := &fakeClient{
+		users:      []iru.User{{ID: "u-1", Email: "alice@example.com"}},
+		devices:    []iru.Device{{DeviceID: "d-1", DeviceName: "MBP"}},
+		detections: []iru.Detection{{DeviceID: "d-1", CVEID: "CVE-A", Severity: "Critical", CVSSScore: 9.5}},
+	}
+	sender := &fakeGmailSender{}
+	var stderr bytes.Buffer
+	opts := newOpts(t, sender)
+	opts.Emails = "alice@example.com"
+	opts.Yes = false
+	opts.ConfirmReader = strings.NewReader("n\n")
+	if err := runUsersSendEmail(context.Background(), client, &stderr, opts); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if sender.sent != nil {
+		t.Fatal("no mail should have been sent")
+	}
+	if !strings.Contains(stderr.String(), "aborted: no mail sent") {
+		t.Errorf("stderr missing abort line; got:\n%s", stderr.String())
+	}
+}
