@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/mail"
 	"os"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/bawdo/jellyfish/internal/config"
 	"github.com/bawdo/jellyfish/internal/gmail"
 	"github.com/bawdo/jellyfish/internal/iru"
+	"github.com/bawdo/jellyfish/internal/keychain"
 )
 
 type usersSendEmailOpts struct {
@@ -29,7 +31,7 @@ type usersSendEmailOpts struct {
 	Profile        config.Profile
 	EmailNow       time.Time
 	// Injected for tests:
-	gitEmail      gitEmailLookup //nolint:unused // wired in by runUsersSendEmail body (Task 9)
+	gitEmail      gitEmailLookup
 	KeychainGet   func() ([]byte, error)
 	NewSender     gmailNewSender
 	ConfirmReader io.Reader
@@ -52,8 +54,22 @@ func newUsersSendEmailCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			opts.EmailFlags = readEmailFlags(cmd)
 			opts.EmailNow = time.Now()
-			// Orchestration lands in later tasks.
-			return runUsersSendEmail(cmd.Context(), nil, cmd.ErrOrStderr(), opts)
+			client, err := buildClient(cmd)
+			if err != nil {
+				return err
+			}
+			prof, err := activeProfile(cmd)
+			if err != nil {
+				return err
+			}
+			opts.Profile = prof
+			if opts.KeychainGet == nil {
+				opts.KeychainGet = keychain.GetGmailServiceAccount
+			}
+			if opts.NewSender == nil {
+				opts.NewSender = gmail.NewSender
+			}
+			return runUsersSendEmail(cmd.Context(), client, cmd.ErrOrStderr(), opts)
 		},
 	}
 	c.Flags().StringVar(&opts.CSVPath, "csv", "", "Path to a CSV file containing recipient emails")
@@ -72,10 +88,160 @@ func newUsersSendEmailCmd() *cobra.Command {
 	return c
 }
 
-// runUsersSendEmail is the orchestration entry point. Filled in by later
-// tasks; current stub keeps the cobra wiring compilable.
-func runUsersSendEmail(_ context.Context, _ iruClient, _ io.Writer, _ usersSendEmailOpts) error {
-	return nil
+// runUsersSendEmail is the orchestration entry point for the bulk
+// `users send-email` command. It resolves recipients, fetches detections
+// once (cached or fresh), prompts for confirmation, and loops over each
+// recipient sending a per-user vulnerability report via Gmail. The per-row
+// outcomes are tallied in bulkCounters and surfaced as a final summary
+// line on stderr; the worst-class error is wrapped as the exit error.
+func runUsersSendEmail(ctx context.Context, client iruClient, stderr io.Writer, opts usersSendEmailOpts) error {
+	if err := validateMessageFlags(opts.EmailFlags, true); err != nil {
+		return err
+	}
+	if opts.EmailFlags.To != "" {
+		if _, err := mail.ParseAddress(opts.EmailFlags.To); err != nil {
+			return fmt.Errorf("--email-to %q: %w", opts.EmailFlags.To, err)
+		}
+	}
+
+	recipients, err := readRecipientList(opts)
+	if err != nil {
+		return err
+	}
+
+	// Bulk does not consult email.default_to. Zero it so resolveEmailOptions
+	// only honours flags, not config defaults.
+	profForOpts := opts.Profile
+	profForOpts.Email.DefaultTo = ""
+
+	now := opts.EmailNow
+	if now.IsZero() {
+		now = time.Now()
+	}
+	gitLookup := opts.gitEmail
+	if gitLookup == nil {
+		gitLookup = gitUserEmail
+	}
+	baseEmailOpts, err := resolveEmailOptions(opts.EmailFlags, profForOpts, gitLookup, now)
+	if err != nil {
+		return err
+	}
+
+	templateDisplay := fmt.Sprintf("%d recipients", len(recipients))
+	if opts.EmailFlags.To != "" {
+		templateDisplay = opts.EmailFlags.To + " (redirect)"
+	}
+	message, err := captureMessage(opts.EmailFlags, true, templateDisplay, baseEmailOpts.Subject, os.Stdin, stderr, nil)
+	if err != nil {
+		return err
+	}
+	baseEmailOpts.Message = message
+
+	var sender gmail.Sender
+	if !opts.DryRun {
+		if !opts.Profile.Email.GmailConfigured {
+			return errors.New(`--send-email requires Gmail credentials. Run "jellyfish configure email" to install a service-account JSON`)
+		}
+		kchGet := opts.KeychainGet
+		if kchGet == nil {
+			return errors.New("internal: KeychainGet not wired")
+		}
+		newSender := opts.NewSender
+		if newSender == nil {
+			return errors.New("internal: NewSender not wired")
+		}
+		saJSON, kerr := kchGet()
+		if kerr != nil {
+			return fmt.Errorf(`read Gmail credentials from Keychain: %w. Run "jellyfish configure email" to reinstall`, kerr)
+		}
+		s, serr := newSender(ctx, saJSON, baseEmailOpts.From)
+		if serr != nil {
+			return serr
+		}
+		sender = s
+	}
+
+	allDetections, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache)
+	if err != nil {
+		return err
+	}
+
+	confirmIn := opts.ConfirmReader
+	if confirmIn == nil {
+		confirmIn = os.Stdin
+	}
+	ok, err := confirmSend(stderr, confirmIn, len(recipients), opts.DryRun, opts.Yes)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		_, _ = fmt.Fprintln(stderr, "aborted: no mail sent")
+		return nil
+	}
+
+	var counters bulkCounters
+	for _, inputEmail := range recipients {
+		bundle, rerr := resolveBundleForUser(ctx, client, inputEmail, allDetections)
+		if rerr != nil {
+			if errors.Is(rerr, iru.ErrNotFound) {
+				_, _ = fmt.Fprintf(stderr, "error: %s user not found in Iru\n", inputEmail)
+			} else {
+				_, _ = fmt.Fprintf(stderr, "error: %s lookup: %v\n", inputEmail, rerr)
+			}
+			counters.recordError(rerr)
+			continue
+		}
+		if len(bundle.Devices) == 0 {
+			_, _ = fmt.Fprintf(stderr, "skip: %s no devices\n", inputEmail)
+			counters.skipped++
+			continue
+		}
+		hasDetections := false
+		for _, d := range bundle.Devices {
+			if len(d.Detections) > 0 {
+				hasDetections = true
+				break
+			}
+		}
+		if !hasDetections {
+			_, _ = fmt.Fprintf(stderr, "skip: %s no vulnerabilities\n", inputEmail)
+			counters.skipped++
+			continue
+		}
+
+		userOpts := baseEmailOpts
+		userOpts.To = baseEmailOpts.To
+		if userOpts.To == "" {
+			userOpts.To = bundle.User.Email
+		}
+		if userOpts.To == "" {
+			_, _ = fmt.Fprintf(stderr, "error: %s no recipient address (user has no email and --email-to not set)\n", inputEmail)
+			counters.recordError(fmt.Errorf("no recipient"))
+			continue
+		}
+
+		if opts.DryRun {
+			_, _ = fmt.Fprintf(stderr, "would-send: %s to=%s\n", inputEmail, userOpts.To)
+			counters.wouldSend++
+			continue
+		}
+
+		id, serr := sendUserBundle(ctx, sender, userOpts, stderr, bundle)
+		if serr != nil {
+			_, _ = fmt.Fprintf(stderr, "error: %s gmail: %v\n", inputEmail, serr)
+			counters.recordError(serr)
+			continue
+		}
+		_, _ = fmt.Fprintf(stderr, "sent: %s to=%s gmail-id=%s\n", inputEmail, userOpts.To, id)
+		counters.sent++
+	}
+
+	if opts.DryRun {
+		_, _ = fmt.Fprintf(stderr, "summary: would-send=%d skipped=%d errors=%d\n", counters.wouldSend, counters.skipped, counters.errs)
+	} else {
+		_, _ = fmt.Fprintf(stderr, "summary: sent=%d skipped=%d errors=%d\n", counters.sent, counters.skipped, counters.errs)
+	}
+	return counters.exitError()
 }
 
 // readCSVRecipients reads email addresses out of a CSV file. The CSV must
@@ -212,7 +378,7 @@ func splitEmails(raw string) ([]string, error) {
 // exitError() converts that back to a wrapped sentinel that
 // classifyError understands.
 type bulkCounters struct {
-	sent, wouldSend, skipped, errs int //nolint:unused // wired in by runUsersSendEmail body (Task 9)
+	sent, wouldSend, skipped, errs int
 	worst                          bulkExitClass
 }
 

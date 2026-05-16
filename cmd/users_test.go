@@ -2,13 +2,17 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"net/mail"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/bawdo/jellyfish/internal/config"
 	"github.com/bawdo/jellyfish/internal/gmail"
 	"github.com/bawdo/jellyfish/internal/iru"
 )
@@ -239,6 +243,55 @@ func TestReadRecipientListDispatches(t *testing.T) {
 			t.Fatalf("err: got %v", err)
 		}
 	})
+}
+
+func TestRunUsersSendEmailHappyPath(t *testing.T) {
+	client := &fakeClient{
+		users: []iru.User{{ID: "u-1", Name: "Alice", Email: "alice@example.com"}},
+		devices: []iru.Device{
+			{DeviceID: "d-1", DeviceName: "MBP", SerialNumber: "SN1", User: iru.User{ID: "u-1"}},
+		},
+		detections: []iru.Detection{
+			{DeviceID: "d-1", CVEID: "CVE-A", Severity: "Critical", CVSSScore: 9.5, Name: "x", Version: "1.0"},
+		},
+	}
+	sender := &fakeGmailSender{returnID: "msg-xyz"}
+	var stderr bytes.Buffer
+	opts := usersSendEmailOpts{
+		Emails:   "alice@example.com",
+		Yes:      true,
+		NoCache:  true,
+		EmailNow: time.Date(2026, 5, 16, 0, 0, 0, 0, time.UTC),
+		Profile:  config.Profile{Email: config.EmailConfig{GmailConfigured: true, From: "ops@example.com"}},
+		EmailFlags: emailFlagValues{
+			From: "ops@example.com",
+		},
+		KeychainGet: func() ([]byte, error) { return []byte(`{"type":"service_account"}`), nil },
+		NewSender:   func(_ context.Context, _ []byte, _ string) (gmail.Sender, error) { return sender, nil },
+		gitEmail:    fixedGitEmail("ops@example.com"),
+	}
+	if err := runUsersSendEmail(context.Background(), client, &stderr, opts); err != nil {
+		t.Fatalf("run: %v\nstderr=%s", err, stderr.String())
+	}
+	want := []string{
+		"sent: alice@example.com to=alice@example.com gmail-id=msg-xyz",
+		"summary: sent=1 skipped=0 errors=0",
+	}
+	for _, w := range want {
+		if !strings.Contains(stderr.String(), w) {
+			t.Errorf("stderr missing %q; full:\n%s", w, stderr.String())
+		}
+	}
+	if sender.sent == nil {
+		t.Fatal("sender was not called")
+	}
+	msg, err := mail.ReadMessage(bytes.NewReader(sender.sent))
+	if err != nil {
+		t.Fatalf("parse sent eml: %v", err)
+	}
+	if got := msg.Header.Get("To"); got != "alice@example.com" {
+		t.Errorf("To: got %q", got)
+	}
 }
 
 func TestBulkCountersExitError(t *testing.T) {
