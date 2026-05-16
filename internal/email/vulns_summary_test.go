@@ -365,6 +365,17 @@ func TestVulnSummaryRendererWithValidLogoEmitsMultipartRelated(t *testing.T) {
 	}
 }
 
+func TestNewVulnSummaryRendererGoldenWithMessage(t *testing.T) {
+	var buf bytes.Buffer
+	opts := newPinnedOpts()
+	opts.Message = "Hi team -\n\nHeads-up on this week's KEV spike before Friday's freeze. See https://example.com/runbook for the rollback steps."
+	r := NewVulnSummaryRenderer(opts)
+	if err := r.Render(&buf, sampleVulns()); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	goldenAssert(t, "vulns_summary_with_message.golden.eml", buf.Bytes())
+}
+
 func TestDomainFromAddress(t *testing.T) {
 	cases := []struct {
 		in   string

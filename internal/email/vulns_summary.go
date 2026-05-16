@@ -14,7 +14,7 @@ import (
 	"github.com/bawdo/jellyfish/internal/output"
 )
 
-//go:embed templates/vulns_summary.txt.tmpl templates/vulns_summary.html.tmpl templates/_header.html.tmpl
+//go:embed templates/vulns_summary.txt.tmpl templates/vulns_summary.html.tmpl templates/_header.html.tmpl templates/_message.html.tmpl
 var vulnSummaryFS embed.FS
 
 // vulnSummaryView is the data shape vulns_summary templates render against.
@@ -32,6 +32,8 @@ type vulnSummaryView struct {
 	KEVCount       int
 	DeviceCount    int
 	Rows           []vulnSummaryRow
+	Message        string
+	MessageHTML    htmltmpl.HTML
 }
 
 type vulnSummaryRow struct {
@@ -111,6 +113,10 @@ func buildVulnSummaryView(vs []iru.Vulnerability, opts Options) vulnSummaryView 
 		})
 	}
 	view.DeviceCount = maxDevices
+	view.Message = opts.Message
+	if opts.Message != "" {
+		view.MessageHTML = paragraphsHTML(opts.Message)
+	}
 	return view
 }
 
@@ -141,6 +147,7 @@ func renderVulnSummaryHTML(v vulnSummaryView) (string, error) {
 		"safeCSS":   safeCSS,
 	}).ParseFS(vulnSummaryFS,
 		"templates/_header.html.tmpl",
+		"templates/_message.html.tmpl",
 		"templates/vulns_summary.html.tmpl",
 	)
 	if err != nil {

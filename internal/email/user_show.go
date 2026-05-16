@@ -27,7 +27,7 @@ type UserBundleDevice struct {
 	Detections []iru.Detection
 }
 
-//go:embed templates/user_show.txt.tmpl templates/user_show.html.tmpl templates/_header.html.tmpl
+//go:embed templates/user_show.txt.tmpl templates/user_show.html.tmpl templates/_header.html.tmpl templates/_message.html.tmpl
 var userShowFS embed.FS
 
 type userShowView struct {
@@ -43,6 +43,8 @@ type userShowView struct {
 	LowCount       int
 	DeviceCount    int
 	Devices        []userShowDeviceView
+	Message        string
+	MessageHTML    htmltmpl.HTML
 }
 
 type userShowDeviceView struct {
@@ -107,6 +109,10 @@ func buildUserShowView(b UserBundleInput, opts Options) userShowView {
 		}
 		view.Devices[i] = userShowDeviceView{Device: dev.Device, Rows: rows}
 	}
+	view.Message = opts.Message
+	if opts.Message != "" {
+		view.MessageHTML = paragraphsHTML(opts.Message)
+	}
 	return view
 }
 
@@ -137,6 +143,7 @@ func renderUserShowHTML(v userShowView) (string, error) {
 		"safeCSS":   safeCSS,
 	}).ParseFS(userShowFS,
 		"templates/_header.html.tmpl",
+		"templates/_message.html.tmpl",
 		"templates/user_show.html.tmpl",
 	)
 	if err != nil {

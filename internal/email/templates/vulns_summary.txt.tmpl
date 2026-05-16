@@ -1,3 +1,9 @@
+{{if .Message -}}
+{{.Message}}
+
+---
+
+{{end -}}
 {{.CriticalCount}} Critical, {{.HighCount}} High, {{.MediumCount}} Medium, {{.LowCount}} Low. {{.KEVCount}} KEV-listed across {{.DeviceCount}} devices (max per CVE).
 
 Generated {{.GeneratedAtStr}}{{if .Tenant}} for tenant {{.Tenant}}{{end}}.

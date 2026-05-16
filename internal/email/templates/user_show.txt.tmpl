@@ -1,3 +1,9 @@
+{{if .Message -}}
+{{.Message}}
+
+---
+
+{{end -}}
 Vulnerability exposure for {{.User.Name}}{{if .User.Email}} ({{.User.Email}}){{end}}.
 
 {{.CriticalCount}} Critical, {{.HighCount}} High, {{.MediumCount}} Medium, {{.LowCount}} Low across {{.DeviceCount}} device(s).

@@ -1,0 +1,8 @@
+{{define "message"}}
+{{- if .Message}}
+<tr><td style="padding:18px 24px;border-bottom:1px solid #e2e8f0;background:#ffffff;">
+  <div style="font:700 10px/1 -apple-system,system-ui,sans-serif;color:#64748b;letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px;">Message</div>
+  <div style="font:14px/1.55 -apple-system,system-ui,sans-serif;color:#0f172a;">{{.MessageHTML}}</div>
+</td></tr>
+{{- end}}
+{{end}}

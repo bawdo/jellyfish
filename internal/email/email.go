@@ -36,6 +36,8 @@ type Options struct {
 	HeaderBG string // hex #RRGGBB; renderer applies DefaultHeaderBG if empty
 	LogoPath string // optional path to a PNG; empty disables the logo
 
+	Message string // optional plain-text message; empty disables the message section
+
 	// Injected for tests; production leaves these zero so assembleMessage
 	// pulls from crypto/rand.
 	BoundaryOverride        string

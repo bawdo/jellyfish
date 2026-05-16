@@ -240,6 +240,8 @@ Recipient, sender, and subject default from the `email:` block in
 | `--email-subject`    | `email.subject_template` | per-command default |
 | `--email-header-bg`  | `email.header_bg`        | `#2b3a55` (default header colour) |
 | `--email-logo`       | `email.logo_path`        | empty (no logo) |
+| `--message`          | -                        | unset (no message section) |
+| `--message-file`     | -                        | unset (no message section) |
 
 The default `#2b3a55` is the default header colour. A logo whose recognisable
 element is the same purple (the logo, for example) will blend into
@@ -284,6 +286,39 @@ email:
 ```
 
 The `{cve}` token in link templates is a literal substring replacement.
+
+#### Optional message section (`--message`, `--message-file`)
+
+Attach a short note to the top of a rendered email (between the branded header
+and the stats tiles). Both `vulns summary` and `user show` support this when
+producing email output (`-o email` or `--send-email`).
+
+- `--message` opens `$VISUAL` (then `$EDITOR`, then `vi`) on a templated
+  scratch file. Lines starting with `#` are ignored on save (matches
+  `git commit` behaviour). An empty or whitespace-only result aborts the
+  command with exit 1.
+- `--message-file <path>` reads the message verbatim from the file. Use
+  `--message-file -` to read from stdin. `#` lines are **not** stripped from
+  files - whatever is in the file goes into the email.
+- The two flags are mutually exclusive; setting either without `-o email` or
+  `--send-email` errors out with exit 1.
+- Messages over 4000 characters render fine but emit a stderr warning
+  (`warn: --message is N chars; long messages may be clipped by mail clients`).
+- Auto-linkification: any `http(s)://...` in the message renders as a
+  clickable link in the HTML body. The plain-text alternative carries the
+  message verbatim.
+
+```bash
+# Compose interactively, then send
+jellyfish vulns summary --severity critical --send-email --message
+
+# Take the body from a file (handy for templated weekly briefings)
+jellyfish user show alice@example.com --send-email --message-file note.txt
+
+# Pipe from stdin
+echo "FYI - patching window moved to Saturday." \
+    | jellyfish user show alice@example.com --send-email --message-file -
+```
 
 #### Sending via Gmail (`--send-email`)
 
