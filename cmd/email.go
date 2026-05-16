@@ -16,21 +16,26 @@ import (
 )
 
 // emailFlagValues holds the literal flag inputs from cobra; empty string means
-// the flag was not set. Send is true iff --send-email was passed.
+// the flag was not set. Send is true iff --send-email was passed. Message is
+// true iff --message was passed; MessageFile is the literal --message-file
+// value (empty when not set).
 type emailFlagValues struct {
-	To       string
-	From     string
-	Subject  string
-	HeaderBG string
-	LogoPath string
-	Send     bool
+	To          string
+	From        string
+	Subject     string
+	HeaderBG    string
+	LogoPath    string
+	Send        bool
+	Message     bool
+	MessageFile string
 }
 
 // gitEmailLookup is the function signature for "find a from address by asking
 // git". Production passes gitUserEmail; tests inject a fixture.
 type gitEmailLookup func() (string, error)
 
-// readEmailFlags pulls --email-to / --email-from / --email-subject / --send-email
+// readEmailFlags pulls --email-to / --email-from / --email-subject /
+// --email-header-bg / --email-logo / --send-email / --message / --message-file
 // off a cobra command. Missing flags return zero values (no error).
 func readEmailFlags(cmd *cobra.Command) emailFlagValues {
 	to, _ := cmd.Flags().GetString("email-to")
@@ -39,7 +44,13 @@ func readEmailFlags(cmd *cobra.Command) emailFlagValues {
 	headerBG, _ := cmd.Flags().GetString("email-header-bg")
 	logoPath, _ := cmd.Flags().GetString("email-logo")
 	send, _ := cmd.Flags().GetBool("send-email")
-	return emailFlagValues{To: to, From: from, Subject: subject, HeaderBG: headerBG, LogoPath: logoPath, Send: send}
+	message, _ := cmd.Flags().GetBool("message")
+	messageFile, _ := cmd.Flags().GetString("message-file")
+	return emailFlagValues{
+		To: to, From: from, Subject: subject,
+		HeaderBG: headerBG, LogoPath: logoPath,
+		Send: send, Message: message, MessageFile: messageFile,
+	}
 }
 
 // resolveEmailOptions applies the precedence:
