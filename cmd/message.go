@@ -167,6 +167,7 @@ func runEditorTerminal(path string) error {
 	if err != nil {
 		return fmt.Errorf("launch editor: %w", err)
 	}
+	// #nosec G204 G702 - bin is the resolved $VISUAL/$EDITOR/vi path; path is the scratch file we just wrote
 	c := exec.Command(bin, path)
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout

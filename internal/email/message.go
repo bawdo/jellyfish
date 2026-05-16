@@ -39,6 +39,7 @@ func linkifyHTML(plain string) template.HTML {
 		idx = end
 	}
 	sb.WriteString(html.EscapeString(plain[idx:]))
+	// #nosec G203 - body is html.EscapeString-escaped above; only the literal <a>...</a> wrappers and the inline style are raw
 	return template.HTML(sb.String())
 }
 
@@ -71,5 +72,6 @@ func paragraphsHTML(plain string) template.HTML {
 		sb.WriteString(linked)
 		sb.WriteString(`</p>`)
 	}
+	// #nosec G203 - body is built from linkifyHTML output (already escaped) and literal <p>/<br> tags
 	return template.HTML(sb.String())
 }

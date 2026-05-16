@@ -222,11 +222,13 @@ func TestCaptureMessageEditorFailurePropagates(t *testing.T) {
 func TestCaptureMessageEditorTemplateContainsSubjectAndTo(t *testing.T) {
 	var got string
 	fake := func(path string) error {
+		// #nosec G304 - path is the scratch file captureMessageViaEditor created under t.TempDir()
 		b, err := os.ReadFile(path)
 		if err != nil {
 			return err
 		}
 		got = string(b)
+		// #nosec G304 G703 - same scratch path, writing back the edited body
 		return os.WriteFile(path, append(b, []byte("\nthe body\n")...), 0o600)
 	}
 	_, err := captureMessage(
@@ -252,11 +254,13 @@ func TestCaptureMessageEditorTemplateContainsSubjectAndTo(t *testing.T) {
 func TestCaptureMessageEditorTemplateNoRecipient(t *testing.T) {
 	var got string
 	fake := func(path string) error {
+		// #nosec G304 - path is the scratch file captureMessageViaEditor created under t.TempDir()
 		b, err := os.ReadFile(path)
 		if err != nil {
 			return err
 		}
 		got = string(b)
+		// #nosec G304 G703 - same scratch path, writing back the edited body
 		return os.WriteFile(path, append(b, []byte("\nbody\n")...), 0o600)
 	}
 	_, err := captureMessage(
