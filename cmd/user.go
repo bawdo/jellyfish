@@ -152,6 +152,7 @@ func renderUserBundle(w io.Writer, stderr io.Writer, opts userShowOpts, b UserBu
 		if err != nil {
 			return err
 		}
+		emailOpts.Report = "user-show"
 		msg, err := captureMessage(opts.EmailFlags, true, emailOpts.To, emailOpts.Subject, os.Stdin, stderr, nil)
 		if err != nil {
 			return err
@@ -176,6 +177,7 @@ func runSendUserShow(ctx context.Context, stderr io.Writer, opts userShowOpts, b
 	if err != nil {
 		return err
 	}
+	emailOpts.Report = "user-show"
 
 	sender, to, err := resolveSendOptions(
 		ctx,

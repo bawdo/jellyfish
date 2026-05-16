@@ -615,3 +615,24 @@ func TestBulkTemplateDisplayRedirect(t *testing.T) {
 		t.Fatalf("scratch missing redirect display; got:\n%s", scratchContents)
 	}
 }
+
+func TestRunUsersSendEmailSetsReportHeader(t *testing.T) {
+	client := &fakeClient{
+		users:      []iru.User{{ID: "u-1", Email: "alice@example.com"}},
+		devices:    []iru.Device{{DeviceID: "d-1", DeviceName: "MBP"}},
+		detections: []iru.Detection{{DeviceID: "d-1", CVEID: "CVE-A", Severity: "Critical", CVSSScore: 9.5}},
+	}
+	sender := &fakeGmailSender{returnID: "msg-1"}
+	var stderr bytes.Buffer
+	opts := newOpts(t, sender)
+	opts.Emails = "alice@example.com"
+	if err := runUsersSendEmail(context.Background(), client, &stderr, opts); err != nil {
+		t.Fatalf("run: %v\nstderr=%s", err, stderr.String())
+	}
+	if sender.sent == nil {
+		t.Fatal("sender was not called")
+	}
+	if !bytes.Contains(sender.sent, []byte("X-Jellyfish-Report: users-send\r\n")) {
+		t.Fatalf("expected X-Jellyfish-Report: users-send; got:\n%s", sender.sent)
+	}
+}

@@ -126,6 +126,7 @@ func runUsersSendEmail(ctx context.Context, client iruClient, stderr io.Writer, 
 	if err != nil {
 		return err
 	}
+	baseEmailOpts.Report = "users-send"
 
 	confirmIn := opts.ConfirmReader
 	if confirmIn == nil {

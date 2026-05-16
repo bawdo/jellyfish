@@ -267,3 +267,29 @@ func TestRunSendVulnsSummaryWithoutLogoEmitsMultipartAlternative(t *testing.T) {
 		t.Errorf("no-logo path: Content-Type got %q want multipart/alternative", mt)
 	}
 }
+
+func TestRunSendVulnsSummarySetsReportHeader(t *testing.T) {
+	sender := &fakeGmailSender{}
+	opts := vulnsSummaryOpts{
+		Profile: config.Profile{
+			Subdomain: "acme",
+			Email: config.EmailConfig{
+				From:            "alice@example.com",
+				DefaultTo:       "ops@example.com",
+				GmailConfigured: true,
+			},
+		},
+		EmailFlags:  emailFlagValues{Send: true},
+		EmailNow:    time.Date(2026, 5, 16, 0, 0, 0, 0, time.UTC),
+		KeychainGet: stubKeychain(`{}`),
+		NewSender:   newFakeSenderFactory(sender),
+		gitEmail:    func() (string, error) { return "git@example.com", nil },
+	}
+	var stderr bytes.Buffer
+	if err := runSendVulnsSummary(context.Background(), &stderr, opts, nil); err != nil {
+		t.Fatalf("runSendVulnsSummary: %v", err)
+	}
+	if !bytes.Contains(sender.sent, []byte("X-Jellyfish-Report: vulns-summary\r\n")) {
+		t.Fatalf("expected X-Jellyfish-Report: vulns-summary; got:\n%s", sender.sent)
+	}
+}

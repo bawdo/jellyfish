@@ -312,6 +312,7 @@ func renderVulns(w io.Writer, stderr io.Writer, opts vulnsSummaryOpts, vs []iru.
 		if err != nil {
 			return err
 		}
+		emailOpts.Report = "vulns-summary"
 		msg, err := captureMessage(opts.EmailFlags, true, emailOpts.To, emailOpts.Subject, os.Stdin, stderr, nil)
 		if err != nil {
 			return err
@@ -339,6 +340,7 @@ func runSendVulnsSummary(ctx context.Context, stderr io.Writer, opts vulnsSummar
 	if err != nil {
 		return err
 	}
+	emailOpts.Report = "vulns-summary"
 
 	sender, to, err := resolveSendOptions(
 		ctx,
