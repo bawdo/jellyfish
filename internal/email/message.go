@@ -10,7 +10,7 @@ import (
 // urlPattern matches http:// or https:// followed by anything that is not
 // whitespace or HTML-significant. Trailing punctuation is trimmed after the
 // match (see linkifyHTML).
-var urlPattern = regexp.MustCompile(`https?://[^\s<>"']+`)
+var urlPattern = regexp.MustCompile(`https?://[^\x00\s<>"']+`)
 
 // linkifyHTML returns plain escaped for HTML, with http(s):// URLs wrapped in
 // <a> anchors. Trailing . , ; : ) characters at the end of a URL match are

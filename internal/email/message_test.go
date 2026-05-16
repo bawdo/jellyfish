@@ -2,6 +2,7 @@ package email
 
 import (
 	"html/template"
+	"strings"
 	"testing"
 )
 
@@ -105,5 +106,19 @@ func TestParagraphsHTMLCollapsesMultipleBlankLines(t *testing.T) {
 	want := template.HTML(`<p style="margin:0 0 10px;">a</p><p style="margin:0 0 10px;">b</p>`)
 	if got != want {
 		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
+func TestParagraphsHTMLNULInURLDoesNotBreakAnchor(t *testing.T) {
+	// A NUL inside a URL must not be wrapped into the href — paragraphsHTML
+	// uses NUL as a line-break placeholder, so any NUL in a URL match would
+	// otherwise be rewritten to <br> inside the href attribute.
+	got := paragraphsHTML("see https://x.test/a\x00b end")
+	wantPrefix := `<p style="margin:0 0 10px;">see <a href="https://x.test/a"`
+	if !strings.HasPrefix(string(got), wantPrefix) {
+		t.Fatalf("URL should stop at NUL; got:\n%s", got)
+	}
+	if strings.Contains(string(got), `<br>end" `) || strings.Contains(string(got), `<br>end" style=`) {
+		t.Fatalf("NUL inside URL match leaked into href attribute; got:\n%s", got)
 	}
 }
