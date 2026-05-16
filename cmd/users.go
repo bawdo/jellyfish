@@ -153,7 +153,7 @@ func runUsersSendEmail(ctx context.Context, client iruClient, stderr io.Writer, 
 	var sender gmail.Sender
 	if !opts.DryRun {
 		if !opts.Profile.Email.GmailConfigured {
-			return errors.New(`--send-email requires Gmail credentials. Run "jellyfish configure email" to install a service-account JSON`)
+			return errors.New(`sending email requires Gmail credentials. Run "jellyfish configure email" to install a service-account JSON, or pass --dry-run to preview without sending`)
 		}
 		kchGet := opts.KeychainGet
 		if kchGet == nil {
