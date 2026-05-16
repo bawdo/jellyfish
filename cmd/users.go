@@ -2,7 +2,10 @@ package cmd
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -68,4 +71,33 @@ func newUsersSendEmailCmd() *cobra.Command {
 // tasks; current stub keeps the cobra wiring compilable.
 func runUsersSendEmail(_ context.Context, _ iruClient, _ io.Writer, _ usersSendEmailOpts) error {
 	return nil
+}
+
+// splitEmails parses a comma-separated list of email addresses, trimming
+// whitespace, skipping empty entries, deduping case-insensitively while
+// preserving first-seen order, and rejecting any entry without an "@".
+// Returns an error if no addresses remain after parsing.
+func splitEmails(raw string) ([]string, error) {
+	parts := strings.Split(raw, ",")
+	seen := make(map[string]struct{}, len(parts))
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		addr := strings.TrimSpace(p)
+		if addr == "" {
+			continue
+		}
+		if !strings.Contains(addr, "@") {
+			return nil, fmt.Errorf("not a valid email address: %q", addr)
+		}
+		key := strings.ToLower(addr)
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, addr)
+	}
+	if len(out) == 0 {
+		return nil, errors.New("no email addresses in --emails")
+	}
+	return out, nil
 }
