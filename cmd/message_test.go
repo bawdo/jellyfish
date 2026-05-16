@@ -203,15 +203,19 @@ func TestCaptureMessageEditorAbortsOnEmpty(t *testing.T) {
 }
 
 func TestCaptureMessageEditorFailurePropagates(t *testing.T) {
-	fake := func(string) error { return errors.New("editor exited with status 1") }
+	sentinel := errors.New("bang")
+	fake := func(string) error { return sentinel }
 	_, err := captureMessage(
 		emailFlagValues{Message: true},
 		true, "", "",
 		strings.NewReader(""), &bytes.Buffer{},
 		fake,
 	)
-	if err == nil || !strings.Contains(err.Error(), "editor exited") {
-		t.Fatalf("expected editor error, got %v", err)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("expected sentinel to propagate via errors.Is; got %v", err)
 	}
 }
 

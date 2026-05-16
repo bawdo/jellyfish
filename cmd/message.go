@@ -38,7 +38,8 @@ func validateMessageFlags(flags emailFlagValues, hasEmailOutput bool) error {
 // editor non-zero exit; empty resulting message. Emits a soft-cap warning to
 // stderr when the result exceeds messageSoftCap. The flag-shape checks are
 // duplicated from validateMessageFlags so this function is safe to call
-// without an earlier validate step (idempotent).
+// without an earlier validate step (idempotent). Pass nil for runEditor to
+// use the production terminal launcher ($VISUAL/$EDITOR/vi).
 func captureMessage(
 	flags emailFlagValues,
 	hasEmailOutput bool,
@@ -58,14 +59,16 @@ func captureMessage(
 		raw       string
 		stripHash bool
 	)
-	switch {
-	case flags.MessageFile != "":
+	// validateMessageFlags above ensures exactly one of flags.MessageFile /
+	// flags.Message is set when we reach here. The two branches are
+	// disjoint.
+	if flags.MessageFile != "" {
 		body, err := readMessageFile(flags.MessageFile, stdin)
 		if err != nil {
 			return "", fmt.Errorf("read --message-file %s: %w", flags.MessageFile, err)
 		}
 		raw = body
-	default:
+	} else { // flags.Message == true
 		body, err := captureMessageViaEditor(recipient, subject, runEditor)
 		if err != nil {
 			return "", err
@@ -76,7 +79,7 @@ func captureMessage(
 
 	cleaned := strings.TrimSpace(maybeStripHashLines(raw, stripHash))
 	if cleaned == "" {
-		return "", errors.New("--message produced an empty message; aborting")
+		return "", errors.New("--message produced an empty message")
 	}
 	if len(cleaned) > messageSoftCap {
 		_, _ = fmt.Fprintf(stderr, "warn: --message is %d chars; long messages may be clipped by mail clients\n", len(cleaned))
