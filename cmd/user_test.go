@@ -345,3 +345,29 @@ func TestUserShowMessageRejectsNonEmailOutput(t *testing.T) {
 		t.Fatalf("expected output-mode error, got %v", err)
 	}
 }
+
+func TestUserShowSendEmailSetsReportHeader(t *testing.T) {
+	client := &fakeClient{
+		users:   []iru.User{{ID: "u-1", Name: "Alice", Email: "alice@example.com"}},
+		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", SerialNumber: "SN1"}},
+		detections: []iru.Detection{
+			{DeviceID: "d-1", CVEID: "CVE-A", Severity: "Critical", CVSSScore: 9.5, Name: "x", Version: "1.0"},
+		},
+	}
+	sender := &fakeGmailSender{returnID: "msg-xyz"}
+	opts := userShowOpts{
+		Identifier:  "u-1",
+		NoCache:     true,
+		EmailFlags:  emailFlagValues{Send: true, From: "ops@example.com"},
+		EmailNow:    time.Date(2026, 5, 16, 0, 0, 0, 0, time.UTC),
+		Profile:     config.Profile{Email: config.EmailConfig{GmailConfigured: true}},
+		KeychainGet: func() ([]byte, error) { return []byte(`{"type":"service_account"}`), nil },
+		NewSender:   func(_ context.Context, _ []byte, _ string) (gmail.Sender, error) { return sender, nil },
+	}
+	if err := runUserShow(context.Background(), client, &bytes.Buffer{}, &bytes.Buffer{}, opts); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !bytes.Contains(sender.sent, []byte("X-Jellyfish-Report: user-show\r\n")) {
+		t.Fatalf("expected X-Jellyfish-Report: user-show; got:\n%s", sender.sent)
+	}
+}

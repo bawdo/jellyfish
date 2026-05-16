@@ -254,10 +254,14 @@ func (r *userShowRenderer) Render(w io.Writer, v any) error {
 		}
 	}
 	bytesOut, err := assembleMessage(messageHeaders{
-		From:    r.opts.From,
-		To:      r.opts.To,
-		Subject: subject,
-		Date:    r.opts.GeneratedAt,
+		From:         r.opts.From,
+		To:           r.opts.To,
+		Subject:      subject,
+		Date:         r.opts.GeneratedAt,
+		Report:       r.opts.Report,
+		Tenant:       r.opts.Tenant,
+		Version:      r.opts.Version,
+		ListIDDomain: r.opts.ListIDDomain,
 	}, htmlBody, textBody, boundary, messageID, outerBoundary, logo)
 	if err != nil {
 		return err

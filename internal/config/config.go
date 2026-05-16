@@ -22,6 +22,7 @@ type EmailConfig struct {
 	HeaderBG         string `yaml:"header_bg,omitempty"`
 	LogoPath         string `yaml:"logo_path,omitempty"`
 	GmailConfigured  bool   `yaml:"gmail_configured,omitempty"`
+	ListIDDomain     string `yaml:"list_id_domain,omitempty"`
 }
 
 type Profile struct {
