@@ -66,3 +66,13 @@ type OverviewView struct {
 type OverviewInput struct {
 	View OverviewView
 }
+
+// SecScore tier thresholds. Renderers use these to pick border / rank-tile
+// colours so the table, email, and docs agree on what a "high" user looks
+// like. Documented in the README and the spec. May be retuned after
+// real-data review.
+const (
+	SecScoreCriticalAt = 100.0
+	SecScoreHighAt     = 30.0
+	SecScoreMediumAt   = 5.0
+)

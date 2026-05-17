@@ -227,11 +227,11 @@ func fmtFloat(f float64) string {
 // email, and docs all agree on what a "high" user looks like.
 func secScoreTier(score float64) string {
 	switch {
-	case score >= 100:
+	case score >= email.SecScoreCriticalAt:
 		return "critical"
-	case score >= 30:
+	case score >= email.SecScoreHighAt:
 		return "high"
-	case score >= 5:
+	case score >= email.SecScoreMediumAt:
 		return "medium"
 	default:
 		return "good"

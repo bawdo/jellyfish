@@ -148,11 +148,11 @@ func rosterRows(stats []UserStats, me *UserStats) []overviewRowView {
 // card. Matches the secScoreTier thresholds in cmd/overview.go.
 func tierColour(score float64) string {
 	switch {
-	case score >= 100:
+	case score >= SecScoreCriticalAt:
 		return "#dc2626"
-	case score >= 30:
+	case score >= SecScoreHighAt:
 		return "#ea580c"
-	case score >= 5:
+	case score >= SecScoreMediumAt:
 		return "#ca8a04"
 	default:
 		return "#16a34a"
