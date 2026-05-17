@@ -64,6 +64,9 @@ func TestOverviewHTMLAdminBody(t *testing.T) {
 		"C 1", "H 1", "M 1", "L 1",
 		"22.3", "2.5",
 		"Alice", "Bob",
+		"Sec Score</strong> is the sum of CVSS scores",
+		"Lower is better.",
+		">Sec Score</td>",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("admin HTML body missing %q", want)
@@ -111,6 +114,8 @@ func TestOverviewHTMLPerUserBody(t *testing.T) {
 		"background:#eff6ff;", // YOU-row tint on the roster row
 		">you</span>",         // YOU pill (lowercased in the template; text-transform makes it uppercase visually)
 		"#2563eb",             // blue border / colour somewhere in the rendered HTML
+		"Sec Score</strong> is the sum of CVSS scores", // explainer still present
+		">Sec Score</td>",                              // column header still present
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("per-user HTML missing %q", want)

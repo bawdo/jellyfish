@@ -16,21 +16,23 @@ TOTALS
   medium:    {{.Totals.Medium}} ({{.AveragesView.Medium}}/user)
   low:       {{.Totals.Low}} ({{.AveragesView.Low}}/user)
 
-THE BEST 5
+Sec Score = sum of CVSS scores per user. Lower is better.
+
+THE BEST 5 (by Sec Score)
 {{range .BestRows -}}
   {{printf "%2s. %-30s %8s   C=%d H=%d M=%d L=%d" .Position .Name .ScoreStr .Critical .High .Medium .Low}}
 {{end}}
-THE MOST DANGEROUS 5
+THE MOST DANGEROUS 5 (by Sec Score)
 {{range .DangerousRows -}}
   {{printf "%2s. %-30s %8s   C=%d H=%d M=%d L=%d" .Position .Name .ScoreStr .Critical .High .Medium .Low}}
 {{end}}
 {{if .MeRow -}}
-YOUR STANDING
+YOUR STANDING (by Sec Score)
   {{.MeRow.RankStr}} of {{.Totals.UserCount}} - {{.MeRow.Name}} - {{.MeRow.ScoreStr}} sec_score
   ({{.MeRow.DeviceCount}} devices, {{.MeRow.TotalIssues}} issues; C={{.MeRow.Critical}} H={{.MeRow.High}} M={{.MeRow.Medium}} L={{.MeRow.Low}})
 
 {{end -}}
-ALL USERS ({{.Totals.UserCount}})
+ALL USERS ({{.Totals.UserCount}}, by Sec Score)
 {{range .RosterRows -}}
   {{printf "%3s. %-30s %8s   C=%d H=%d M=%d L=%d" .Position .Name .ScoreStr .Critical .High .Medium .Low}}
 {{end -}}
