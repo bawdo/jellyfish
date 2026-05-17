@@ -578,6 +578,50 @@ func TestRunOverviewPerUserRedirectsToEmailTo(t *testing.T) {
 	}
 }
 
+func TestRunOverviewPerUserRedirectNotePrecedesConfirmPrompt(t *testing.T) {
+	c := &overviewFakeClient{
+		fakeClient: &fakeClient{
+			users: []iru.User{
+				{ID: "u1", Name: "Alice", Email: "alice@x"},
+				{ID: "u2", Name: "Bob", Email: "bob@x"},
+				{ID: "u3", Name: "Carol", Email: "carol@x"},
+			},
+			detections: []iru.Detection{{DeviceID: "d-a", Severity: "Low", CVSSScore: 2.0}},
+		},
+		devicesByUser: map[string][]iru.Device{
+			"u1": {{DeviceID: "d-a"}},
+			"u2": {{DeviceID: "d-b"}},
+			"u3": {{DeviceID: "d-c"}},
+		},
+	}
+	opts := overviewOpts{
+		PerUser:       true,
+		EmailFlags:    emailFlagValues{Send: true, From: "noreply@example.com", To: "redirect@example.com"},
+		Profile:       config.Profile{Email: config.EmailConfig{GmailConfigured: true}},
+		EmailNow:      time.Date(2026, 5, 17, 10, 30, 0, 0, time.UTC),
+		gitEmail:      func() (string, error) { return "noreply@example.com", nil },
+		ConfirmReader: strings.NewReader("n\n"),
+	}
+	var stderr bytes.Buffer
+	if err := runOverview(context.Background(), c, io.Discard, &stderr, opts); err != nil {
+		t.Fatalf("runOverview: %v", err)
+	}
+	out := stderr.String()
+	note := "note: --email-to set; all 3 personalised overviews will be redirected to redirect@example.com"
+	prompt := "About to send personalised overviews to 3 recipients. Continue?"
+	noteIdx := strings.Index(out, note)
+	promptIdx := strings.Index(out, prompt)
+	if noteIdx == -1 {
+		t.Fatalf("redirect note missing:\n%s", out)
+	}
+	if promptIdx == -1 {
+		t.Fatalf("confirmation prompt missing:\n%s", out)
+	}
+	if noteIdx > promptIdx {
+		t.Errorf("redirect note must appear before confirmation prompt; got note@%d prompt@%d:\n%s", noteIdx, promptIdx, out)
+	}
+}
+
 func TestRunOverviewPerUserRedirectDryRun(t *testing.T) {
 	c := &overviewFakeClient{
 		fakeClient: &fakeClient{

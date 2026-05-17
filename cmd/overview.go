@@ -664,6 +664,10 @@ func confirmSendOverview(stderr io.Writer, in io.Reader, count int, perUser, dry
 func runOverviewPerUser(ctx context.Context, stderr io.Writer, opts overviewOpts, view email.OverviewView, baseOpts email.Options, now time.Time) error {
 	override := opts.EmailFlags.To
 
+	if override != "" {
+		_, _ = fmt.Fprintf(stderr, "note: --email-to set; all %d personalised overviews will be redirected to %s\n", len(view.Users), override)
+	}
+
 	confirmIn := opts.ConfirmReader
 	if confirmIn == nil {
 		confirmIn = os.Stdin
@@ -675,10 +679,6 @@ func runOverviewPerUser(ctx context.Context, stderr io.Writer, opts overviewOpts
 	if !ok {
 		_, _ = fmt.Fprintln(stderr, "aborted: no mail sent")
 		return nil
-	}
-
-	if override != "" {
-		_, _ = fmt.Fprintf(stderr, "note: --email-to set; all %d personalised overviews will be redirected to %s\n", len(view.Users), override)
 	}
 
 	msgIn := opts.MessageReader
