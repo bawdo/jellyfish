@@ -237,3 +237,21 @@ func secScoreTier(score float64) string {
 		return "good"
 	}
 }
+
+// renderOverviewCSV writes one header row plus one row per user, in the
+// same Users order as the email roster (SecScore desc). No totals row, no
+// sections — leaderboards can be derived by sorting in a spreadsheet.
+func renderOverviewCSV(w io.Writer, v email.OverviewView) error {
+	c := output.CSV().WithColumns([]output.Column{
+		{Header: "name", Extract: func(v any) string { return v.(email.UserStats).Name }},
+		{Header: "email", Extract: func(v any) string { return v.(email.UserStats).Email }},
+		{Header: "devices_count", Extract: func(v any) string { return strconv.Itoa(v.(email.UserStats).DeviceCount) }},
+		{Header: "sec_score", Extract: func(v any) string { return fmtFloat(v.(email.UserStats).SecScore) }},
+		{Header: "total_issues", Extract: func(v any) string { return strconv.Itoa(v.(email.UserStats).TotalIssues) }},
+		{Header: "critical_issues", Extract: func(v any) string { return strconv.Itoa(v.(email.UserStats).Critical) }},
+		{Header: "high_issues", Extract: func(v any) string { return strconv.Itoa(v.(email.UserStats).High) }},
+		{Header: "medium_issues", Extract: func(v any) string { return strconv.Itoa(v.(email.UserStats).Medium) }},
+		{Header: "low_issues", Extract: func(v any) string { return strconv.Itoa(v.(email.UserStats).Low) }},
+	})
+	return c.Render(w, v.Users)
+}

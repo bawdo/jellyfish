@@ -189,3 +189,24 @@ func TestSecScoreTier(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderOverviewCSV(t *testing.T) {
+	v := email.OverviewView{
+		Users: []email.UserStats{
+			{Rank: 1, Name: "Alice", Email: "alice@x", DeviceCount: 2,
+				SecScore: 22.3, TotalIssues: 3, Critical: 1, High: 1, Medium: 1, Low: 0},
+			{Rank: 2, Name: "Bob", Email: "bob@x", DeviceCount: 1,
+				SecScore: 2.5, TotalIssues: 1, Critical: 0, High: 0, Medium: 0, Low: 1},
+		},
+	}
+	var buf bytes.Buffer
+	if err := renderOverviewCSV(&buf, v); err != nil {
+		t.Fatalf("renderOverviewCSV: %v", err)
+	}
+	want := "name,email,devices_count,sec_score,total_issues,critical_issues,high_issues,medium_issues,low_issues\n" +
+		"Alice,alice@x,2,22.3,3,1,1,1,0\n" +
+		"Bob,bob@x,1,2.5,1,0,0,0,1\n"
+	if buf.String() != want {
+		t.Errorf("CSV mismatch:\n got:\n%s\nwant:\n%s", buf.String(), want)
+	}
+}
