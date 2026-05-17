@@ -252,3 +252,28 @@ func TestRenderOverviewYAML(t *testing.T) {
 		t.Errorf("YAML missing tenant key:\n%s", buf.String())
 	}
 }
+
+func TestOverviewCmdRegistered(t *testing.T) {
+	root := newRootCmd()
+	root.SetArgs([]string{"overview", "--help"})
+	var out, errBuf bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&errBuf)
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v\nstderr=%q", err, errBuf.String())
+	}
+	help := out.String()
+	if !strings.Contains(help, "overview") {
+		t.Fatalf("help missing command name; got:\n%s", help)
+	}
+	for _, flag := range []string{
+		"--per-user", "--email-to", "--email-from", "--email-subject",
+		"--email-header-bg", "--email-logo",
+		"--message", "--message-file",
+		"--dry-run", "--yes", "--no-cache",
+	} {
+		if !strings.Contains(help, flag) {
+			t.Errorf("help missing flag %s; got:\n%s", flag, help)
+		}
+	}
+}

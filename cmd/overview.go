@@ -10,8 +10,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/spf13/cobra"
+
+	"github.com/bawdo/jellyfish/internal/config"
 	"github.com/bawdo/jellyfish/internal/email"
+	"github.com/bawdo/jellyfish/internal/gmail"
 	"github.com/bawdo/jellyfish/internal/iru"
+	"github.com/bawdo/jellyfish/internal/keychain"
 	"github.com/bawdo/jellyfish/internal/output"
 )
 
@@ -265,4 +270,112 @@ func renderOverviewStructured(w io.Writer, format string, v email.OverviewView) 
 		return err
 	}
 	return r.Render(w, v)
+}
+
+type overviewOpts struct {
+	Output        string
+	PerUser       bool
+	EmailFlags    emailFlagValues
+	DryRun        bool
+	Yes           bool
+	NoCache       bool
+	Profile       config.Profile
+	EmailNow      time.Time
+	// Injected for tests:
+	gitEmail      gitEmailLookup
+	KeychainGet   func() ([]byte, error)
+	NewSender     gmailNewSender
+	ConfirmReader io.Reader
+}
+
+// newOverviewCmd wires the `jellyfish overview` cobra command.
+func newOverviewCmd() *cobra.Command {
+	var opts overviewOpts
+	c := &cobra.Command{
+		Use:   "overview",
+		Short: "Org-wide security overview (per-user sec_score rollup)",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			outFmt, _ := cmd.Flags().GetString("output")
+			opts.Output = outFmt
+			opts.EmailFlags = readEmailFlags(cmd)
+			opts.EmailNow = time.Now()
+			client, err := buildClient(cmd)
+			if err != nil {
+				return err
+			}
+			if outFmt == "email" {
+				prof, err := activeProfile(cmd)
+				if err != nil {
+					return err
+				}
+				opts.Profile = prof
+			}
+			if opts.KeychainGet == nil {
+				opts.KeychainGet = keychain.GetGmailServiceAccount
+			}
+			if opts.NewSender == nil {
+				opts.NewSender = gmail.NewSender
+			}
+			return runOverview(cmd.Context(), client, cmd.OutOrStdout(), cmd.ErrOrStderr(), opts)
+		},
+	}
+	c.Flags().BoolVar(&opts.PerUser, "per-user", false, "With --output=email: send one personalised copy per user with devices")
+	c.Flags().String("email-to", "", "Email recipient(s) for the admin report (comma-separated). Ignored with --per-user.")
+	c.Flags().String("email-from", "", "Email From: header (default: email.from from config, then git user.email)")
+	c.Flags().String("email-subject", "", "Email Subject: header (default: rendered email.subject_template or a per-command default)")
+	c.Flags().String("email-header-bg", "", "Email header background colour as #RRGGBB (default: email.header_bg or #2b3a55)")
+	c.Flags().String("email-logo", "", "Path to a PNG to show in the email header (default: email.logo_path)")
+	c.Flags().Bool("message", false, "Open $VISUAL/$EDITOR to compose a message rendered above the email body (shared across all recipients)")
+	c.Flags().String("message-file", "", "Read the email message body from a file (use - for stdin)")
+	c.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Render the email but do not send")
+	c.Flags().BoolVar(&opts.Yes, "yes", false, "Skip the confirmation prompt")
+	c.Flags().BoolVar(&opts.NoCache, "no-cache", false, "Skip the detection cache; always fetch fresh")
+	return c
+}
+
+// runOverview is the orchestration entry point. Steps in order:
+//  1. validate flag combinations
+//  2. assemble the OverviewView (single detection walk + per-user devices)
+//  3. dispatch on --output to a renderer or send path
+func runOverview(ctx context.Context, client iruClient, stdout, stderr io.Writer, opts overviewOpts) error {
+	if err := validateOverviewFlags(opts); err != nil {
+		return err
+	}
+	view, err := assembleOverview(ctx, client, stderr, opts.NoCache)
+	if err != nil {
+		return err
+	}
+	switch opts.Output {
+	case "", "table":
+		return renderOverviewTable(stdout, view)
+	case "json", "yaml":
+		return renderOverviewStructured(stdout, opts.Output, view)
+	case "csv":
+		return renderOverviewCSV(stdout, view)
+	case "email":
+		return runOverviewEmail(ctx, stdout, stderr, opts, view)
+	default:
+		return fmt.Errorf("unsupported output format %q", opts.Output)
+	}
+}
+
+// validateOverviewFlags catches bad flag combinations before any network
+// work. Mirrors the spec's Validation (exit 1) section.
+func validateOverviewFlags(opts overviewOpts) error {
+	if err := validateMessageFlags(opts.EmailFlags, opts.Output == "email"); err != nil {
+		return err
+	}
+	if opts.PerUser && opts.Output != "email" {
+		return errors.New("--per-user requires --output=email")
+	}
+	if opts.Output == "email" && !opts.PerUser && opts.EmailFlags.To == "" {
+		return errors.New("--output=email without --per-user requires --email-to")
+	}
+	return nil
+}
+
+// runOverviewEmail is the placeholder send dispatcher; Task 12 and 13 fill
+// in the admin and per-user paths.
+func runOverviewEmail(ctx context.Context, stdout, stderr io.Writer, opts overviewOpts, view email.OverviewView) error {
+	return errors.New("overview email send not yet implemented")
 }
