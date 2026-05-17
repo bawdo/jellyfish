@@ -492,3 +492,34 @@ func TestRunOverviewAdminGmailErrorPerRecipient(t *testing.T) {
 		t.Errorf("error should wrap gmail.ErrRateLimited, got %v", err)
 	}
 }
+
+func TestRunOverviewValidationErrors(t *testing.T) {
+	c := &overviewFakeClient{
+		fakeClient:    &fakeClient{users: []iru.User{{ID: "u1", Name: "Alice", Email: "alice@x"}}},
+		devicesByUser: map[string][]iru.Device{"u1": {{DeviceID: "d1"}}},
+	}
+	cases := []struct {
+		name string
+		opts overviewOpts
+		want string
+	}{
+		{
+			name: "per-user with table output",
+			opts: overviewOpts{Output: "table", PerUser: true},
+			want: "--per-user requires --output=email",
+		},
+		{
+			name: "email without email-to or per-user",
+			opts: overviewOpts{Output: "email"},
+			want: "--email-to",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := runOverview(context.Background(), c, io.Discard, io.Discard, tc.opts)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("err: got %v, want substring %q", err, tc.want)
+			}
+		})
+	}
+}
