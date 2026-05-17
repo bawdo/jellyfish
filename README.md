@@ -95,9 +95,14 @@ jellyfish configure
 
 Interactive prompts:
 
-1. Tenant subdomain (the bit before `.api.kandji.io` — the API hostname is still `kandji.io` even though the product was renamed Iru).
+1. Tenant subdomain (the bit before `.api.kandji.io` - the API hostname is still `kandji.io` even though the product was renamed Iru).
 2. Region: `us` or `eu`.
 3. API token (input is masked).
+
+Re-running `jellyfish configure` is safe: each prompt shows the current value
+in brackets, and pressing Enter keeps it. The token prompt simply notes that
+one is already stored - press Enter to keep it, or paste a new one to replace
+it. Other profile settings (`email:`, `cache_ttl_minutes`) are preserved.
 
 Subdomain and region are written to `~/.config/jellyfish/config.yml` with mode
 `0600`. The token is stored in the macOS Keychain under the service

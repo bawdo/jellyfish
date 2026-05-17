@@ -72,6 +72,249 @@ func TestConfigureWritesConfigAndCallsKeychain(t *testing.T) {
 	}
 }
 
+func TestConfigureRerunKeepsSubdomainAndRegionOnEnter(t *testing.T) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	t.Cleanup(srv.Close)
+
+	tmp := t.TempDir()
+	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
+		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+	}})
+
+	var stored []string
+	store := func(_, token string) error {
+		stored = append(stored, token)
+		return nil
+	}
+
+	in := strings.NewReader("\n\n") // Enter for subdomain, Enter for region
+	out := &bytes.Buffer{}
+
+	err := runConfigure(context.Background(), configureOpts{
+		ConfigPath:    cfgPath,
+		Stdin:         in,
+		Stdout:        out,
+		Stderr:        out,
+		StoreToken:    store,
+		ReadTokenLine: func(_ *bufio.Reader) (string, error) { return "newtkn", nil },
+		VerifyBaseURL: srv.URL,
+	})
+	if err != nil {
+		t.Fatalf("runConfigure: %v", err)
+	}
+
+	loaded, _ := config.Load(cfgPath)
+	got := loaded["default"]
+	if got.Subdomain != "acme" || got.Region != "us" {
+		t.Fatalf("subdomain/region should be preserved; got %+v", got)
+	}
+	if got.BaseURL != "https://acme.api.kandji.io/api/v1" {
+		t.Errorf("BaseURL should be preserved; got %q", got.BaseURL)
+	}
+	if len(stored) != 1 || stored[0] != "newtkn" {
+		t.Errorf("StoreToken calls: %v", stored)
+	}
+	if hits != 1 {
+		t.Errorf("expected 1 verify hit; got %d", hits)
+	}
+}
+
+func TestConfigureRerunEnterKeepsTokenSkipsKeychainAndVerify(t *testing.T) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	tmp := t.TempDir()
+	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
+		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+	}})
+
+	var storeCalled bool
+	store := func(_, _ string) error {
+		storeCalled = true
+		return nil
+	}
+
+	in := strings.NewReader("\n\n")
+	out := &bytes.Buffer{}
+
+	err := runConfigure(context.Background(), configureOpts{
+		ConfigPath:    cfgPath,
+		Stdin:         in,
+		Stdout:        out,
+		Stderr:        out,
+		StoreToken:    store,
+		ReadTokenLine: func(_ *bufio.Reader) (string, error) { return "", nil },
+		VerifyBaseURL: srv.URL,
+	})
+	if err != nil {
+		t.Fatalf("runConfigure: %v", err)
+	}
+	if storeCalled {
+		t.Error("StoreToken should not be called when user keeps existing token")
+	}
+	if hits != 0 {
+		t.Errorf("verification should be skipped when token kept; got %d hits", hits)
+	}
+}
+
+func TestConfigureRerunPreservesEmailAndCacheTTL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	t.Cleanup(srv.Close)
+
+	tmp := t.TempDir()
+	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
+		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		CacheTTLMinutes: 30,
+		Email: config.EmailConfig{
+			From:            "alice@example.com",
+			DefaultTo:       "secops@example.com",
+			HeaderBG:        "#C6B8FE",
+			GmailConfigured: true,
+			SubjectTemplate: "Custom - {{.Date}}",
+		},
+	}})
+
+	in := strings.NewReader("\n\n")
+	out := &bytes.Buffer{}
+
+	err := runConfigure(context.Background(), configureOpts{
+		ConfigPath:    cfgPath,
+		Stdin:         in,
+		Stdout:        out,
+		Stderr:        out,
+		StoreToken:    func(_, _ string) error { return nil },
+		ReadTokenLine: func(_ *bufio.Reader) (string, error) { return "newtkn", nil },
+		VerifyBaseURL: srv.URL,
+	})
+	if err != nil {
+		t.Fatalf("runConfigure: %v", err)
+	}
+	got := func() config.Profile {
+		f, _ := config.Load(cfgPath)
+		return f["default"]
+	}()
+	if got.CacheTTLMinutes != 30 {
+		t.Errorf("CacheTTLMinutes lost; got %d", got.CacheTTLMinutes)
+	}
+	if got.Email.From != "alice@example.com" {
+		t.Errorf("Email.From lost; got %q", got.Email.From)
+	}
+	if got.Email.DefaultTo != "secops@example.com" {
+		t.Errorf("Email.DefaultTo lost; got %q", got.Email.DefaultTo)
+	}
+	if got.Email.HeaderBG != "#C6B8FE" {
+		t.Errorf("Email.HeaderBG lost; got %q", got.Email.HeaderBG)
+	}
+	if !got.Email.GmailConfigured {
+		t.Error("Email.GmailConfigured lost")
+	}
+	if got.Email.SubjectTemplate != "Custom - {{.Date}}" {
+		t.Errorf("Email.SubjectTemplate lost; got %q", got.Email.SubjectTemplate)
+	}
+}
+
+func TestConfigureRerunChangedSubdomainRebuildsBaseURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	t.Cleanup(srv.Close)
+
+	tmp := t.TempDir()
+	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
+		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+	}})
+
+	in := strings.NewReader("newco\n\n") // change subdomain, keep region
+	out := &bytes.Buffer{}
+
+	err := runConfigure(context.Background(), configureOpts{
+		ConfigPath:    cfgPath,
+		Stdin:         in,
+		Stdout:        out,
+		Stderr:        out,
+		StoreToken:    func(_, _ string) error { return nil },
+		ReadTokenLine: func(_ *bufio.Reader) (string, error) { return "tkn", nil },
+		VerifyBaseURL: srv.URL,
+	})
+	if err != nil {
+		t.Fatalf("runConfigure: %v", err)
+	}
+	loaded, _ := config.Load(cfgPath)
+	got := loaded["default"]
+	if got.Subdomain != "newco" {
+		t.Errorf("subdomain: got %q", got.Subdomain)
+	}
+	if got.BaseURL != "https://newco.api.kandji.io/api/v1" {
+		t.Errorf("BaseURL: got %q", got.BaseURL)
+	}
+}
+
+func TestConfigureRerunPromptShowsExistingDefaults(t *testing.T) {
+	tmp := t.TempDir()
+	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
+		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+	}})
+
+	in := strings.NewReader("\n\n")
+	out := &bytes.Buffer{}
+
+	_ = runConfigure(context.Background(), configureOpts{
+		ConfigPath:    cfgPath,
+		Stdin:         in,
+		Stdout:        out,
+		Stderr:        out,
+		StoreToken:    func(_, _ string) error { return nil },
+		ReadTokenLine: func(_ *bufio.Reader) (string, error) { return "", nil },
+	})
+
+	text := out.String()
+	if !strings.Contains(text, "[acme]") {
+		t.Errorf("subdomain prompt should show existing default [acme]; got %q", text)
+	}
+	if !strings.Contains(text, "[us]") {
+		t.Errorf("region prompt should show existing default [us]; got %q", text)
+	}
+	if !strings.Contains(text, "keep existing") {
+		t.Errorf("token prompt should mention keeping existing token; got %q", text)
+	}
+}
+
+func TestConfigureFirstRunStillRejectsEmptyToken(t *testing.T) {
+	tmp := t.TempDir()
+	cfgPath := filepath.Join(tmp, "config.yml")
+
+	in := strings.NewReader("acme\nus\n")
+	out := &bytes.Buffer{}
+
+	err := runConfigure(context.Background(), configureOpts{
+		ConfigPath:    cfgPath,
+		Stdin:         in,
+		Stdout:        out,
+		Stderr:        out,
+		StoreToken:    func(_, _ string) error { return nil },
+		ReadTokenLine: func(_ *bufio.Reader) (string, error) { return "", nil },
+	})
+	if err == nil {
+		t.Fatal("expected error for empty token on first run")
+	}
+	if !strings.Contains(err.Error(), "token") {
+		t.Errorf("error should mention token; got %v", err)
+	}
+}
+
 func TestPromptWithDefaultKeepsCurrentOnEnter(t *testing.T) {
 	out := &bytes.Buffer{}
 	r := bufio.NewReader(strings.NewReader("\n"))

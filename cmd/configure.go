@@ -102,42 +102,62 @@ func newConfigureEmailCmd() *cobra.Command {
 func runConfigure(ctx context.Context, o configureOpts) error {
 	r := bufio.NewReader(o.Stdin)
 
-	_, _ = fmt.Fprint(o.Stdout, "Tenant subdomain (lowercase, digits, dashes): ")
-	subdomain, err := readLine(r)
+	file, err := config.Load(o.ConfigPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("read config: %w", err)
+	}
+	if file == nil {
+		file = config.File{}
+	}
+	prof, existing := file["default"]
+
+	subdomain, err := promptWithDefault(o.Stdout, r, "Tenant subdomain (lowercase, digits, dashes)", prof.Subdomain)
 	if err != nil {
 		return err
 	}
 
-	_, _ = fmt.Fprint(o.Stdout, "Region [us/eu]: ")
-	region, err := readLine(r)
+	region, err := promptWithDefault(o.Stdout, r, "Region (us or eu)", prof.Region)
 	if err != nil {
 		return err
 	}
 	region = strings.ToLower(region)
 
-	baseURL, err := config.BuildBaseURL(subdomain, region)
-	if err != nil {
-		return err
+	baseURL := prof.BaseURL
+	if subdomain != prof.Subdomain || region != prof.Region || baseURL == "" {
+		baseURL, err = config.BuildBaseURL(subdomain, region)
+		if err != nil {
+			return err
+		}
 	}
 
-	_, _ = fmt.Fprint(o.Stdout, "API token: ")
+	if existing {
+		_, _ = fmt.Fprint(o.Stdout, "API token (Enter to keep existing, or paste new to replace): ")
+	} else {
+		_, _ = fmt.Fprint(o.Stdout, "API token: ")
+	}
 	token, err := o.ReadTokenLine(r)
 	if err != nil {
 		return err
 	}
 	_, _ = fmt.Fprintln(o.Stdout)
-	if strings.TrimSpace(token) == "" {
+	token = strings.TrimSpace(token)
+	if !existing && token == "" {
 		return errors.New("token must not be empty")
 	}
 
-	f := config.File{"default": config.Profile{
-		Subdomain: subdomain,
-		Region:    region,
-		BaseURL:   baseURL,
-	}}
-	if err := config.Save(o.ConfigPath, f); err != nil {
+	prof.Subdomain = subdomain
+	prof.Region = region
+	prof.BaseURL = baseURL
+	file["default"] = prof
+	if err := config.Save(o.ConfigPath, file); err != nil {
 		return err
 	}
+
+	if token == "" {
+		_, _ = fmt.Fprintln(o.Stdout, "Configured. Existing token unchanged.")
+		return nil
+	}
+
 	if err := o.StoreToken("default", token); err != nil {
 		return fmt.Errorf("store token in Keychain: %w", err)
 	}
