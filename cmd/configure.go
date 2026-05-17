@@ -68,6 +68,7 @@ func newConfigureCmd() *cobra.Command {
 		},
 	}
 	c.AddCommand(newConfigureEmailCmd())
+	c.AddCommand(newConfigureCacheCmd())
 	return c
 }
 
