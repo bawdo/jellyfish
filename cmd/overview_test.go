@@ -362,6 +362,94 @@ func TestOverviewCmdRegistered(t *testing.T) {
 	}
 }
 
+func TestRunOverviewPerUser(t *testing.T) {
+	c := &overviewFakeClient{
+		fakeClient: &fakeClient{
+			users: []iru.User{
+				{ID: "u1", Name: "Alice", Email: "alice@x"},
+				{ID: "u2", Name: "Bob", Email: "bob@x"},
+				{ID: "u3", Name: "Eve", Email: ""}, // no email -> skipped
+			},
+			detections: []iru.Detection{
+				{DeviceID: "d-a", CVEID: "CVE-1", Severity: "High", CVSSScore: 7.5},
+			},
+		},
+		devicesByUser: map[string][]iru.Device{
+			"u1": {{DeviceID: "d-a"}},
+			"u2": {{DeviceID: "d-b"}},
+			"u3": {{DeviceID: "d-c"}},
+		},
+	}
+	fake := &fakeGmailSender{returnID: "msg-1"}
+	opts := overviewOpts{
+		Output:        "email",
+		PerUser:       true,
+		Yes:           true,
+		EmailFlags:    emailFlagValues{From: "noreply@example.com"},
+		Profile:       config.Profile{Email: config.EmailConfig{GmailConfigured: true}},
+		EmailNow:      time.Date(2026, 5, 17, 10, 30, 0, 0, time.UTC),
+		KeychainGet:   stubKeychain("{}"),
+		NewSender:     newFakeSenderFactory(fake),
+		gitEmail:      func() (string, error) { return "noreply@example.com", nil },
+		ConfirmReader: strings.NewReader(""),
+	}
+	var stderr bytes.Buffer
+	if err := runOverview(context.Background(), c, io.Discard, &stderr, opts); err != nil {
+		t.Fatalf("runOverview: %v", err)
+	}
+	out := stderr.String()
+	for _, want := range []string{
+		"sent user=u1 to=alice@x",
+		"sent user=u2 to=bob@x",
+		"skip user=u3 reason=no-email",
+		"summary: sent=2 skipped=1 errors=0",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("stderr missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestRunOverviewPerUserDryRun(t *testing.T) {
+	c := &overviewFakeClient{
+		fakeClient: &fakeClient{
+			users:      []iru.User{{ID: "u1", Name: "Alice", Email: "alice@x"}},
+			detections: nil,
+		},
+		devicesByUser: map[string][]iru.Device{"u1": {{DeviceID: "d-a"}}},
+	}
+	opts := overviewOpts{
+		Output:        "email",
+		PerUser:       true,
+		DryRun:        true,
+		EmailFlags:    emailFlagValues{From: "noreply@example.com"},
+		Profile:       config.Profile{Email: config.EmailConfig{GmailConfigured: false}},
+		EmailNow:      time.Date(2026, 5, 17, 10, 30, 0, 0, time.UTC),
+		gitEmail:      func() (string, error) { return "noreply@example.com", nil },
+		ConfirmReader: strings.NewReader(""),
+	}
+	var stderr bytes.Buffer
+	if err := runOverview(context.Background(), c, io.Discard, &stderr, opts); err != nil {
+		t.Fatalf("runOverview: %v", err)
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "would-send user=u1 to=alice@x") {
+		t.Errorf("stderr missing would-send line:\n%s", out)
+	}
+	// Real byte count, not "approx" placeholder.
+	for _, line := range strings.Split(out, "\n") {
+		if !strings.HasPrefix(line, "would-send user=") {
+			continue
+		}
+		if !strings.Contains(line, " bytes=") {
+			t.Errorf("would-send line missing bytes=: %q", line)
+		}
+		if strings.HasSuffix(line, "bytes=0") {
+			t.Errorf("would-send line has zero bytes: %q", line)
+		}
+	}
+}
+
 func TestRunOverviewAdminGmailErrorPerRecipient(t *testing.T) {
 	c := &overviewFakeClient{
 		fakeClient: &fakeClient{

@@ -527,7 +527,78 @@ func confirmSendOverview(stderr io.Writer, in io.Reader, count int, perUser, dry
 	return answer == "y" || answer == "yes", nil
 }
 
-// runOverviewPerUser is the Task 13 stub.
 func runOverviewPerUser(ctx context.Context, stdout, stderr io.Writer, opts overviewOpts, view email.OverviewView, baseOpts email.Options, now time.Time) error {
-	return errors.New("overview --per-user not yet implemented")
+	if opts.EmailFlags.To != "" {
+		_, _ = fmt.Fprintf(stderr, "warn: --email-to ignored with --per-user (recipients = each user's Iru email)\n")
+	}
+
+	confirmIn := opts.ConfirmReader
+	if confirmIn == nil {
+		confirmIn = os.Stdin
+	}
+	ok, err := confirmSendOverview(stderr, confirmIn, len(view.Users), true, opts.DryRun, opts.Yes)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		_, _ = fmt.Fprintln(stderr, "aborted: no mail sent")
+		return nil
+	}
+
+	message, err := captureMessage(opts.EmailFlags, true, fmt.Sprintf("%d users", len(view.Users)), baseOpts.Subject, os.Stdin, stderr, nil)
+	if err != nil {
+		return err
+	}
+	baseOpts.Message = message
+
+	var sender gmail.Sender
+	if !opts.DryRun {
+		s, err := buildOverviewSender(ctx, opts, baseOpts.From)
+		if err != nil {
+			return err
+		}
+		sender = s
+	}
+
+	var counters bulkCounters
+	for i := range view.Users {
+		u := view.Users[i]
+		if u.Email == "" {
+			_, _ = fmt.Fprintf(stderr, "skip user=%s reason=no-email\n", u.UserID)
+			counters.skipped++
+			continue
+		}
+		userOpts := baseOpts
+		userOpts.To = u.Email
+		// Per-user view: same shared body, just point Me at this user.
+		perUserView := view
+		perUserView.Me = &view.Users[i]
+
+		var buf bytes.Buffer
+		if err := email.NewOverviewRendererWithStderr(userOpts, stderr).Render(&buf, email.OverviewInput{View: perUserView}); err != nil {
+			_, _ = fmt.Fprintf(stderr, "error user=%s render: %v\n", u.UserID, err)
+			counters.recordError(err)
+			continue
+		}
+		if opts.DryRun {
+			_, _ = fmt.Fprintf(stderr, "would-send user=%s to=%s bytes=%d\n", u.UserID, u.Email, buf.Len())
+			counters.wouldSend++
+			continue
+		}
+		id, serr := sender.Send(ctx, buf.Bytes())
+		if serr != nil {
+			_, _ = fmt.Fprintf(stderr, "error user=%s gmail: %v\n", u.UserID, serr)
+			counters.recordError(serr)
+			continue
+		}
+		_, _ = fmt.Fprintf(stderr, "sent user=%s to=%s gmail-id=%s\n", u.UserID, u.Email, id)
+		counters.sent++
+	}
+
+	if opts.DryRun {
+		_, _ = fmt.Fprintf(stderr, "summary: would-send=%d skipped=%d errors=%d\n", counters.wouldSend, counters.skipped, counters.errs)
+	} else {
+		_, _ = fmt.Fprintf(stderr, "summary: sent=%d skipped=%d errors=%d\n", counters.sent, counters.skipped, counters.errs)
+	}
+	return counters.exitError()
 }
