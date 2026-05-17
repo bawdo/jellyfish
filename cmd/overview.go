@@ -15,6 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/bawdo/jellyfish/internal/cache"
 	"github.com/bawdo/jellyfish/internal/config"
 	"github.com/bawdo/jellyfish/internal/email"
 	"github.com/bawdo/jellyfish/internal/gmail"
@@ -37,7 +38,7 @@ import (
 // Returns an error if either Iru call fails or the (filtered) roster is
 // empty.
 func assembleOverview(ctx context.Context, client iruClient, stderr io.Writer, noCache bool, userFilter map[string]struct{}) (email.OverviewView, error) {
-	allDetections, err := fetchAllDetections(ctx, client, stderr, !noCache)
+	allDetections, err := fetchAllDetections(ctx, client, stderr, !noCache, cache.DefaultTTL)
 	if err != nil {
 		return email.OverviewView{}, err
 	}

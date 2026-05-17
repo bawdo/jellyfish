@@ -14,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/bawdo/jellyfish/internal/cache"
 	"github.com/bawdo/jellyfish/internal/config"
 	"github.com/bawdo/jellyfish/internal/email"
 	"github.com/bawdo/jellyfish/internal/gmail"
@@ -181,7 +182,7 @@ func runUsersSendEmail(ctx context.Context, client iruClient, stderr io.Writer, 
 		sender = s
 	}
 
-	allDetections, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache)
+	allDetections, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache, cache.DefaultTTL)
 	if err != nil {
 		return err
 	}

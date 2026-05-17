@@ -13,6 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/bawdo/jellyfish/internal/cache"
 	"github.com/bawdo/jellyfish/internal/config"
 	"github.com/bawdo/jellyfish/internal/email"
 	"github.com/bawdo/jellyfish/internal/gmail"
@@ -106,7 +107,7 @@ func newUserShowCmd() *cobra.Command {
 }
 
 func runUserShow(ctx context.Context, client iruClient, w, stderr io.Writer, opts userShowOpts) error {
-	all, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache)
+	all, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache, cache.DefaultTTL)
 	if err != nil {
 		return err
 	}

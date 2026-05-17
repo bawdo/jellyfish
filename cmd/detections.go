@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/bawdo/jellyfish/internal/cache"
 	"github.com/bawdo/jellyfish/internal/iru"
@@ -12,7 +13,10 @@ import (
 // fetchAllDetections returns every detection in the tenant, either from the
 // on-disk cache (when fresh and useCache is true) or by walking the API. The
 // progress indicator on stderr lets the user see the walk advancing.
-func fetchAllDetections(ctx context.Context, client iruClient, stderr io.Writer, useCache bool) ([]iru.Detection, error) {
+func fetchAllDetections(ctx context.Context, client iruClient, stderr io.Writer, useCache bool, ttl time.Duration) ([]iru.Detection, error) {
+	if ttl <= 0 {
+		ttl = cache.DefaultTTL
+	}
 	cachePath, err := cache.DefaultPath()
 	if err != nil {
 		// Non-fatal: just proceed without cache.
@@ -20,7 +24,7 @@ func fetchAllDetections(ctx context.Context, client iruClient, stderr io.Writer,
 	}
 
 	if useCache && cachePath != "" {
-		if cached, hit, err := cache.Load(cachePath, cache.DefaultTTL); err == nil && hit {
+		if cached, hit, err := cache.Load(cachePath, ttl); err == nil && hit {
 			_, _ = fmt.Fprintf(stderr, "using cached detections (%d records); pass --no-cache for fresh data\n", len(cached))
 			return cached, nil
 		}
@@ -54,14 +58,17 @@ func fetchAllDetections(ctx context.Context, client iruClient, stderr io.Writer,
 // fetchAllVulnerabilities returns every vulnerability rollup in the tenant,
 // either from cache (when fresh and useCache is true) or by walking the API
 // with a per-page progress line on stderr.
-func fetchAllVulnerabilities(ctx context.Context, client iruClient, stderr io.Writer, useCache bool) ([]iru.Vulnerability, error) {
+func fetchAllVulnerabilities(ctx context.Context, client iruClient, stderr io.Writer, useCache bool, ttl time.Duration) ([]iru.Vulnerability, error) {
+	if ttl <= 0 {
+		ttl = cache.DefaultTTL
+	}
 	cachePath, err := cache.DefaultVulnPath()
 	if err != nil {
 		cachePath = ""
 	}
 
 	if useCache && cachePath != "" {
-		if cached, hit, err := cache.LoadVulnerabilities(cachePath, cache.DefaultTTL); err == nil && hit {
+		if cached, hit, err := cache.LoadVulnerabilities(cachePath, ttl); err == nil && hit {
 			_, _ = fmt.Fprintf(stderr, "using cached vulnerabilities (%d records); pass --no-cache for fresh data\n", len(cached))
 			return cached, nil
 		}

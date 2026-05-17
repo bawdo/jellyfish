@@ -14,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/bawdo/jellyfish/internal/cache"
 	"github.com/bawdo/jellyfish/internal/config"
 	"github.com/bawdo/jellyfish/internal/email"
 	"github.com/bawdo/jellyfish/internal/gmail"
@@ -82,7 +83,7 @@ func runVulnsList(ctx context.Context, client iruClient, w, stderr io.Writer, op
 	switch {
 	case targetDeviceID != "":
 		// Iru ignores per-device filters on /detections, so walk and filter.
-		all, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache)
+		all, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache, cache.DefaultTTL)
 		if err != nil {
 			return err
 		}
@@ -103,7 +104,7 @@ func runVulnsList(ctx context.Context, client iruClient, w, stderr io.Writer, op
 		}
 		detections = ds
 	default:
-		ds, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache)
+		ds, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache, cache.DefaultTTL)
 		if err != nil {
 			return err
 		}
@@ -238,7 +239,7 @@ minutes; pass --no-cache to force a fresh fetch.`,
 }
 
 func runVulnsSummary(ctx context.Context, client iruClient, w, stderr io.Writer, opts vulnsSummaryOpts) error {
-	all, err := fetchAllVulnerabilities(ctx, client, stderr, !opts.NoCache)
+	all, err := fetchAllVulnerabilities(ctx, client, stderr, !opts.NoCache, cache.DefaultTTL)
 	if err != nil {
 		return err
 	}
