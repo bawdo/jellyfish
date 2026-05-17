@@ -130,3 +130,24 @@ func TestAssembleOverviewTieBreakerByName(t *testing.T) {
 		t.Fatalf("name-asc tiebreaker broken: %+v", view.Users)
 	}
 }
+
+func TestSecScoreTier(t *testing.T) {
+	cases := []struct {
+		score float64
+		want  string
+	}{
+		{0.0, "good"},
+		{4.9, "good"},
+		{5.0, "medium"},
+		{29.9, "medium"},
+		{30.0, "high"},
+		{99.9, "high"},
+		{100.0, "critical"},
+		{500.0, "critical"},
+	}
+	for _, c := range cases {
+		if got := secScoreTier(c.score); got != c.want {
+			t.Errorf("secScoreTier(%v) = %q, want %q", c.score, got, c.want)
+		}
+	}
+}

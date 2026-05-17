@@ -147,3 +147,20 @@ func assembleOverview(ctx context.Context, client iruClient, stderr io.Writer, n
 		Users:             stats,
 	}, nil
 }
+
+// secScoreTier maps a SecScore to one of: "good", "medium", "high",
+// "critical". Thresholds are documented in the spec and the README.
+// Renderers use this to pick border / rank-tile colours so the table,
+// email, and docs all agree on what a "high" user looks like.
+func secScoreTier(score float64) string {
+	switch {
+	case score >= 100:
+		return "critical"
+	case score >= 30:
+		return "high"
+	case score >= 5:
+		return "medium"
+	default:
+		return "good"
+	}
+}
