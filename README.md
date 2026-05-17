@@ -453,6 +453,127 @@ in the command line.
 Exit codes follow the standard table below; the worst per-user outcome
 wins (auth > upstream > not-found).
 
+### Org-wide overview via `overview`
+
+Computes a `sec_score` for every user in your Iru tenant - the sum of CVSS
+scores across all active detections on all their devices - and rolls those up
+into org-wide totals, averages, a Best-5 leaderboard, a Most-Dangerous-5
+leaderboard, and a full ranked roster. Supports the standard output formats
+(`table`, `json`, `yaml`, `csv`) plus `email`. With `-o email` you can send a
+single admin report to one or more addresses, or use `--per-user` to fan out a
+personalised copy to every user with devices.
+
+#### How `sec_score` is computed
+
+- Each user's `sec_score` is the sum of CVSS scores across every active
+  detection on every device they own.
+- Iru drops a detection when the issue is patched - there is no separate
+  "active" filter needed on the jellyfish side.
+- Detections with an empty or `"Undefined"` severity are still counted in
+  `sec_score` and `total_issues`, but do not increment any of the four
+  severity buckets (`critical_issues`, `high_issues`, `medium_issues`,
+  `low_issues`). The four severity counts will therefore not always sum to
+  `total_issues` for a given user.
+- Users with no devices are excluded from totals, averages, leaderboards, and
+  the roster entirely.
+
+#### Tier thresholds
+
+The roster row colour (and email border colour) is determined by the user's
+`sec_score`. These are the initial values, locked at design time; they may be
+retuned after the first real-data review.
+
+| Tier | SecScore range | Colour |
+|---|---|---|
+| critical | >= 100 | red (`#dc2626`) |
+| high | 30 - 99.9 | orange (`#ea580c`) |
+| medium | 5 - 29.9 | yellow (`#ca8a04`) |
+| good | < 5 | green (`#16a34a`) |
+
+#### Usage
+
+```bash
+# Default table output to stdout
+jellyfish overview
+
+# CSV for spreadsheets
+jellyfish overview -o csv > scores.csv
+
+# Send an admin report by email
+jellyfish overview -o email --email-to security@example.com
+
+# Per-user fanout preview (no mail sent)
+jellyfish overview -o email --per-user --dry-run
+
+# Admin report with an editor-composed message
+jellyfish overview -o email --email-to security@example.com --message
+```
+
+#### Flags
+
+| Flag | Purpose |
+|---|---|
+| `--per-user` | Fan out personalised copies (only with `-o email`). Each recipient gets a copy personalised to them - see below. |
+| `--email-to <addr>` | Comma-separated admin recipients. Required for `-o email` without `--per-user`. Warned and ignored when `--per-user` is set. |
+| `--email-from` | From: address (default: `email.from` from config, then git `user.email`). |
+| `--email-subject` | Subject: header (default: per-command default or `email.subject_template`). |
+| `--email-header-bg` | Email header background colour as `#RRGGBB` (default: `email.header_bg` or `#2b3a55`). |
+| `--email-logo` | Path to a PNG to show in the email header (default: `email.logo_path`). |
+| `--message` | Open `$VISUAL`/`$EDITOR` to compose a message rendered above the body (shared across all recipients). |
+| `--message-file` | Read the message body from a file (use `-` for stdin). Mutually exclusive with `--message`. |
+| `--dry-run` | Run the full pipeline including render, but skip the Gmail send. |
+| `--yes` | Skip the interactive confirmation prompt. |
+| `--no-cache` | Bypass the detection cache; always fetch fresh from Iru. |
+
+#### Stderr line format
+
+Admin path (one report to `--email-to` recipients):
+
+```
+sent to=alice@acme.com gmail-id=<id>
+would-send to=alice@acme.com bytes=NNN         # dry-run only
+error to=alice@acme.com gmail: <reason>
+summary: sent=N errors=K                        # admin path totals
+```
+
+Per-user path (`--per-user`):
+
+```
+sent user=<id> to=alice@acme.com gmail-id=<id>
+would-send user=<id> to=alice@acme.com bytes=NNN
+skip user=<id> reason=no-email
+error user=<id> gmail: <reason>
+summary: sent=N skipped=M errors=K              # per-user path totals
+```
+
+The trailing `summary:` line is always emitted, even at zero counts. If
+`--email-to` is set alongside `--per-user`, `--email-to` is silently ignored
+with a warning on stderr - it is not treated as an error.
+
+#### Email headers
+
+Every sent message sets `X-Jellyfish-Report: overview`. See
+[Filtering Jellyfish mail in Gmail](#filtering-jellyfish-mail-in-gmail) for
+how to use `List-Id` and `X-Jellyfish-Report` headers to route or label
+Jellyfish mail.
+
+#### How `--per-user` differs from the admin report
+
+The admin report is identical for every address in `--email-to` - whole-org
+summary, Best-5, Most-Dangerous-5, full roster, no user-specific callout.
+
+With `--per-user` each copy contains the same whole-org summary and
+leaderboards, plus two additions:
+
+- A **"Your standing"** callout between Most Dangerous 5 and the full roster,
+  showing the recipient's rank (e.g. "14th of 87"), device count, issue count,
+  severity pills, and score.
+- A highlighted **YOU** row in the full roster - blue left border, blue rank
+  tile, blue background, and a `YOU` pill next to the recipient's name.
+
+The shared content (totals, averages, leaderboards, roster) is identical
+across all per-user copies; only the `Me` binding changes.
+
 ### Exit codes
 
 | Code | Meaning |
