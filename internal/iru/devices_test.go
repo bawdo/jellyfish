@@ -68,6 +68,70 @@ func TestListDevicesAutoPaginates(t *testing.T) {
 	}
 }
 
+func TestListDevicesStream(t *testing.T) {
+	var page int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		page++
+		w.WriteHeader(http.StatusOK)
+		switch page {
+		case 1:
+			// Full page of 300; Walk will request another.
+			devices := make([]map[string]string, 300)
+			for i := range devices {
+				devices[i] = map[string]string{"device_id": fmt.Sprintf("d-1-%d", i)}
+			}
+			_ = json.NewEncoder(w).Encode(devices)
+		case 2:
+			// Short page of 2; Walk will stop after this.
+			_, _ = w.Write([]byte(`[{"device_id":"d-2-0"},{"device_id":"d-2-1"}]`))
+		default:
+			t.Errorf("unexpected page request %d", page)
+			_, _ = w.Write([]byte(`[]`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	c := NewClient(srv.URL, "tkn")
+	var pages [][]Device
+	err := c.ListDevicesStream(context.Background(), DeviceFilters{}, func(p []Device) error {
+		pages = append(pages, p)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pages) != 2 {
+		t.Fatalf("expected 2 page callbacks, got %d", len(pages))
+	}
+	if len(pages[0]) != 300 || pages[0][0].DeviceID != "d-1-0" {
+		t.Fatalf("first page: expected 300 devices starting d-1-0, got %d devices", len(pages[0]))
+	}
+	if len(pages[1]) != 2 || pages[1][0].DeviceID != "d-2-0" {
+		t.Fatalf("second page: expected 2 devices starting d-2-0, got %+v", pages[1])
+	}
+}
+
+func TestListDevicesStreamEmptyNoCallback(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	t.Cleanup(srv.Close)
+
+	c := NewClient(srv.URL, "tkn")
+	called := false
+	err := c.ListDevicesStream(context.Background(), DeviceFilters{}, func(_ []Device) error {
+		called = true
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if called {
+		t.Fatal("callback should not be called for an empty result set")
+	}
+}
+
 func TestGetDeviceBySerial(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("serial_number") != "SN9" {

@@ -11,6 +11,7 @@ import (
 type iruClient interface {
 	ListDevicesPage(ctx context.Context, f iru.DeviceFilters, limit, offset int) ([]iru.Device, error)
 	ListDevices(ctx context.Context, f iru.DeviceFilters) ([]iru.Device, error)
+	ListDevicesStream(ctx context.Context, f iru.DeviceFilters, cb func(page []iru.Device) error) error
 	GetDeviceBySerial(ctx context.Context, serial string) (iru.Device, error)
 	GetUser(ctx context.Context, id string) (iru.User, error)
 	FindUserByEmail(ctx context.Context, email string) (iru.User, error)

@@ -40,6 +40,12 @@ func (f *fakeClient) ListDetectionsStream(_ context.Context, _ iru.DetectionFilt
 func (f *fakeClient) ListDevices(_ context.Context, _ iru.DeviceFilters) ([]iru.Device, error) {
 	return f.devices, nil
 }
+func (f *fakeClient) ListDevicesStream(_ context.Context, _ iru.DeviceFilters, cb func(page []iru.Device) error) error {
+	if len(f.devices) == 0 {
+		return nil
+	}
+	return cb(f.devices)
+}
 func (f *fakeClient) ListDevicesPage(_ context.Context, _ iru.DeviceFilters, _, _ int) ([]iru.Device, error) {
 	return f.devices, nil
 }

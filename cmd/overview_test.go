@@ -22,14 +22,28 @@ import (
 type overviewFakeClient struct {
 	*fakeClient
 	devicesByUser map[string][]iru.Device // key = user.ID
-	deviceErrs    map[string]error        // key = user.ID; overrides success path
+	streamErr     error                   // if set, ListDevicesStream returns this error
 }
 
-func (f *overviewFakeClient) ListDevices(_ context.Context, filt iru.DeviceFilters) ([]iru.Device, error) {
-	if err, ok := f.deviceErrs[filt.UserID]; ok {
-		return nil, err
+func (f *overviewFakeClient) ListDevicesStream(_ context.Context, _ iru.DeviceFilters, cb func(page []iru.Device) error) error {
+	if f.streamErr != nil {
+		return f.streamErr
 	}
-	return f.devicesByUser[filt.UserID], nil
+	usersByID := make(map[string]iru.User, len(f.users))
+	for _, u := range f.users {
+		usersByID[u.ID] = u
+	}
+	var all []iru.Device
+	for userID, devs := range f.devicesByUser {
+		for _, d := range devs {
+			d.User = usersByID[userID]
+			all = append(all, d)
+		}
+	}
+	if len(all) == 0 {
+		return nil
+	}
+	return cb(all)
 }
 
 func TestAssembleOverviewSumsAndSorts(t *testing.T) {
@@ -56,7 +70,7 @@ func TestAssembleOverviewSumsAndSorts(t *testing.T) {
 		},
 	}
 
-	view, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false)
+	view, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil)
 	if err != nil {
 		t.Fatalf("assembleOverview: %v", err)
 	}
@@ -111,7 +125,7 @@ func TestAssembleOverviewEmptyRosterErrors(t *testing.T) {
 		fakeClient:    &fakeClient{users: []iru.User{{ID: "u1", Name: "x"}}},
 		devicesByUser: map[string][]iru.Device{"u1": nil},
 	}
-	_, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false)
+	_, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil)
 	if err == nil || err.Error() == "" {
 		t.Fatalf("expected an empty-roster error, got nil")
 	}
@@ -132,7 +146,7 @@ func TestAssembleOverviewTieBreakerByName(t *testing.T) {
 			"u-b": {{DeviceID: "d-b"}},
 		},
 	}
-	view, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false)
+	view, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil)
 	if err != nil {
 		t.Fatalf("assembleOverview: %v", err)
 	}
@@ -497,41 +511,18 @@ func TestRunOverviewAdminGmailErrorPerRecipient(t *testing.T) {
 	}
 }
 
-func TestAssembleOverviewSkipsDeviceFetchErrors(t *testing.T) {
+func TestAssembleOverviewDeviceWalkErrorPropagates(t *testing.T) {
 	c := &overviewFakeClient{
 		fakeClient: &fakeClient{
-			users: []iru.User{
-				{ID: "u1", Name: "Alice", Email: "alice@x"},
-				{ID: "u2", Name: "Bob", Email: "bob@x"},
-				{ID: "u3", Name: "Carol", Email: "carol@x"},
-			},
-			detections: []iru.Detection{
-				{DeviceID: "d-a", CVSSScore: 7.5, Severity: "High"},
-				{DeviceID: "d-c", CVSSScore: 2.5, Severity: "Low"},
-			},
+			users:      []iru.User{{ID: "u1", Name: "Alice", Email: "alice@x"}},
+			detections: nil,
 		},
-		devicesByUser: map[string][]iru.Device{
-			"u1": {{DeviceID: "d-a"}},
-			"u3": {{DeviceID: "d-c"}},
-		},
-		deviceErrs: map[string]error{
-			"u2": errors.New("iru rate-limited"),
-		},
+		devicesByUser: map[string][]iru.Device{"u1": {{DeviceID: "d-a"}}},
+		streamErr:     errors.New("iru down"),
 	}
-	var stderr bytes.Buffer
-	view, err := assembleOverview(context.Background(), c, &stderr, false)
-	if err != nil {
-		t.Fatalf("assembleOverview: %v", err)
-	}
-	if len(view.Users) != 2 {
-		t.Errorf("expected 2 users (u2 skipped), got %d: %+v", len(view.Users), view.Users)
-	}
-	out := stderr.String()
-	if !strings.Contains(out, "error user=u2 devices: iru rate-limited") {
-		t.Errorf("stderr missing device-error line:\n%s", out)
-	}
-	if !strings.Contains(out, "overview: walked 3 users, 2 included in roster, 1 device-fetch errors") {
-		t.Errorf("stderr missing summary:\n%s", out)
+	_, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil)
+	if err == nil || !strings.Contains(err.Error(), "iru down") {
+		t.Fatalf("expected iru down error, got %v", err)
 	}
 }
 

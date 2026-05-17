@@ -23,46 +23,79 @@ import (
 	"github.com/bawdo/jellyfish/internal/output"
 )
 
-// assembleOverview walks every user, fetches their devices, buckets the
-// prefetched detection list by device, and builds an OverviewView with
-// totals, averages, leaderboards, and a ranked full roster. Users with
-// zero devices are excluded.
+// assembleOverview walks all detections (cached) and all devices (single
+// paginated stream), derives the user roster from device.User (Iru embeds
+// id/name/email/active/is_archived on each device record), buckets
+// detections by device, sums CVSS per user, sorts by SecScore desc with
+// deterministic tie-breakers, and produces an OverviewView with totals,
+// averages, BestFive, MostDangerousFive, and the full roster.
 //
-// Returns an error iff the filtered roster is empty or any Iru call fails.
-// The caller is responsible for dispatching the resulting view to a
-// renderer (table / json / yaml / csv / email).
-func assembleOverview(ctx context.Context, client iruClient, stderr io.Writer, noCache bool) (email.OverviewView, error) {
+// userFilter, when non-nil, restricts the roster to users whose email
+// (lowercased) appears in the map. Filter entries that match no device
+// owner are warned on stderr. Pass nil to include all users with devices.
+//
+// Returns an error if either Iru call fails or the (filtered) roster is
+// empty.
+func assembleOverview(ctx context.Context, client iruClient, stderr io.Writer, noCache bool, userFilter map[string]struct{}) (email.OverviewView, error) {
 	allDetections, err := fetchAllDetections(ctx, client, stderr, !noCache)
 	if err != nil {
 		return email.OverviewView{}, err
 	}
 	byDevice := make(map[string][]iru.Detection, len(allDetections))
 	for i := range allDetections {
-		d := &allDetections[i]
-		byDevice[d.DeviceID] = append(byDevice[d.DeviceID], *d)
+		byDevice[allDetections[i].DeviceID] = append(byDevice[allDetections[i].DeviceID], allDetections[i])
 	}
 
-	var users []iru.User
-	if err := client.ListUsersStream(ctx, func(page []iru.User) error {
-		users = append(users, page...)
+	devicesByUser := make(map[string][]iru.Device)
+	usersByID := make(map[string]iru.User)
+	pages := 0
+	totalDevices := 0
+	err = client.ListDevicesStream(ctx, iru.DeviceFilters{}, func(page []iru.Device) error {
+		for _, d := range page {
+			if d.User.ID == "" {
+				continue // device with no owner — not part of any user's roster
+			}
+			devicesByUser[d.User.ID] = append(devicesByUser[d.User.ID], d)
+			if _, seen := usersByID[d.User.ID]; !seen {
+				usersByID[d.User.ID] = d.User
+			}
+		}
+		pages++
+		totalDevices += len(page)
+		_, _ = fmt.Fprintf(stderr, "\rfetching devices: %d pages, %d records...", pages, totalDevices)
 		return nil
-	}); err != nil {
+	})
+	if pages > 0 {
+		_, _ = fmt.Fprintln(stderr)
+	}
+	if err != nil {
 		return email.OverviewView{}, err
 	}
 
-	stats := make([]email.UserStats, 0, len(users))
-	wroteProgress := false
-	deviceErrs := 0
-	for i, u := range users {
-		devices, derr := client.ListDevices(ctx, iru.DeviceFilters{UserID: u.ID})
-		if derr != nil {
-			_, _ = fmt.Fprintf(stderr, "error user=%s devices: %v\n", u.ID, derr)
-			deviceErrs++
-			continue
+	// Apply optional user-email filter (case-insensitive).
+	if userFilter != nil {
+		present := make(map[string]struct{}, len(usersByID))
+		for _, u := range usersByID {
+			if u.Email != "" {
+				present[strings.ToLower(u.Email)] = struct{}{}
+			}
 		}
-		if len(devices) == 0 {
-			continue
+		for want := range userFilter {
+			if _, ok := present[want]; !ok {
+				_, _ = fmt.Fprintf(stderr, "warn: %s not in tenant devices\n", want)
+			}
 		}
+		for id, u := range usersByID {
+			if _, ok := userFilter[strings.ToLower(u.Email)]; !ok {
+				delete(usersByID, id)
+				delete(devicesByUser, id)
+			}
+		}
+	}
+
+	stats := make([]email.UserStats, 0, len(usersByID))
+	for id, u := range usersByID {
+		devices := devicesByUser[id]
 		var s email.UserStats
 		s.UserID = u.ID
 		s.Name = u.Name
@@ -88,18 +121,8 @@ func assembleOverview(ctx context.Context, client iruClient, stderr io.Writer, n
 			}
 		}
 		stats = append(stats, s)
-		// Progress every 5 users so a long walk doesn't look hung.
-		if (i+1)%5 == 0 {
-			_, _ = fmt.Fprintf(stderr, "\rusers: %d/%d processed", i+1, len(users))
-			wroteProgress = true
-		}
 	}
-	if wroteProgress {
-		_, _ = fmt.Fprintln(stderr)
-	}
-	if deviceErrs > 0 {
-		_, _ = fmt.Fprintf(stderr, "overview: walked %d users, %d included in roster, %d device-fetch errors\n", len(users), len(stats), deviceErrs)
-	}
+
 	if len(stats) == 0 {
 		return email.OverviewView{}, errors.New("no users with devices")
 	}
@@ -119,7 +142,6 @@ func assembleOverview(ctx context.Context, client iruClient, stderr io.Writer, n
 	}
 	dangerousFive := append([]email.UserStats(nil), stats[:min(5, len(stats))]...)
 
-	// BestFive: SecScore asc, name asc, id asc.
 	bestSorted := append([]email.UserStats(nil), stats...)
 	sort.SliceStable(bestSorted, func(i, j int) bool {
 		if bestSorted[i].SecScore != bestSorted[j].SecScore {
@@ -351,7 +373,7 @@ func runOverview(ctx context.Context, client iruClient, stdout, stderr io.Writer
 	if err := validateOverviewFlags(opts); err != nil {
 		return err
 	}
-	view, err := assembleOverview(ctx, client, stderr, opts.NoCache)
+	view, err := assembleOverview(ctx, client, stderr, opts.NoCache, nil)
 	if err != nil {
 		return err
 	}

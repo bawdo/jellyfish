@@ -40,6 +40,18 @@ func (c *Client) ListDevices(ctx context.Context, f DeviceFilters) ([]Device, er
 	return all, err
 }
 
+// ListDevicesStream walks every device via Walk[Device]. The callback
+// receives one page at a time. Mirrors ListUsersStream / ListDetectionsStream
+// so callers can stream + report progress without managing pagination.
+func (c *Client) ListDevicesStream(ctx context.Context, f DeviceFilters, cb func(page []Device) error) error {
+	return Walk[Device](ctx, DefaultLimit,
+		func(ctx context.Context, limit, offset int) ([]Device, error) {
+			return c.ListDevicesPage(ctx, f, limit, offset)
+		},
+		cb,
+	)
+}
+
 // GetDeviceBySerial returns the device with the given serial number, or ErrNotFound.
 func (c *Client) GetDeviceBySerial(ctx context.Context, serial string) (Device, error) {
 	page, err := c.ListDevicesPage(ctx, DeviceFilters{SerialNumber: serial}, 1, 0)
