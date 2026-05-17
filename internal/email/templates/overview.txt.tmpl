@@ -1,0 +1,36 @@
+{{if .Message -}}
+{{.Message}}
+
+---
+
+{{end -}}
+Security overview{{if .Tenant}} - {{.Tenant}}{{end}} - {{.GeneratedAtStr}}
+
+TOTALS
+  users:     {{.Totals.UserCount}}
+  devices:   {{.Totals.DeviceCount}} ({{.AveragesView.Devices}}/user)
+  issues:    {{.Totals.TotalIssues}} ({{.AveragesView.Issues}}/user)
+  sec_score: {{.TotalsView.SecScore}} ({{.AveragesView.SecScore}}/user)
+  critical:  {{.Totals.Critical}} ({{.AveragesView.Critical}}/user)
+  high:      {{.Totals.High}} ({{.AveragesView.High}}/user)
+  medium:    {{.Totals.Medium}} ({{.AveragesView.Medium}}/user)
+  low:       {{.Totals.Low}} ({{.AveragesView.Low}}/user)
+
+THE BEST 5
+{{range .BestRows -}}
+  {{printf "%2s. %-30s %8s   C=%d H=%d M=%d L=%d" .Position .Name .ScoreStr .Critical .High .Medium .Low}}
+{{end}}
+THE MOST DANGEROUS 5
+{{range .DangerousRows -}}
+  {{printf "%2s. %-30s %8s   C=%d H=%d M=%d L=%d" .Position .Name .ScoreStr .Critical .High .Medium .Low}}
+{{end}}
+{{if .MeRow -}}
+YOUR STANDING
+  {{.MeRow.RankStr}} of {{.Totals.UserCount}} - {{.MeRow.Name}} - {{.MeRow.ScoreStr}} sec_score
+  ({{.MeRow.DeviceCount}} devices, {{.MeRow.TotalIssues}} issues; C={{.MeRow.Critical}} H={{.MeRow.High}} M={{.MeRow.Medium}} L={{.MeRow.Low}})
+
+{{end -}}
+ALL USERS ({{.Totals.UserCount}})
+{{range .RosterRows -}}
+  {{printf "%3s. %-30s %8s   C=%d H=%d M=%d L=%d" .Position .Name .ScoreStr .Critical .High .Medium .Low}}
+{{end -}}

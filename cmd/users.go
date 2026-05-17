@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bawdo/jellyfish/internal/config"
+	"github.com/bawdo/jellyfish/internal/email"
 	"github.com/bawdo/jellyfish/internal/gmail"
 	"github.com/bawdo/jellyfish/internal/iru"
 	"github.com/bawdo/jellyfish/internal/keychain"
@@ -35,6 +36,7 @@ type usersSendEmailOpts struct {
 	KeychainGet   func() ([]byte, error)
 	NewSender     gmailNewSender
 	ConfirmReader io.Reader
+	MessageReader io.Reader
 }
 
 func newUsersCmd() *cobra.Command {
@@ -145,7 +147,11 @@ func runUsersSendEmail(ctx context.Context, client iruClient, stderr io.Writer, 
 	if opts.EmailFlags.To != "" {
 		templateDisplay = opts.EmailFlags.To + " (redirect)"
 	}
-	message, err := captureMessage(opts.EmailFlags, true, templateDisplay, baseEmailOpts.Subject, os.Stdin, stderr, nil)
+	msgIn := opts.MessageReader
+	if msgIn == nil {
+		msgIn = os.Stdin
+	}
+	message, err := captureMessage(opts.EmailFlags, true, templateDisplay, baseEmailOpts.Subject, msgIn, stderr, nil)
 	if err != nil {
 		return err
 	}
@@ -386,6 +392,7 @@ type bulkExitClass int
 
 const (
 	bulkOK bulkExitClass = iota
+	bulkRender
 	bulkNotFound
 	bulkUpstream
 	bulkAuth
@@ -408,6 +415,10 @@ func (c *bulkCounters) recordError(err error) {
 		if c.worst < bulkNotFound {
 			c.worst = bulkNotFound
 		}
+	case errors.Is(err, email.ErrRender):
+		if c.worst < bulkRender {
+			c.worst = bulkRender
+		}
 	default:
 		if c.worst < bulkUpstream {
 			c.worst = bulkUpstream
@@ -417,7 +428,7 @@ func (c *bulkCounters) recordError(err error) {
 
 // exitError returns a sentinel error wrapped with the per-run error count.
 // Returns nil when no errors were recorded. classifyError in root.go maps
-// the wrapped sentinel back to the documented exit codes (2/3/4).
+// the wrapped sentinel back to the documented exit codes (1/2/3/4).
 func (c *bulkCounters) exitError() error {
 	switch c.worst {
 	case bulkAuth:
@@ -426,6 +437,8 @@ func (c *bulkCounters) exitError() error {
 		return fmt.Errorf("%d send(s) failed with upstream/rate-limit errors: %w", c.errs, gmail.ErrRateLimited)
 	case bulkNotFound:
 		return fmt.Errorf("%d user(s) not found in Iru: %w", c.errs, iru.ErrNotFound)
+	case bulkRender:
+		return fmt.Errorf("%d render(s) failed: %w", c.errs, email.ErrRender)
 	default:
 		return nil
 	}

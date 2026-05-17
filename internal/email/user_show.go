@@ -177,16 +177,16 @@ func NewUserShowRendererWithStderr(opts Options, stderr io.Writer) output.Render
 func (r *userShowRenderer) Render(w io.Writer, v any) error {
 	bundle, ok := v.(UserBundleInput)
 	if !ok {
-		return fmt.Errorf("email user show renderer expected UserBundleInput, got %T", v)
+		return fmt.Errorf("%w: email user show renderer expected UserBundleInput, got %T", ErrRender, v)
 	}
 	if err := validateLinkTemplate("primary", r.opts.CVELinkPrimary); err != nil {
-		return err
+		return fmt.Errorf("%w: %v", ErrRender, err)
 	}
 	if err := validateLinkTemplate("secondary", r.opts.CVELinkSecondary); err != nil {
-		return err
+		return fmt.Errorf("%w: %v", ErrRender, err)
 	}
 	if r.opts.From == "" {
-		return fmt.Errorf("email renderer requires a non-empty From address")
+		return fmt.Errorf("%w: email renderer requires a non-empty From address", ErrRender)
 	}
 
 	view := buildUserShowView(bundle, r.opts)
@@ -224,25 +224,25 @@ func (r *userShowRenderer) Render(w io.Writer, v any) error {
 
 	htmlBody, err := renderUserShowHTML(view)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %v", ErrRender, err)
 	}
 	textBody, err := renderUserShowText(view)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %v", ErrRender, err)
 	}
 
 	boundary := r.opts.BoundaryOverride
 	if boundary == "" {
 		boundary, err = randomBoundary()
 		if err != nil {
-			return err
+			return fmt.Errorf("%w: %v", ErrRender, err)
 		}
 	}
 	messageID := r.opts.MessageIDOverride
 	if messageID == "" {
 		messageID, err = randomMessageID(domainFromAddress(r.opts.From))
 		if err != nil {
-			return err
+			return fmt.Errorf("%w: %v", ErrRender, err)
 		}
 	}
 
@@ -250,7 +250,7 @@ func (r *userShowRenderer) Render(w io.Writer, v any) error {
 	if outerBoundary == "" && logo != nil {
 		outerBoundary, err = randomRelatedBoundary()
 		if err != nil {
-			return err
+			return fmt.Errorf("%w: %v", ErrRender, err)
 		}
 	}
 	bytesOut, err := assembleMessage(messageHeaders{
@@ -264,8 +264,10 @@ func (r *userShowRenderer) Render(w io.Writer, v any) error {
 		ListIDDomain: r.opts.ListIDDomain,
 	}, htmlBody, textBody, boundary, messageID, outerBoundary, logo)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %v", ErrRender, err)
 	}
-	_, err = w.Write(bytesOut)
-	return err
+	if _, err = w.Write(bytesOut); err != nil {
+		return fmt.Errorf("%w: %v", ErrRender, err)
+	}
+	return nil
 }

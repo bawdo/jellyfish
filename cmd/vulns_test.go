@@ -65,6 +65,12 @@ func (f *fakeClient) FindUserByEmail(_ context.Context, e string) (iru.User, err
 	}
 	return iru.User{}, iru.ErrNotFound
 }
+func (f *fakeClient) ListUsersStream(_ context.Context, cb func(page []iru.User) error) error {
+	if len(f.users) == 0 {
+		return nil
+	}
+	return cb(f.users)
+}
 func (f *fakeClient) ListVulnerabilities(_ context.Context, _ iru.VulnerabilityFilters) ([]iru.Vulnerability, error) {
 	return f.vulnerabilities, nil
 }

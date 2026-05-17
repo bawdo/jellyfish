@@ -14,6 +14,7 @@ type iruClient interface {
 	GetDeviceBySerial(ctx context.Context, serial string) (iru.Device, error)
 	GetUser(ctx context.Context, id string) (iru.User, error)
 	FindUserByEmail(ctx context.Context, email string) (iru.User, error)
+	ListUsersStream(ctx context.Context, cb func(page []iru.User) error) error
 	ListDetections(ctx context.Context, f iru.DetectionFilters) ([]iru.Detection, error)
 	ListDetectionsPage(ctx context.Context, f iru.DetectionFilters, limit int, cursor string) ([]iru.Detection, string, error)
 	ListDetectionsStream(ctx context.Context, f iru.DetectionFilters, cb func(page []iru.Detection) error) error

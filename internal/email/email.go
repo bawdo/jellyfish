@@ -4,12 +4,17 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"mime/quotedprintable"
 	"strings"
 	"time"
 )
+
+// ErrRender is returned wrapped by any renderer error so callers can
+// distinguish "could not render the email" from upstream / auth failures.
+var ErrRender = errors.New("email render failed")
 
 // Built-in defaults applied when an Options field is empty after the cmd
 // layer's flag + config resolution.
