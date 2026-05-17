@@ -158,6 +158,8 @@ func TestOverviewHTMLPerUserBody(t *testing.T) {
 		"1st",                 // ordinal rank
 		"of 2",                // "of N"
 		"background:#eff6ff;", // YOU-row tint on the roster row
+		"background:#dcfce7;", // YOU-row tint in The best 5
+		"background:#fee2e2;", // YOU-row tint in The most dangerous 5
 		">you</span>",         // YOU pill (lowercased in the template; text-transform makes it uppercase visually)
 		"#2563eb",             // blue border / colour somewhere in the rendered HTML
 		"Sec Score</strong> is the sum of CVSS scores", // explainer still present

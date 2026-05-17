@@ -38,7 +38,8 @@ type overviewRowView struct {
 	HighStr        string
 	MediumStr      string
 	LowStr         string
-	IsMe           bool // true on the recipient's row in the full roster (per-user variant)
+	IsMe           bool   // true on the recipient's row in any section (per-user variant)
+	HighlightBG    string // row background tint when IsMe; section-specific
 }
 
 type overviewTplData struct {
@@ -92,8 +93,8 @@ func buildOverviewTplData(v OverviewView, opts Options) overviewTplData {
 	d.AveragesView.Medium = formatOneDec(v.Averages.MediumPerUser)
 	d.AveragesView.Low = formatOneDec(v.Averages.LowPerUser)
 
-	d.BestRows = leaderboardRows(v.BestFive, "#16a34a")
-	d.DangerousRows = leaderboardRows(v.MostDangerousFive, "#dc2626")
+	d.BestRows = leaderboardRows(v.BestFive, "#16a34a", v.Me, "#dcfce7")
+	d.DangerousRows = leaderboardRows(v.MostDangerousFive, "#dc2626", v.Me, "#fee2e2")
 	d.RosterRows = rosterRows(v.Users, v.Me)
 
 	if v.Me != nil {
@@ -128,10 +129,11 @@ func buildOverviewTplData(v OverviewView, opts Options) overviewTplData {
 	return d
 }
 
-func leaderboardRows(stats []UserStats, colour string) []overviewRowView {
+func leaderboardRows(stats []UserStats, colour string, me *UserStats, highlightBG string) []overviewRowView {
 	out := make([]overviewRowView, len(stats))
 	for i, s := range stats {
-		out[i] = overviewRowView{
+		isMe := me != nil && s.UserID == me.UserID
+		row := overviewRowView{
 			Position:     strconv.Itoa(i + 1),
 			Rank:         s.Rank,
 			Name:         s.Name,
@@ -145,7 +147,12 @@ func leaderboardRows(stats []UserStats, colour string) []overviewRowView {
 			HighStr:      formatInt(s.High),
 			MediumStr:    formatInt(s.Medium),
 			LowStr:       formatInt(s.Low),
+			IsMe:         isMe,
 		}
+		if isMe {
+			row.HighlightBG = highlightBG
+		}
+		out[i] = row
 	}
 	return out
 }
@@ -158,7 +165,7 @@ func rosterRows(stats []UserStats, me *UserStats) []overviewRowView {
 		if isMe {
 			colour = "#2563eb"
 		}
-		out[i] = overviewRowView{
+		row := overviewRowView{
 			Position:       strconv.Itoa(s.Rank),
 			Rank:           s.Rank,
 			Name:           s.Name,
@@ -178,6 +185,10 @@ func rosterRows(stats []UserStats, me *UserStats) []overviewRowView {
 			LowStr:         formatInt(s.Low),
 			IsMe:           isMe,
 		}
+		if isMe {
+			row.HighlightBG = "#eff6ff"
+		}
+		out[i] = row
 	}
 	return out
 }

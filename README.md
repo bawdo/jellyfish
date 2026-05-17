@@ -263,7 +263,7 @@ per-user-device detection bucketing is what triggers the detection walk
 
 ### Output formats
 
-`-o` accepts `table` (default), `json`, `yaml`, `csv`.
+`-o` accepts `table` (default), `json`, `yaml`, `csv`, `email`.
 
 For `user show -o csv`, the output is flattened: one row per detection, with
 user and device columns repeated. Column order:
@@ -288,7 +288,7 @@ jellyfish user show keith@example.com -o email \
     --email-to keith@example.com > exposure.eml
 ```
 
-On a real tenant `vulns summary` is ~3000 rows. Gmail will clip the message
+On a real tenant `vulns summary` can be ~3000 rows (or more). Gmail will clip the message
 if you send the unfiltered output - filter with `--severity`, `--status`, or
 `--limit` first.
 
