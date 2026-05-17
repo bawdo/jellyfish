@@ -304,14 +304,17 @@ func renderOverviewStructured(w io.Writer, format string, v email.OverviewView) 
 }
 
 type overviewOpts struct {
-	Output        string
-	PerUser       bool
-	EmailFlags    emailFlagValues
-	DryRun        bool
-	Yes           bool
-	NoCache       bool
-	Profile       config.Profile
-	EmailNow      time.Time
+	Output         string
+	PerUser        bool
+	CSVPath        string
+	Emails         string
+	CSVEmailColumn string
+	EmailFlags     emailFlagValues
+	DryRun         bool
+	Yes            bool
+	NoCache        bool
+	Profile        config.Profile
+	EmailNow       time.Time
 	// Injected for tests:
 	gitEmail      gitEmailLookup
 	KeychainGet   func() ([]byte, error)
@@ -352,6 +355,9 @@ func newOverviewCmd() *cobra.Command {
 		},
 	}
 	c.Flags().BoolVar(&opts.PerUser, "per-user", false, "With --output=email: send one personalised copy per user with devices")
+	c.Flags().StringVar(&opts.CSVPath, "csv", "", "Path to a CSV file holding the user emails to include. Mutually exclusive with --emails. Default: all users with devices.")
+	c.Flags().StringVar(&opts.Emails, "emails", "", "Comma-separated list of user emails to include. Mutually exclusive with --csv. Default: all users with devices.")
+	c.Flags().StringVar(&opts.CSVEmailColumn, "csv-email-column", "", "CSV column name holding the email address (default: auto-detect email/user_email/e-mail)")
 	c.Flags().String("email-to", "", "Email recipient(s) for the admin report (comma-separated). Ignored with --per-user.")
 	c.Flags().String("email-from", "", "Email From: header (default: email.from from config, then git user.email)")
 	c.Flags().String("email-subject", "", "Email Subject: header (default: rendered email.subject_template or a per-command default)")
@@ -373,7 +379,11 @@ func runOverview(ctx context.Context, client iruClient, stdout, stderr io.Writer
 	if err := validateOverviewFlags(opts); err != nil {
 		return err
 	}
-	view, err := assembleOverview(ctx, client, stderr, opts.NoCache, nil)
+	filter, err := buildOverviewUserFilter(opts)
+	if err != nil {
+		return err
+	}
+	view, err := assembleOverview(ctx, client, stderr, opts.NoCache, filter)
 	if err != nil {
 		return err
 	}
@@ -403,7 +413,28 @@ func validateOverviewFlags(opts overviewOpts) error {
 	if opts.Output == "email" && !opts.PerUser && opts.EmailFlags.To == "" {
 		return errors.New("--output=email without --per-user requires --email-to")
 	}
+	if opts.CSVPath != "" && opts.Emails != "" {
+		return errors.New("--csv and --emails are mutually exclusive")
+	}
 	return nil
+}
+
+// buildOverviewUserFilter parses --csv / --emails into a case-insensitive
+// email set, or returns nil when neither flag is set (meaning "include all
+// users with devices"). --csv-email-column is honoured for header overrides.
+func buildOverviewUserFilter(opts overviewOpts) (map[string]struct{}, error) {
+	if opts.CSVPath == "" && opts.Emails == "" {
+		return nil, nil
+	}
+	emails, err := readEmailList(opts.CSVPath, opts.Emails, opts.CSVEmailColumn)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]struct{}, len(emails))
+	for _, e := range emails {
+		out[strings.ToLower(e)] = struct{}{}
+	}
+	return out, nil
 }
 
 // runOverviewEmail builds the email Options, captures the optional message,

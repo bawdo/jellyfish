@@ -507,12 +507,18 @@ jellyfish overview -o email --per-user --dry-run
 
 # Admin report with an editor-composed message
 jellyfish overview -o email --email-to security@example.com --message
+
+# Roster restricted to two users
+jellyfish overview --emails alice@example.com,bob@example.com
 ```
 
 #### Flags
 
 | Flag | Purpose |
 |---|---|
+| `--csv <path>` | Read user emails to include from a CSV file. Mutually exclusive with `--emails`. Default: all users with devices. |
+| `--emails <list>` | Comma-separated user emails to include. Mutually exclusive with `--csv`. Default: all users with devices. |
+| `--csv-email-column <name>` | Override CSV header auto-detection. Default scans for `email`, `user_email`, `e-mail` (case-insensitive). |
 | `--per-user` | Fan out personalised copies (only with `-o email`). Each recipient gets a copy personalised to them - see below. |
 | `--email-to <addr>` | Comma-separated admin recipients. Required for `-o email` without `--per-user`. Warned and ignored when `--per-user` is set. |
 | `--email-from` | From: address (default: `email.from` from config, then git `user.email`). |
@@ -549,6 +555,29 @@ summary: sent=N skipped=M errors=K              # per-user path totals
 The trailing `summary:` line is always emitted, even at zero counts. If
 `--email-to` is set alongside `--per-user`, `--email-to` is silently ignored
 with a warning on stderr - it is not treated as an error.
+
+#### Filtering the roster
+
+By default `overview` includes every user with at least one device. To
+narrow the roster to a named subset, pass either `--csv` or `--emails`.
+Both totals, averages, leaderboards, and the roster itself are then
+computed over just that subset. The `--per-user` fanout (when used)
+sends only to the filtered users.
+
+```sh
+# Compute the overview for the platform team only
+jellyfish overview --emails alice@example.com,bob@example.com
+
+# Subset from a CSV (auto-detects email / user_email / e-mail headers)
+jellyfish overview --csv ./platform-team.csv -o email --per-user
+
+# Override the column when the CSV uses a non-default header
+jellyfish overview --csv ./contacts.csv --csv-email-column primary_email
+```
+
+Filter entries that don't match any device-owning user in the tenant
+produce a `warn: <email> not in tenant devices` line on stderr - useful
+for catching typos or stale CSVs without aborting the run.
 
 #### Email headers
 

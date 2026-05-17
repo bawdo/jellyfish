@@ -33,11 +33,11 @@ recipient sees where they sit in the ranking.
 - No concurrency for the `--per-user` send loop. Strictly sequential.
 - No "summary by department" or "summary by blueprint". One axis (user)
   for this command; other dimensions can be future siblings.
-- No `--csv` / `--emails` recipient list flags. `--email-to` covers the
-  admin path; `--per-user` covers the whole-org fanout. Anyone wanting
-  to mail a subset of users can pipe `jellyfish overview --output=csv`
-  into their own filter and feed the resulting list to
-  `jellyfish users send-email`.
+- ~~No `--csv` / `--emails` recipient list flags.~~ This non-goal was
+  reversed: `--csv`, `--emails`, and `--csv-email-column` were added to
+  let operators restrict the overview to a named subset of users. The
+  original workaround (pipe `overview -o csv` into `users send-email`)
+  still works but is no longer the only path.
 
 ## Command surface
 
@@ -45,6 +45,7 @@ recipient sees where they sit in the ranking.
 jellyfish overview
     [-o table|json|yaml|csv|email]
     [--per-user]
+    [--csv <path> | --emails <list>] [--csv-email-column <name>]
     [--email-to <addr>] [--email-from <addr>] [--email-subject <str>]
     [--email-header-bg <#RRGGBB>] [--email-logo <path>]
     [--message | --message-file <path>]
@@ -57,6 +58,9 @@ jellyfish overview
 |---|---|
 | `-o, --output` | One of `table` (default), `json`, `yaml`, `csv`, `email`. |
 | `--per-user` | With `--output=email` only: send one personalised copy to every user with devices instead of one admin report. |
+| `--csv <path>` | Restrict the roster to users listed in this CSV file. Auto-detects `email`/`user_email`/`e-mail` header. Mutually exclusive with `--emails`. Default: all users with devices. |
+| `--emails <list>` | Comma-separated list of user emails to include in the roster. Mutually exclusive with `--csv`. Default: all users with devices. |
+| `--csv-email-column <name>` | Override CSV header auto-detection for `--csv`. |
 | `--email-to <addr>` | Recipient(s) for the admin report. Comma-separated list accepted. Required when `--output=email` and `--per-user` is not set. Warned-and-ignored when `--per-user` is set. |
 | `--email-from`, `--email-subject`, `--email-header-bg`, `--email-logo` | Standard email options. Resolved by the existing `resolveEmailOptions()` (flag > config > git). |
 | `--message`, `--message-file <path>` | Optional editor / file message inserted via `_message.html.tmpl`. Verbatim for every send (admin or per-user). Mutually exclusive. |

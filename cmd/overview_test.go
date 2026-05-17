@@ -369,7 +369,8 @@ func TestOverviewCmdRegistered(t *testing.T) {
 		t.Fatalf("help missing command name; got:\n%s", help)
 	}
 	for _, flag := range []string{
-		"--per-user", "--email-to", "--email-from", "--email-subject",
+		"--per-user", "--csv", "--emails", "--csv-email-column",
+		"--email-to", "--email-from", "--email-subject",
 		"--email-header-bg", "--email-logo",
 		"--message", "--message-file",
 		"--dry-run", "--yes", "--no-cache",
@@ -585,6 +586,115 @@ func TestRunOverviewValidationErrors(t *testing.T) {
 				t.Fatalf("err: got %v, want substring %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestAssembleOverviewFilterByEmails(t *testing.T) {
+	c := &overviewFakeClient{
+		fakeClient: &fakeClient{
+			users: []iru.User{
+				{ID: "u1", Name: "Alice", Email: "alice@x"},
+				{ID: "u2", Name: "Bob", Email: "bob@x"},
+				{ID: "u3", Name: "Carol", Email: "carol@x"},
+			},
+			detections: []iru.Detection{
+				{DeviceID: "d-a", CVSSScore: 5.0, Severity: "Medium"},
+				{DeviceID: "d-b", CVSSScore: 7.5, Severity: "High"},
+				{DeviceID: "d-c", CVSSScore: 9.5, Severity: "Critical"},
+			},
+		},
+		devicesByUser: map[string][]iru.Device{
+			"u1": {{DeviceID: "d-a"}},
+			"u2": {{DeviceID: "d-b"}},
+			"u3": {{DeviceID: "d-c"}},
+		},
+	}
+	filter := map[string]struct{}{
+		"alice@x": {},
+		"carol@x": {},
+		"ghost@x": {}, // not in tenant -> should produce a warn line
+	}
+	var stderr bytes.Buffer
+	view, err := assembleOverview(context.Background(), c, &stderr, false, filter)
+	if err != nil {
+		t.Fatalf("assembleOverview: %v", err)
+	}
+	if len(view.Users) != 2 {
+		t.Fatalf("expected 2 users in roster, got %d: %+v", len(view.Users), view.Users)
+	}
+	gotNames := []string{view.Users[0].Name, view.Users[1].Name}
+	wantSet := map[string]bool{"Alice": true, "Carol": true}
+	for _, n := range gotNames {
+		if !wantSet[n] {
+			t.Errorf("unexpected user in roster: %q", n)
+		}
+	}
+	if !strings.Contains(stderr.String(), "warn: ghost@x not in tenant devices") {
+		t.Errorf("stderr missing warn for ghost@x:\n%s", stderr.String())
+	}
+}
+
+func TestBuildOverviewUserFilter(t *testing.T) {
+	cases := []struct {
+		name    string
+		opts    overviewOpts
+		wantNil bool
+		wantSet map[string]struct{}
+		wantErr string
+	}{
+		{
+			name:    "no filter flags returns nil",
+			opts:    overviewOpts{},
+			wantNil: true,
+		},
+		{
+			name: "emails parsed and lowercased",
+			opts: overviewOpts{Emails: "Alice@x, BOB@x"},
+			wantSet: map[string]struct{}{
+				"alice@x": {},
+				"bob@x":   {},
+			},
+		},
+		{
+			name:    "csv and emails together error",
+			opts:    overviewOpts{CSVPath: "x", Emails: "a@x"},
+			wantErr: "mutually exclusive",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := buildOverviewUserFilter(tc.opts)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("err: got %v want substring %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected err: %v", err)
+			}
+			if tc.wantNil {
+				if got != nil {
+					t.Errorf("expected nil, got %v", got)
+				}
+				return
+			}
+			if !reflect.DeepEqual(got, tc.wantSet) {
+				t.Errorf("got %v, want %v", got, tc.wantSet)
+			}
+		})
+	}
+}
+
+func TestRunOverviewCsvAndEmailsConflict(t *testing.T) {
+	c := &overviewFakeClient{
+		fakeClient:    &fakeClient{users: []iru.User{{ID: "u1", Email: "a@x"}}},
+		devicesByUser: map[string][]iru.Device{"u1": {{DeviceID: "d1"}}},
+	}
+	opts := overviewOpts{CSVPath: "x", Emails: "a@x"}
+	err := runOverview(context.Background(), c, io.Discard, io.Discard, opts)
+	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("expected mutually exclusive error, got %v", err)
 	}
 }
 
