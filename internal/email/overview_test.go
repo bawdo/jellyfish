@@ -92,3 +92,28 @@ func TestOverviewRendererAdminEnvelope(t *testing.T) {
 		}
 	}
 }
+
+func TestOverviewHTMLPerUserBody(t *testing.T) {
+	in := newOverviewInputAdmin()
+	// Mark Alice as the recipient.
+	in.View.Me = &in.View.Users[0]
+
+	data := buildOverviewTplData(in.View, newOverviewOptions())
+	got, err := renderOverviewHTML(data)
+	if err != nil {
+		t.Fatalf("renderOverviewHTML: %v", err)
+	}
+
+	for _, want := range []string{
+		"Your standing",       // callout label
+		"1st",                 // ordinal rank
+		"of 2",                // "of N"
+		"background:#eff6ff;", // YOU-row tint on the roster row
+		">you</span>",         // YOU pill (lowercased in the template; text-transform makes it uppercase visually)
+		"#2563eb",             // blue border / colour somewhere in the rendered HTML
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("per-user HTML missing %q", want)
+		}
+	}
+}
