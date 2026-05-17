@@ -14,7 +14,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bawdo/jellyfish/internal/cache"
 	"github.com/bawdo/jellyfish/internal/config"
 	"github.com/bawdo/jellyfish/internal/email"
 	"github.com/bawdo/jellyfish/internal/gmail"
@@ -30,6 +29,7 @@ type usersSendEmailOpts struct {
 	DryRun         bool
 	Yes            bool
 	NoCache        bool
+	CacheTTL       time.Duration
 	Profile        config.Profile
 	EmailNow       time.Time
 	// Injected for tests:
@@ -65,6 +65,11 @@ func newUsersSendEmailCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			ttl, err := resolveCacheTTL(cmd)
+			if err != nil {
+				return err
+			}
+			opts.CacheTTL = ttl
 			opts.Profile = prof
 			if opts.KeychainGet == nil {
 				opts.KeychainGet = keychain.GetGmailServiceAccount
@@ -182,7 +187,7 @@ func runUsersSendEmail(ctx context.Context, client iruClient, stderr io.Writer, 
 		sender = s
 	}
 
-	allDetections, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache, cache.DefaultTTL)
+	allDetections, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache, opts.CacheTTL)
 	if err != nil {
 		return err
 	}
