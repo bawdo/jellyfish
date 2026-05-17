@@ -210,3 +210,45 @@ func TestRenderOverviewCSV(t *testing.T) {
 		t.Errorf("CSV mismatch:\n got:\n%s\nwant:\n%s", buf.String(), want)
 	}
 }
+
+func TestRenderOverviewJSON(t *testing.T) {
+	v := email.OverviewView{
+		Tenant: "acme",
+		Totals: email.OverviewTotals{UserCount: 1, SecScore: 22.3},
+		Users:  []email.UserStats{{Rank: 1, Name: "Alice", SecScore: 22.3}},
+	}
+	var buf bytes.Buffer
+	if err := renderOverviewStructured(&buf, "json", v); err != nil {
+		t.Fatalf("renderOverviewStructured json: %v", err)
+	}
+	got := buf.String()
+	for _, want := range []string{
+		`"tenant": "acme"`,
+		`"user_count": 1`,
+		`"sec_score": 22.3`,
+		`"best_five"`,
+		`"most_dangerous_five"`,
+		`"users"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("JSON missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, `"me"`) {
+		t.Errorf("JSON should omit me when nil:\n%s", got)
+	}
+}
+
+func TestRenderOverviewYAML(t *testing.T) {
+	v := email.OverviewView{
+		Tenant: "acme",
+		Users:  []email.UserStats{{Rank: 1, Name: "Alice"}},
+	}
+	var buf bytes.Buffer
+	if err := renderOverviewStructured(&buf, "yaml", v); err != nil {
+		t.Fatalf("renderOverviewStructured yaml: %v", err)
+	}
+	if !strings.Contains(buf.String(), "tenant: acme") {
+		t.Errorf("YAML missing tenant key:\n%s", buf.String())
+	}
+}

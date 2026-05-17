@@ -255,3 +255,14 @@ func renderOverviewCSV(w io.Writer, v email.OverviewView) error {
 	})
 	return c.Render(w, v.Users)
 }
+
+// renderOverviewStructured dispatches to the JSON or YAML marshaller from
+// internal/output. The struct's json/yaml tags own the wire shape (snake_case
+// keys, omitempty for Me). Used for -o json and -o yaml.
+func renderOverviewStructured(w io.Writer, format string, v email.OverviewView) error {
+	r, err := output.For(format)
+	if err != nil {
+		return err
+	}
+	return r.Render(w, v)
+}
