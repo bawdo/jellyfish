@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/bawdo/jellyfish/internal/email"
 	"github.com/bawdo/jellyfish/internal/iru"
+	"github.com/bawdo/jellyfish/internal/output"
 )
 
 // assembleOverview walks every user, fetches their devices, buckets the
@@ -146,6 +148,77 @@ func assembleOverview(ctx context.Context, client iruClient, stderr io.Writer, n
 		MostDangerousFive: dangerousFive,
 		Users:             stats,
 	}, nil
+}
+
+// renderOverviewTable writes a sequence of labelled tables to w. Each block
+// has an uppercase header line followed by a borderless table from
+// internal/output. Blocks are separated by a blank line.
+func renderOverviewTable(w io.Writer, v email.OverviewView) error {
+	header := "SECURITY OVERVIEW"
+	if v.Tenant != "" {
+		header += " · " + v.Tenant
+	}
+	if !v.GeneratedAt.IsZero() {
+		header += " · " + v.GeneratedAt.Format("2006-01-02 15:04")
+	}
+	_, _ = fmt.Fprintln(w, header)
+	_, _ = fmt.Fprintln(w)
+
+	type totalRow struct {
+		metric, total, avg string
+	}
+	tot := v.Totals
+	avgs := v.Averages
+	tRows := []totalRow{
+		{"users", strconv.Itoa(tot.UserCount), "-"},
+		{"devices", strconv.Itoa(tot.DeviceCount), fmtFloat(avgs.DevicesPerUser)},
+		{"issues", strconv.Itoa(tot.TotalIssues), fmtFloat(avgs.IssuesPerUser)},
+		{"sec_score", fmtFloat(tot.SecScore), fmtFloat(avgs.SecScorePerUser)},
+		{"critical", strconv.Itoa(tot.Critical), fmtFloat(avgs.CriticalPerUser)},
+		{"high", strconv.Itoa(tot.High), fmtFloat(avgs.HighPerUser)},
+		{"medium", strconv.Itoa(tot.Medium), fmtFloat(avgs.MediumPerUser)},
+		{"low", strconv.Itoa(tot.Low), fmtFloat(avgs.LowPerUser)},
+	}
+	_, _ = fmt.Fprintln(w, "TOTALS")
+	totalsTbl := output.Table().WithColumns([]output.Column{
+		{Header: "metric", Extract: func(v any) string { return v.(totalRow).metric }},
+		{Header: "total", Extract: func(v any) string { return v.(totalRow).total }},
+		{Header: "avg/user", Extract: func(v any) string { return v.(totalRow).avg }},
+	})
+	if err := totalsTbl.Render(w, tRows); err != nil {
+		return err
+	}
+
+	leaderboard := func(label string, rows []email.UserStats) error {
+		_, _ = fmt.Fprintln(w)
+		_, _ = fmt.Fprintln(w, label)
+		tbl := output.Table().WithColumns([]output.Column{
+			{Header: "rank", Extract: func(v any) string { return strconv.Itoa(v.(email.UserStats).Rank) }},
+			{Header: "name", Extract: func(v any) string { return v.(email.UserStats).Name }},
+			{Header: "sec_score", Extract: func(v any) string { return fmtFloat(v.(email.UserStats).SecScore) }},
+			{Header: "C", Extract: func(v any) string { return strconv.Itoa(v.(email.UserStats).Critical) }},
+			{Header: "H", Extract: func(v any) string { return strconv.Itoa(v.(email.UserStats).High) }},
+			{Header: "M", Extract: func(v any) string { return strconv.Itoa(v.(email.UserStats).Medium) }},
+			{Header: "L", Extract: func(v any) string { return strconv.Itoa(v.(email.UserStats).Low) }},
+		})
+		return tbl.Render(w, rows)
+	}
+	if err := leaderboard("BEST 5", v.BestFive); err != nil {
+		return err
+	}
+	if err := leaderboard("MOST DANGEROUS 5", v.MostDangerousFive); err != nil {
+		return err
+	}
+	if err := leaderboard(fmt.Sprintf("ALL USERS (%d)", len(v.Users)), v.Users); err != nil {
+		return err
+	}
+	return nil
+}
+
+// fmtFloat formats a float64 with one decimal place. Used by table, CSV,
+// and the email view to keep score formatting consistent.
+func fmtFloat(f float64) string {
+	return strconv.FormatFloat(f, 'f', 1, 64)
 }
 
 // secScoreTier maps a SecScore to one of: "good", "medium", "high",

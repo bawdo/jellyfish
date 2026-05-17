@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/bawdo/jellyfish/internal/email"
@@ -128,6 +129,43 @@ func TestAssembleOverviewTieBreakerByName(t *testing.T) {
 	}
 	if view.Users[0].Name != "Alpha" || view.Users[1].Name != "Beta" {
 		t.Fatalf("name-asc tiebreaker broken: %+v", view.Users)
+	}
+}
+
+func TestRenderOverviewTable(t *testing.T) {
+	v := email.OverviewView{
+		Tenant: "acme",
+		Totals: email.OverviewTotals{
+			UserCount: 2, DeviceCount: 3, TotalIssues: 4, Critical: 1, High: 1, Medium: 1, Low: 1, SecScore: 24.8,
+		},
+		Averages: email.OverviewAverages{
+			DevicesPerUser: 1.5, IssuesPerUser: 2.0, SecScorePerUser: 12.4,
+			CriticalPerUser: 0.5, HighPerUser: 0.5, MediumPerUser: 0.5, LowPerUser: 0.5,
+		},
+		BestFive: []email.UserStats{
+			{Rank: 2, Name: "Bob", SecScore: 2.5, Critical: 0, High: 0, Medium: 0, Low: 1},
+		},
+		MostDangerousFive: []email.UserStats{
+			{Rank: 1, Name: "Alice", SecScore: 22.3, Critical: 1, High: 1, Medium: 1, Low: 0},
+		},
+		Users: []email.UserStats{
+			{Rank: 1, Name: "Alice", SecScore: 22.3, Critical: 1, High: 1, Medium: 1, Low: 0},
+			{Rank: 2, Name: "Bob", SecScore: 2.5, Critical: 0, High: 0, Medium: 0, Low: 1},
+		},
+	}
+	var buf bytes.Buffer
+	if err := renderOverviewTable(&buf, v); err != nil {
+		t.Fatalf("renderOverviewTable: %v", err)
+	}
+	got := buf.String()
+	for _, want := range []string{
+		"TOTALS", "BEST 5", "MOST DANGEROUS 5", "ALL USERS (2)",
+		"Alice", "Bob",
+		"22.3", "2.5", "12.4",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("output missing %q:\n%s", want, got)
+		}
 	}
 }
 
