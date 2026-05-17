@@ -20,19 +20,25 @@ var overviewFS embed.FS
 // "Your standing" callout, or the full roster. Pre-formatted strings let
 // the template stay logic-free.
 type overviewRowView struct {
-	Position     string // "1".."5" for leaderboards, global Rank for the roster, ordinal ("14th") for Me
-	Rank         int
-	RankStr      string // ordinal form for the Me callout ("14th")
-	Name         string
-	BorderColour string
-	ScoreStr     string
-	DeviceCount  int
-	TotalIssues  int
-	Critical     int
-	High         int
-	Medium       int
-	Low          int
-	IsMe         bool // true on the recipient's row in the full roster (per-user variant)
+	Position       string // "1".."5" for leaderboards, global Rank for the roster, ordinal ("14th") for Me
+	Rank           int
+	RankStr        string // ordinal form for the Me callout ("14th")
+	Name           string
+	BorderColour   string
+	ScoreStr       string
+	DeviceCount    int // kept for internal use
+	TotalIssues    int // kept for internal use
+	Critical       int // kept for internal use
+	High           int
+	Medium         int
+	Low            int
+	DeviceCountStr string // human-readable form for templates
+	TotalIssuesStr string
+	CriticalStr    string
+	HighStr        string
+	MediumStr      string
+	LowStr         string
+	IsMe           bool // true on the recipient's row in the full roster (per-user variant)
 }
 
 type overviewTplData struct {
@@ -42,7 +48,14 @@ type overviewTplData struct {
 	GeneratedDate  string
 	Totals         OverviewTotals
 	TotalsView     struct {
-		SecScore string
+		UserCount   string
+		DeviceCount string
+		TotalIssues string
+		SecScore    string
+		Critical    string
+		High        string
+		Medium      string
+		Low         string
 	}
 	AveragesView struct {
 		Devices, Issues, SecScore   string
@@ -63,7 +76,14 @@ func buildOverviewTplData(v OverviewView, opts Options) overviewTplData {
 		GeneratedDate:  opts.GeneratedAt.Format("2006-01-02"),
 		Totals:         v.Totals,
 	}
+	d.TotalsView.UserCount = formatInt(v.Totals.UserCount)
+	d.TotalsView.DeviceCount = formatInt(v.Totals.DeviceCount)
+	d.TotalsView.TotalIssues = formatInt(v.Totals.TotalIssues)
 	d.TotalsView.SecScore = formatOneDec(v.Totals.SecScore)
+	d.TotalsView.Critical = formatInt(v.Totals.Critical)
+	d.TotalsView.High = formatInt(v.Totals.High)
+	d.TotalsView.Medium = formatInt(v.Totals.Medium)
+	d.TotalsView.Low = formatInt(v.Totals.Low)
 	d.AveragesView.Devices = formatOneDec(v.Averages.DevicesPerUser)
 	d.AveragesView.Issues = formatOneDec(v.Averages.IssuesPerUser)
 	d.AveragesView.SecScore = formatOneDec(v.Averages.SecScorePerUser)
@@ -79,18 +99,24 @@ func buildOverviewTplData(v OverviewView, opts Options) overviewTplData {
 	if v.Me != nil {
 		me := *v.Me
 		row := overviewRowView{
-			Position:     strconv.Itoa(me.Rank),
-			Rank:         me.Rank,
-			RankStr:      ordinal(me.Rank),
-			Name:         me.Name,
-			BorderColour: "#2563eb",
-			ScoreStr:     formatOneDec(me.SecScore),
-			DeviceCount:  me.DeviceCount,
-			TotalIssues:  me.TotalIssues,
-			Critical:     me.Critical,
-			High:         me.High,
-			Medium:       me.Medium,
-			Low:          me.Low,
+			Position:       strconv.Itoa(me.Rank),
+			Rank:           me.Rank,
+			RankStr:        ordinal(me.Rank),
+			Name:           me.Name,
+			BorderColour:   "#2563eb",
+			ScoreStr:       formatOneDec(me.SecScore),
+			DeviceCount:    me.DeviceCount,
+			TotalIssues:    me.TotalIssues,
+			Critical:       me.Critical,
+			High:           me.High,
+			Medium:         me.Medium,
+			Low:            me.Low,
+			DeviceCountStr: formatInt(me.DeviceCount),
+			TotalIssuesStr: formatInt(me.TotalIssues),
+			CriticalStr:    formatInt(me.Critical),
+			HighStr:        formatInt(me.High),
+			MediumStr:      formatInt(me.Medium),
+			LowStr:         formatInt(me.Low),
 		}
 		d.MeRow = &row
 	}
@@ -115,6 +141,10 @@ func leaderboardRows(stats []UserStats, colour string) []overviewRowView {
 			High:         s.High,
 			Medium:       s.Medium,
 			Low:          s.Low,
+			CriticalStr:  formatInt(s.Critical),
+			HighStr:      formatInt(s.High),
+			MediumStr:    formatInt(s.Medium),
+			LowStr:       formatInt(s.Low),
 		}
 	}
 	return out
@@ -129,16 +159,24 @@ func rosterRows(stats []UserStats, me *UserStats) []overviewRowView {
 			colour = "#2563eb"
 		}
 		out[i] = overviewRowView{
-			Position:     strconv.Itoa(s.Rank),
-			Rank:         s.Rank,
-			Name:         s.Name,
-			BorderColour: colour,
-			ScoreStr:     formatOneDec(s.SecScore),
-			Critical:     s.Critical,
-			High:         s.High,
-			Medium:       s.Medium,
-			Low:          s.Low,
-			IsMe:         isMe,
+			Position:       strconv.Itoa(s.Rank),
+			Rank:           s.Rank,
+			Name:           s.Name,
+			BorderColour:   colour,
+			ScoreStr:       formatOneDec(s.SecScore),
+			Critical:       s.Critical,
+			High:           s.High,
+			Medium:         s.Medium,
+			Low:            s.Low,
+			DeviceCount:    s.DeviceCount,
+			TotalIssues:    s.TotalIssues,
+			DeviceCountStr: formatInt(s.DeviceCount),
+			TotalIssuesStr: formatInt(s.TotalIssues),
+			CriticalStr:    formatInt(s.Critical),
+			HighStr:        formatInt(s.High),
+			MediumStr:      formatInt(s.Medium),
+			LowStr:         formatInt(s.Low),
+			IsMe:           isMe,
 		}
 	}
 	return out
@@ -159,8 +197,50 @@ func tierColour(score float64) string {
 	}
 }
 
+// formatOneDec formats a float with one decimal place and comma-separated
+// thousands in the integer part (e.g. 1234.27 -> "1,234.3"). Used by the
+// email view for human-readable display. Other output formats (CSV / JSON /
+// YAML / CLI table) bypass this and use raw values.
 func formatOneDec(f float64) string {
-	return strconv.FormatFloat(f, 'f', 1, 64)
+	raw := strconv.FormatFloat(f, 'f', 1, 64) // e.g. "-1234.3" or "1234.3"
+	dot := strings.IndexByte(raw, '.')
+	if dot < 0 {
+		return commaThousands(raw)
+	}
+	return commaThousands(raw[:dot]) + raw[dot:]
+}
+
+// formatInt formats an integer with comma-separated thousands
+// (e.g. 18553 -> "18,553"). Used by the email view.
+func formatInt(n int) string {
+	return commaThousands(strconv.Itoa(n))
+}
+
+// commaThousands inserts commas every 3 digits from the right of the
+// integer part of s. s may carry a leading '-' sign. s must not contain a
+// decimal point or any other non-digit char beyond an optional leading
+// minus — callers strip the fractional part before calling.
+func commaThousands(s string) string {
+	sign := ""
+	if strings.HasPrefix(s, "-") {
+		sign = "-"
+		s = s[1:]
+	}
+	if len(s) <= 3 {
+		return sign + s
+	}
+	var b strings.Builder
+	head := len(s) % 3
+	if head > 0 {
+		b.WriteString(s[:head])
+	}
+	for i := head; i < len(s); i += 3 {
+		if b.Len() > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(s[i : i+3])
+	}
+	return sign + b.String()
 }
 
 func ordinal(n int) string {

@@ -7,6 +7,52 @@ import (
 	"time"
 )
 
+func TestOverviewHTMLHumanizesLargeNumbers(t *testing.T) {
+	in := OverviewInput{View: OverviewView{
+		Tenant:      "acme",
+		GeneratedAt: time.Date(2026, 5, 17, 10, 30, 0, 0, time.UTC),
+		Totals: OverviewTotals{
+			UserCount: 1234, DeviceCount: 5678, TotalIssues: 18553,
+			Critical: 1100, High: 2200, Medium: 4321, Low: 10932,
+			SecScore: 87654.32,
+		},
+		Averages: OverviewAverages{
+			DevicesPerUser: 4.6, IssuesPerUser: 15.0, SecScorePerUser: 71.0,
+		},
+		BestFive: []UserStats{
+			{UserID: "u1", Rank: 1, Name: "Alice", SecScore: 12345.67, Critical: 100, High: 200},
+		},
+		MostDangerousFive: []UserStats{
+			{UserID: "u1", Rank: 1, Name: "Alice", SecScore: 12345.67, Critical: 100, High: 200},
+		},
+		Users: []UserStats{
+			{UserID: "u1", Rank: 1, Name: "Alice", SecScore: 12345.67, Critical: 100, High: 200, DeviceCount: 1234, TotalIssues: 9876},
+		},
+	}}
+	data := buildOverviewTplData(in.View, newOverviewOptions())
+	got, err := renderOverviewHTML(data)
+	if err != nil {
+		t.Fatalf("renderOverviewHTML: %v", err)
+	}
+	for _, want := range []string{
+		">1,234<",    // UserCount stat card
+		">5,678<",    // DeviceCount stat card
+		">18,553<",   // TotalIssues stat card
+		">87,654.3<", // Totals SecScore stat card
+		">1,100<",    // Critical stat card
+		">2,200<",    // High stat card
+		">4,321<",    // Medium stat card
+		">10,932<",   // Low stat card
+		">12,345.7<", // per-row ScoreStr in leaderboard / roster
+		"C 100",      // severity pill on a row
+		"H 200",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("HTML missing %q", want)
+		}
+	}
+}
+
 func newOverviewInputAdmin() OverviewInput {
 	return OverviewInput{View: OverviewView{
 		Tenant:      "acme",

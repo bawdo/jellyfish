@@ -17,17 +17,17 @@
 <table role="presentation" width="100%" cellpadding="0" cellspacing="1" bgcolor="#e2e8f0" style="border-collapse:separate;border-spacing:1px;background:#e2e8f0;width:100%;">
 <tr>
   <td bgcolor="#ffffff" style="background:#ffffff;padding:14px 12px;width:25%;">
-    <div style="font:800 26px/1 -apple-system,system-ui,sans-serif;color:#0f172a;">{{.Totals.UserCount}}</div>
+    <div style="font:800 26px/1 -apple-system,system-ui,sans-serif;color:#0f172a;">{{.TotalsView.UserCount}}</div>
     <div style="font:600 10px/1.2 -apple-system,system-ui,sans-serif;color:#64748b;letter-spacing:.08em;text-transform:uppercase;margin-top:6px;">Users</div>
     <div style="font:11px/1 -apple-system,system-ui,sans-serif;color:#94a3b8;margin-top:4px;">&nbsp;</div>
   </td>
   <td bgcolor="#ffffff" style="background:#ffffff;padding:14px 12px;width:25%;">
-    <div style="font:800 26px/1 -apple-system,system-ui,sans-serif;color:#0f172a;">{{.Totals.DeviceCount}}</div>
+    <div style="font:800 26px/1 -apple-system,system-ui,sans-serif;color:#0f172a;">{{.TotalsView.DeviceCount}}</div>
     <div style="font:600 10px/1.2 -apple-system,system-ui,sans-serif;color:#64748b;letter-spacing:.08em;text-transform:uppercase;margin-top:6px;">Devices</div>
     <div style="font:11px/1 -apple-system,system-ui,sans-serif;color:#94a3b8;margin-top:4px;">{{.AveragesView.Devices}} / user</div>
   </td>
   <td bgcolor="#ffffff" style="background:#ffffff;padding:14px 12px;width:25%;">
-    <div style="font:800 26px/1 -apple-system,system-ui,sans-serif;color:#0f172a;">{{.Totals.TotalIssues}}</div>
+    <div style="font:800 26px/1 -apple-system,system-ui,sans-serif;color:#0f172a;">{{.TotalsView.TotalIssues}}</div>
     <div style="font:600 10px/1.2 -apple-system,system-ui,sans-serif;color:#64748b;letter-spacing:.08em;text-transform:uppercase;margin-top:6px;">Issues</div>
     <div style="font:11px/1 -apple-system,system-ui,sans-serif;color:#94a3b8;margin-top:4px;">{{.AveragesView.Issues}} / user</div>
   </td>
@@ -39,22 +39,22 @@
 </tr>
 <tr>
   <td bgcolor="#ffffff" style="background:#ffffff;padding:14px 12px;width:25%;">
-    <div style="font:800 26px/1 -apple-system,system-ui,sans-serif;color:#dc2626;">{{.Totals.Critical}}</div>
+    <div style="font:800 26px/1 -apple-system,system-ui,sans-serif;color:#dc2626;">{{.TotalsView.Critical}}</div>
     <div style="font:600 10px/1.2 -apple-system,system-ui,sans-serif;color:#64748b;letter-spacing:.08em;text-transform:uppercase;margin-top:6px;">Critical</div>
     <div style="font:11px/1 -apple-system,system-ui,sans-serif;color:#94a3b8;margin-top:4px;">{{.AveragesView.Critical}} / user</div>
   </td>
   <td bgcolor="#ffffff" style="background:#ffffff;padding:14px 12px;width:25%;">
-    <div style="font:800 26px/1 -apple-system,system-ui,sans-serif;color:#ea580c;">{{.Totals.High}}</div>
+    <div style="font:800 26px/1 -apple-system,system-ui,sans-serif;color:#ea580c;">{{.TotalsView.High}}</div>
     <div style="font:600 10px/1.2 -apple-system,system-ui,sans-serif;color:#64748b;letter-spacing:.08em;text-transform:uppercase;margin-top:6px;">High</div>
     <div style="font:11px/1 -apple-system,system-ui,sans-serif;color:#94a3b8;margin-top:4px;">{{.AveragesView.High}} / user</div>
   </td>
   <td bgcolor="#ffffff" style="background:#ffffff;padding:14px 12px;width:25%;">
-    <div style="font:800 26px/1 -apple-system,system-ui,sans-serif;color:#ca8a04;">{{.Totals.Medium}}</div>
+    <div style="font:800 26px/1 -apple-system,system-ui,sans-serif;color:#ca8a04;">{{.TotalsView.Medium}}</div>
     <div style="font:600 10px/1.2 -apple-system,system-ui,sans-serif;color:#64748b;letter-spacing:.08em;text-transform:uppercase;margin-top:6px;">Medium</div>
     <div style="font:11px/1 -apple-system,system-ui,sans-serif;color:#94a3b8;margin-top:4px;">{{.AveragesView.Medium}} / user</div>
   </td>
   <td bgcolor="#ffffff" style="background:#ffffff;padding:14px 12px;width:25%;">
-    <div style="font:800 26px/1 -apple-system,system-ui,sans-serif;color:#0369a1;">{{.Totals.Low}}</div>
+    <div style="font:800 26px/1 -apple-system,system-ui,sans-serif;color:#0369a1;">{{.TotalsView.Low}}</div>
     <div style="font:600 10px/1.2 -apple-system,system-ui,sans-serif;color:#64748b;letter-spacing:.08em;text-transform:uppercase;margin-top:6px;">Low</div>
     <div style="font:11px/1 -apple-system,system-ui,sans-serif;color:#94a3b8;margin-top:4px;">{{.AveragesView.Low}} / user</div>
   </td>
@@ -72,10 +72,10 @@
   <td valign="middle" style="width:28px;font:700 16px/1 -apple-system,system-ui,sans-serif;color:{{.BorderColour}};">{{.Position}}</td>
   <td valign="middle" style="font:600 14px/1.2 -apple-system,system-ui,sans-serif;color:#0f172a;">{{.Name}}{{if .IsMe}} <span style="display:inline-block;font:700 8px/1 -apple-system,system-ui,sans-serif;color:#2563eb;background:#dbeafe;padding:2px 4px;border-radius:2px;letter-spacing:.08em;text-transform:uppercase;margin-left:4px;">you</span>{{end}}</td>
   <td valign="middle" align="right" style="white-space:nowrap;">
-    <span style="display:inline-block;background:#fef2f2;color:#dc2626;font:700 9px/1 -apple-system,system-ui,sans-serif;padding:3px 5px;border-radius:3px;margin-left:3px;">C {{.Critical}}</span>
-    <span style="display:inline-block;background:#fff7ed;color:#ea580c;font:700 9px/1 -apple-system,system-ui,sans-serif;padding:3px 5px;border-radius:3px;margin-left:3px;">H {{.High}}</span>
-    <span style="display:inline-block;background:#fefce8;color:#ca8a04;font:700 9px/1 -apple-system,system-ui,sans-serif;padding:3px 5px;border-radius:3px;margin-left:3px;">M {{.Medium}}</span>
-    <span style="display:inline-block;background:#f0f9ff;color:#0369a1;font:700 9px/1 -apple-system,system-ui,sans-serif;padding:3px 5px;border-radius:3px;margin-left:3px;">L {{.Low}}</span>
+    <span style="display:inline-block;background:#fef2f2;color:#dc2626;font:700 9px/1 -apple-system,system-ui,sans-serif;padding:3px 5px;border-radius:3px;margin-left:3px;">C {{.CriticalStr}}</span>
+    <span style="display:inline-block;background:#fff7ed;color:#ea580c;font:700 9px/1 -apple-system,system-ui,sans-serif;padding:3px 5px;border-radius:3px;margin-left:3px;">H {{.HighStr}}</span>
+    <span style="display:inline-block;background:#fefce8;color:#ca8a04;font:700 9px/1 -apple-system,system-ui,sans-serif;padding:3px 5px;border-radius:3px;margin-left:3px;">M {{.MediumStr}}</span>
+    <span style="display:inline-block;background:#f0f9ff;color:#0369a1;font:700 9px/1 -apple-system,system-ui,sans-serif;padding:3px 5px;border-radius:3px;margin-left:3px;">L {{.LowStr}}</span>
     <span style="display:inline-block;font:700 14px/1 'SF Mono','Menlo','Consolas',monospace;color:{{.BorderColour}};margin-left:10px;">{{.ScoreStr}}</span>
   </td>
 </tr></table>
@@ -119,17 +119,17 @@
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
   <td valign="middle" style="width:64px;">
     <div style="font:800 28px/1 -apple-system,system-ui,sans-serif;color:#2563eb;">{{.MeRow.RankStr}}</div>
-    <div style="font:600 9px/1 -apple-system,system-ui,sans-serif;color:#64748b;letter-spacing:.08em;text-transform:uppercase;margin-top:4px;">of {{.Totals.UserCount}}</div>
+    <div style="font:600 9px/1 -apple-system,system-ui,sans-serif;color:#64748b;letter-spacing:.08em;text-transform:uppercase;margin-top:4px;">of {{.TotalsView.UserCount}}</div>
   </td>
   <td valign="middle" style="padding-left:8px;">
     <div style="font:600 14px/1.2 -apple-system,system-ui,sans-serif;color:#0f172a;">{{.MeRow.Name}}</div>
-    <div style="font:11px/1.4 -apple-system,system-ui,sans-serif;color:#64748b;margin-top:2px;">{{.MeRow.DeviceCount}} devices · {{.MeRow.TotalIssues}} issues</div>
+    <div style="font:11px/1.4 -apple-system,system-ui,sans-serif;color:#64748b;margin-top:2px;">{{.MeRow.DeviceCountStr}} devices · {{.MeRow.TotalIssuesStr}} issues</div>
   </td>
   <td valign="middle" align="right" style="white-space:nowrap;">
-    <span style="display:inline-block;background:#fef2f2;color:#dc2626;font:700 9px/1 -apple-system,system-ui,sans-serif;padding:3px 5px;border-radius:3px;margin-left:3px;">C {{.MeRow.Critical}}</span>
-    <span style="display:inline-block;background:#fff7ed;color:#ea580c;font:700 9px/1 -apple-system,system-ui,sans-serif;padding:3px 5px;border-radius:3px;margin-left:3px;">H {{.MeRow.High}}</span>
-    <span style="display:inline-block;background:#fefce8;color:#ca8a04;font:700 9px/1 -apple-system,system-ui,sans-serif;padding:3px 5px;border-radius:3px;margin-left:3px;">M {{.MeRow.Medium}}</span>
-    <span style="display:inline-block;background:#f0f9ff;color:#0369a1;font:700 9px/1 -apple-system,system-ui,sans-serif;padding:3px 5px;border-radius:3px;margin-left:3px;">L {{.MeRow.Low}}</span>
+    <span style="display:inline-block;background:#fef2f2;color:#dc2626;font:700 9px/1 -apple-system,system-ui,sans-serif;padding:3px 5px;border-radius:3px;margin-left:3px;">C {{.MeRow.CriticalStr}}</span>
+    <span style="display:inline-block;background:#fff7ed;color:#ea580c;font:700 9px/1 -apple-system,system-ui,sans-serif;padding:3px 5px;border-radius:3px;margin-left:3px;">H {{.MeRow.HighStr}}</span>
+    <span style="display:inline-block;background:#fefce8;color:#ca8a04;font:700 9px/1 -apple-system,system-ui,sans-serif;padding:3px 5px;border-radius:3px;margin-left:3px;">M {{.MeRow.MediumStr}}</span>
+    <span style="display:inline-block;background:#f0f9ff;color:#0369a1;font:700 9px/1 -apple-system,system-ui,sans-serif;padding:3px 5px;border-radius:3px;margin-left:3px;">L {{.MeRow.LowStr}}</span>
     <span style="display:inline-block;font:700 16px/1 'SF Mono','Menlo','Consolas',monospace;color:#2563eb;margin-left:10px;">{{.MeRow.ScoreStr}}</span>
   </td>
 </tr></table>
@@ -139,7 +139,7 @@
 <tr><td style="padding:14px 16px 10px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
     <td style="font:700 11px/1 -apple-system,system-ui,sans-serif;color:#0f172a;letter-spacing:.1em;text-transform:uppercase;">
-      <span style="display:inline-block;width:8px;height:8px;background:#64748b;border-radius:2px;vertical-align:middle;margin-right:6px;"></span>All users <span style="font-weight:400;color:#94a3b8;">({{.Totals.UserCount}})</span>
+      <span style="display:inline-block;width:8px;height:8px;background:#64748b;border-radius:2px;vertical-align:middle;margin-right:6px;"></span>All users <span style="font-weight:400;color:#94a3b8;">({{.TotalsView.UserCount}})</span>
     </td>
     <td align="right" style="font:700 10px/1 -apple-system,system-ui,sans-serif;color:#64748b;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;">Sec Score</td>
   </tr></table>

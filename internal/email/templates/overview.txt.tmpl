@@ -7,32 +7,32 @@
 Security overview{{if .Tenant}} - {{.Tenant}}{{end}} - {{.GeneratedAtStr}}
 
 TOTALS
-  users:     {{.Totals.UserCount}}
-  devices:   {{.Totals.DeviceCount}} ({{.AveragesView.Devices}}/user)
-  issues:    {{.Totals.TotalIssues}} ({{.AveragesView.Issues}}/user)
+  users:     {{.TotalsView.UserCount}}
+  devices:   {{.TotalsView.DeviceCount}} ({{.AveragesView.Devices}}/user)
+  issues:    {{.TotalsView.TotalIssues}} ({{.AveragesView.Issues}}/user)
   sec_score: {{.TotalsView.SecScore}} ({{.AveragesView.SecScore}}/user)
-  critical:  {{.Totals.Critical}} ({{.AveragesView.Critical}}/user)
-  high:      {{.Totals.High}} ({{.AveragesView.High}}/user)
-  medium:    {{.Totals.Medium}} ({{.AveragesView.Medium}}/user)
-  low:       {{.Totals.Low}} ({{.AveragesView.Low}}/user)
+  critical:  {{.TotalsView.Critical}} ({{.AveragesView.Critical}}/user)
+  high:      {{.TotalsView.High}} ({{.AveragesView.High}}/user)
+  medium:    {{.TotalsView.Medium}} ({{.AveragesView.Medium}}/user)
+  low:       {{.TotalsView.Low}} ({{.AveragesView.Low}}/user)
 
 Sec Score = sum of CVSS scores per user. Lower is better.
 
 THE BEST 5 (by Sec Score)
 {{range .BestRows -}}
-  {{printf "%2s. %-30s %8s   C=%d H=%d M=%d L=%d" .Position .Name .ScoreStr .Critical .High .Medium .Low}}
+  {{printf "%2s. %-30s %10s   C=%s H=%s M=%s L=%s" .Position .Name .ScoreStr .CriticalStr .HighStr .MediumStr .LowStr}}
 {{end}}
 THE MOST DANGEROUS 5 (by Sec Score)
 {{range .DangerousRows -}}
-  {{printf "%2s. %-30s %8s   C=%d H=%d M=%d L=%d" .Position .Name .ScoreStr .Critical .High .Medium .Low}}
+  {{printf "%2s. %-30s %10s   C=%s H=%s M=%s L=%s" .Position .Name .ScoreStr .CriticalStr .HighStr .MediumStr .LowStr}}
 {{end}}
 {{if .MeRow -}}
 YOUR STANDING (by Sec Score)
-  {{.MeRow.RankStr}} of {{.Totals.UserCount}} - {{.MeRow.Name}} - {{.MeRow.ScoreStr}} sec_score
-  ({{.MeRow.DeviceCount}} devices, {{.MeRow.TotalIssues}} issues; C={{.MeRow.Critical}} H={{.MeRow.High}} M={{.MeRow.Medium}} L={{.MeRow.Low}})
+  {{.MeRow.RankStr}} of {{.TotalsView.UserCount}} - {{.MeRow.Name}} - {{.MeRow.ScoreStr}} sec_score
+  ({{.MeRow.DeviceCountStr}} devices, {{.MeRow.TotalIssuesStr}} issues; C={{.MeRow.CriticalStr}} H={{.MeRow.HighStr}} M={{.MeRow.MediumStr}} L={{.MeRow.LowStr}})
 
 {{end -}}
-ALL USERS ({{.Totals.UserCount}}, by Sec Score)
+ALL USERS ({{.TotalsView.UserCount}}, by Sec Score)
 {{range .RosterRows -}}
-  {{printf "%3s. %-30s %8s   C=%d H=%d M=%d L=%d" .Position .Name .ScoreStr .Critical .High .Medium .Low}}
+  {{printf "%3s. %-30s %10s   C=%s H=%s M=%s L=%s" .Position .Name .ScoreStr .CriticalStr .HighStr .MediumStr .LowStr}}
 {{end -}}
