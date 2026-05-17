@@ -192,11 +192,11 @@ func TestUserShowSendEmailDefaultsToUserEmail(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	sender := &fakeGmailSender{returnID: "msg-xyz"}
 	opts := userShowOpts{
-		Identifier: "u-1",
-		NoCache:    true,
-		EmailFlags: emailFlagValues{Send: true, From: "ops@example.com"},
-		EmailNow:   time.Date(2026, 5, 16, 0, 0, 0, 0, time.UTC),
-		Profile:    config.Profile{Email: config.EmailConfig{GmailConfigured: true}},
+		Identifier:  "u-1",
+		NoCache:     true,
+		EmailFlags:  emailFlagValues{Send: true, From: "ops@example.com"},
+		EmailNow:    time.Date(2026, 5, 16, 0, 0, 0, 0, time.UTC),
+		Profile:     config.Profile{Email: config.EmailConfig{GmailConfigured: true}},
 		KeychainGet: func() ([]byte, error) { return []byte(`{"type":"service_account"}`), nil },
 		NewSender:   func(_ context.Context, _ []byte, _ string) (gmail.Sender, error) { return sender, nil },
 	}
@@ -233,11 +233,11 @@ func TestUserShowSendEmailExplicitToOverridesUser(t *testing.T) {
 	stderr := &bytes.Buffer{}
 	sender := &fakeGmailSender{}
 	opts := userShowOpts{
-		Identifier: "u-1",
-		NoCache:    true,
-		EmailFlags: emailFlagValues{Send: true, From: "ops@example.com", To: "other@example.com"},
-		EmailNow:   time.Date(2026, 5, 16, 0, 0, 0, 0, time.UTC),
-		Profile:    config.Profile{Email: config.EmailConfig{GmailConfigured: true}},
+		Identifier:  "u-1",
+		NoCache:     true,
+		EmailFlags:  emailFlagValues{Send: true, From: "ops@example.com", To: "other@example.com"},
+		EmailNow:    time.Date(2026, 5, 16, 0, 0, 0, 0, time.UTC),
+		Profile:     config.Profile{Email: config.EmailConfig{GmailConfigured: true}},
 		KeychainGet: func() ([]byte, error) { return []byte(`{"type":"service_account"}`), nil },
 		NewSender:   func(_ context.Context, _ []byte, _ string) (gmail.Sender, error) { return sender, nil },
 	}
@@ -256,11 +256,11 @@ func TestUserShowSendEmailPropagatesSenderError(t *testing.T) {
 	}
 	sender := &fakeGmailSender{err: gmail.ErrUnauthorized}
 	opts := userShowOpts{
-		Identifier: "u-1",
-		NoCache:    true,
-		EmailFlags: emailFlagValues{Send: true, From: "ops@example.com"},
-		EmailNow:   time.Date(2026, 5, 16, 0, 0, 0, 0, time.UTC),
-		Profile:    config.Profile{Email: config.EmailConfig{GmailConfigured: true}},
+		Identifier:  "u-1",
+		NoCache:     true,
+		EmailFlags:  emailFlagValues{Send: true, From: "ops@example.com"},
+		EmailNow:    time.Date(2026, 5, 16, 0, 0, 0, 0, time.UTC),
+		Profile:     config.Profile{Email: config.EmailConfig{GmailConfigured: true}},
 		KeychainGet: func() ([]byte, error) { return []byte(`{"type":"service_account"}`), nil },
 		NewSender:   func(_ context.Context, _ []byte, _ string) (gmail.Sender, error) { return sender, nil },
 	}

@@ -16,3 +16,7 @@
 
 # Git worktrees
 .worktrees/
+
+# Pre-CI check artefacts (regenerated each run)
+coverage/pre-ci-*.txt
+coverage/.last-coverage

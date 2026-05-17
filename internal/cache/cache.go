@@ -81,9 +81,9 @@ func Save(path string, dets []iru.Detection) error {
 
 // VulnFile is the on-disk representation of a vulnerability walk.
 type VulnFile struct {
-	Version         int                  `json:"version"`
-	FetchedAt       time.Time            `json:"fetched_at"`
-	Vulnerabilities []iru.Vulnerability  `json:"vulnerabilities"`
+	Version         int                 `json:"version"`
+	FetchedAt       time.Time           `json:"fetched_at"`
+	Vulnerabilities []iru.Vulnerability `json:"vulnerabilities"`
 }
 
 // DefaultVulnPath returns the cache file path for vulnerability rollups —

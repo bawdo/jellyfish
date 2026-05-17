@@ -276,9 +276,9 @@ func TestVulnsSummaryEmailWritesEml(t *testing.T) {
 func TestVulnsSummaryEmailErrorsWithoutFrom(t *testing.T) {
 	client := &fakeClient{vulnerabilities: []iru.Vulnerability{{CVEID: "CVE-A", Severity: "Critical"}}}
 	err := runVulnsSummary(context.Background(), client, &bytes.Buffer{}, io.Discard, vulnsSummaryOpts{
-		Output:    "email",
-		NoCache:   true,
-		gitEmail:  fixedGitEmail(""),
+		Output:   "email",
+		NoCache:  true,
+		gitEmail: fixedGitEmail(""),
 	})
 	if err == nil {
 		t.Fatal("expected error when no From address available")
@@ -288,10 +288,10 @@ func TestVulnsSummaryEmailErrorsWithoutFrom(t *testing.T) {
 func TestVulnsSummarySendEmailRequiresRecipient(t *testing.T) {
 	client := &fakeClient{vulnerabilities: []iru.Vulnerability{{CVEID: "CVE-A", Severity: "Critical"}}}
 	opts := vulnsSummaryOpts{
-		EmailFlags: emailFlagValues{Send: true, From: "ops@example.com"},
-		EmailNow:   time.Date(2026, 5, 16, 0, 0, 0, 0, time.UTC),
-		Profile:    config.Profile{Email: config.EmailConfig{GmailConfigured: true}},
-		NoCache:    true,
+		EmailFlags:  emailFlagValues{Send: true, From: "ops@example.com"},
+		EmailNow:    time.Date(2026, 5, 16, 0, 0, 0, 0, time.UTC),
+		Profile:     config.Profile{Email: config.EmailConfig{GmailConfigured: true}},
+		NoCache:     true,
 		KeychainGet: func() ([]byte, error) { return []byte(`{"type":"service_account"}`), nil },
 		NewSender:   func(_ context.Context, _ []byte, _ string) (gmail.Sender, error) { return &fakeGmailSender{}, nil },
 	}
@@ -311,10 +311,10 @@ func TestVulnsSummarySendEmailSends(t *testing.T) {
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
 	sender := &fakeGmailSender{returnID: "msg-abc"}
 	opts := vulnsSummaryOpts{
-		EmailFlags: emailFlagValues{Send: true, From: "ops@example.com", To: "secops@example.com"},
-		EmailNow:   time.Date(2026, 5, 16, 0, 0, 0, 0, time.UTC),
-		Profile:    config.Profile{Email: config.EmailConfig{GmailConfigured: true}},
-		NoCache:    true,
+		EmailFlags:  emailFlagValues{Send: true, From: "ops@example.com", To: "secops@example.com"},
+		EmailNow:    time.Date(2026, 5, 16, 0, 0, 0, 0, time.UTC),
+		Profile:     config.Profile{Email: config.EmailConfig{GmailConfigured: true}},
+		NoCache:     true,
 		KeychainGet: func() ([]byte, error) { return []byte(`{"type":"service_account"}`), nil },
 		NewSender:   func(_ context.Context, _ []byte, _ string) (gmail.Sender, error) { return sender, nil },
 	}

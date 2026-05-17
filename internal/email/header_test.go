@@ -44,8 +44,8 @@ func TestRelativeLuminanceBlackWhite(t *testing.T) {
 
 func TestComputeHeaderStylePalette(t *testing.T) {
 	cases := []struct {
-		bg     string
-		light  bool // true => expect dark text branch
+		bg    string
+		light bool // true => expect dark text branch
 	}{
 		{"#2b3a55", false},
 		{"#C6B8FE", true},

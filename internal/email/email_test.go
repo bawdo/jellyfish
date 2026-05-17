@@ -10,8 +10,6 @@ import (
 	"time"
 )
 
-
-
 func TestBuildCVELinkSubstitutes(t *testing.T) {
 	got := buildCVELink("https://nvd.nist.gov/vuln/detail/{cve}", "CVE-2024-3094")
 	want := "https://nvd.nist.gov/vuln/detail/CVE-2024-3094"

@@ -161,7 +161,7 @@ func TestOverviewHTMLPerUserBody(t *testing.T) {
 		">you</span>",         // YOU pill (lowercased in the template; text-transform makes it uppercase visually)
 		"#2563eb",             // blue border / colour somewhere in the rendered HTML
 		"Sec Score</strong> is the sum of CVSS scores", // explainer still present
-		">Sec Score</td>",                              // column header still present
+		">Sec Score</td>", // column header still present
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("per-user HTML missing %q", want)

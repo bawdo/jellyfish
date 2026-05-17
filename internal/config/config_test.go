@@ -167,9 +167,9 @@ func TestEmailConfigRoundTripIncludesHeaderBGAndLogoPath(t *testing.T) {
 	in := File{"default": Profile{
 		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
 		Email: EmailConfig{
-			From:      "alice@example.com",
-			HeaderBG:  "#C6B8FE",
-			LogoPath:  "/Users/keith/.config/jellyfish/logos/header-logo.png",
+			From:     "alice@example.com",
+			HeaderBG: "#C6B8FE",
+			LogoPath: "/Users/keith/.config/jellyfish/logos/header-logo.png",
 		},
 	}}
 	if err := Save(path, in); err != nil {
