@@ -41,6 +41,7 @@ func assembleOverview(ctx context.Context, client iruClient, stderr io.Writer, n
 	}
 
 	stats := make([]email.UserStats, 0, len(users))
+	wroteProgress := false
 	for i, u := range users {
 		devices, derr := client.ListDevices(ctx, iru.DeviceFilters{UserID: u.ID})
 		if derr != nil {
@@ -77,9 +78,10 @@ func assembleOverview(ctx context.Context, client iruClient, stderr io.Writer, n
 		// Progress every 5 users so a long walk doesn't look hung.
 		if (i+1)%5 == 0 {
 			_, _ = fmt.Fprintf(stderr, "\rusers: %d/%d processed", i+1, len(users))
+			wroteProgress = true
 		}
 	}
-	if len(users) > 0 {
+	if wroteProgress {
 		_, _ = fmt.Fprintln(stderr)
 	}
 	if len(stats) == 0 {
@@ -99,8 +101,7 @@ func assembleOverview(ctx context.Context, client iruClient, stderr io.Writer, n
 	for i := range stats {
 		stats[i].Rank = i + 1
 	}
-	dangerousCount := min(5, len(stats))
-	dangerousCopy := append([]email.UserStats(nil), stats[:dangerousCount]...)
+	dangerousFive := append([]email.UserStats(nil), stats[:min(5, len(stats))]...)
 
 	// BestFive: SecScore asc, name asc, id asc.
 	bestSorted := append([]email.UserStats(nil), stats...)
@@ -113,8 +114,7 @@ func assembleOverview(ctx context.Context, client iruClient, stderr io.Writer, n
 		}
 		return bestSorted[i].UserID < bestSorted[j].UserID
 	})
-	bestCount := min(5, len(bestSorted))
-	bestFive := bestSorted[:bestCount]
+	bestFive := append([]email.UserStats(nil), bestSorted[:min(5, len(bestSorted))]...)
 
 	var totals email.OverviewTotals
 	for _, s := range stats {
@@ -143,7 +143,7 @@ func assembleOverview(ctx context.Context, client iruClient, stderr io.Writer, n
 		Totals:            totals,
 		Averages:          averages,
 		BestFive:          bestFive,
-		MostDangerousFive: dangerousCopy,
+		MostDangerousFive: dangerousFive,
 		Users:             stats,
 	}, nil
 }
