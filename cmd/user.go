@@ -13,7 +13,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bawdo/jellyfish/internal/cache"
 	"github.com/bawdo/jellyfish/internal/config"
 	"github.com/bawdo/jellyfish/internal/email"
 	"github.com/bawdo/jellyfish/internal/gmail"
@@ -26,6 +25,7 @@ type userShowOpts struct {
 	Identifier     string
 	Output         string
 	NoCache        bool
+	CacheTTL       time.Duration
 	EmailFlags     emailFlagValues
 	EmailNow       time.Time
 	Profile        config.Profile
@@ -72,6 +72,11 @@ func newUserShowCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			ttl, err := resolveCacheTTL(cmd)
+			if err != nil {
+				return err
+			}
+			opts.CacheTTL = ttl
 			opts.Identifier = args[0]
 			opts.Output = outFmt
 			if cmd.Flags().Changed("output") {
@@ -107,7 +112,7 @@ func newUserShowCmd() *cobra.Command {
 }
 
 func runUserShow(ctx context.Context, client iruClient, w, stderr io.Writer, opts userShowOpts) error {
-	all, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache, cache.DefaultTTL)
+	all, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache, opts.CacheTTL)
 	if err != nil {
 		return err
 	}
