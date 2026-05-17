@@ -52,10 +52,13 @@ func assembleOverview(ctx context.Context, client iruClient, stderr io.Writer, n
 
 	stats := make([]email.UserStats, 0, len(users))
 	wroteProgress := false
+	deviceErrs := 0
 	for i, u := range users {
 		devices, derr := client.ListDevices(ctx, iru.DeviceFilters{UserID: u.ID})
 		if derr != nil {
-			return email.OverviewView{}, fmt.Errorf("list devices for user %s: %w", u.ID, derr)
+			_, _ = fmt.Fprintf(stderr, "error user=%s devices: %v\n", u.ID, derr)
+			deviceErrs++
+			continue
 		}
 		if len(devices) == 0 {
 			continue
@@ -93,6 +96,9 @@ func assembleOverview(ctx context.Context, client iruClient, stderr io.Writer, n
 	}
 	if wroteProgress {
 		_, _ = fmt.Fprintln(stderr)
+	}
+	if deviceErrs > 0 {
+		_, _ = fmt.Fprintf(stderr, "overview: walked %d users, %d included in roster, %d device-fetch errors\n", len(users), len(stats), deviceErrs)
 	}
 	if len(stats) == 0 {
 		return email.OverviewView{}, errors.New("no users with devices")

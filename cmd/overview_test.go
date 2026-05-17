@@ -22,9 +22,13 @@ import (
 type overviewFakeClient struct {
 	*fakeClient
 	devicesByUser map[string][]iru.Device // key = user.ID
+	deviceErrs    map[string]error        // key = user.ID; overrides success path
 }
 
 func (f *overviewFakeClient) ListDevices(_ context.Context, filt iru.DeviceFilters) ([]iru.Device, error) {
+	if err, ok := f.deviceErrs[filt.UserID]; ok {
+		return nil, err
+	}
 	return f.devicesByUser[filt.UserID], nil
 }
 
@@ -490,6 +494,44 @@ func TestRunOverviewAdminGmailErrorPerRecipient(t *testing.T) {
 	}
 	if !errors.Is(err, gmail.ErrRateLimited) {
 		t.Errorf("error should wrap gmail.ErrRateLimited, got %v", err)
+	}
+}
+
+func TestAssembleOverviewSkipsDeviceFetchErrors(t *testing.T) {
+	c := &overviewFakeClient{
+		fakeClient: &fakeClient{
+			users: []iru.User{
+				{ID: "u1", Name: "Alice", Email: "alice@x"},
+				{ID: "u2", Name: "Bob", Email: "bob@x"},
+				{ID: "u3", Name: "Carol", Email: "carol@x"},
+			},
+			detections: []iru.Detection{
+				{DeviceID: "d-a", CVSSScore: 7.5, Severity: "High"},
+				{DeviceID: "d-c", CVSSScore: 2.5, Severity: "Low"},
+			},
+		},
+		devicesByUser: map[string][]iru.Device{
+			"u1": {{DeviceID: "d-a"}},
+			"u3": {{DeviceID: "d-c"}},
+		},
+		deviceErrs: map[string]error{
+			"u2": errors.New("iru rate-limited"),
+		},
+	}
+	var stderr bytes.Buffer
+	view, err := assembleOverview(context.Background(), c, &stderr, false)
+	if err != nil {
+		t.Fatalf("assembleOverview: %v", err)
+	}
+	if len(view.Users) != 2 {
+		t.Errorf("expected 2 users (u2 skipped), got %d: %+v", len(view.Users), view.Users)
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "error user=u2 devices: iru rate-limited") {
+		t.Errorf("stderr missing device-error line:\n%s", out)
+	}
+	if !strings.Contains(out, "overview: walked 3 users, 2 included in roster, 1 device-fetch errors") {
+		t.Errorf("stderr missing summary:\n%s", out)
 	}
 }
 
