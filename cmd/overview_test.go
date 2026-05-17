@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"reflect"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/bawdo/jellyfish/internal/config"
 	"github.com/bawdo/jellyfish/internal/email"
+	"github.com/bawdo/jellyfish/internal/gmail"
 	"github.com/bawdo/jellyfish/internal/iru"
 )
 
@@ -320,6 +322,19 @@ func TestRunOverviewAdminDryRun(t *testing.T) {
 			t.Errorf("stderr missing %q:\n%s", want, stderr.String())
 		}
 	}
+	// Confirm each would-send line carries a non-zero byte count.
+	for _, line := range strings.Split(stderr.String(), "\n") {
+		if !strings.HasPrefix(line, "would-send to=") {
+			continue
+		}
+		if !strings.Contains(line, " bytes=") {
+			t.Errorf("would-send line missing bytes=: %q", line)
+		}
+		// bytes=0 is a bug (something was rendered)
+		if strings.Contains(line, "bytes=0\n") || strings.HasSuffix(line, "bytes=0") {
+			t.Errorf("would-send line has zero bytes: %q", line)
+		}
+	}
 }
 
 func TestOverviewCmdRegistered(t *testing.T) {
@@ -344,5 +359,48 @@ func TestOverviewCmdRegistered(t *testing.T) {
 		if !strings.Contains(help, flag) {
 			t.Errorf("help missing flag %s; got:\n%s", flag, help)
 		}
+	}
+}
+
+func TestRunOverviewAdminGmailErrorPerRecipient(t *testing.T) {
+	c := &overviewFakeClient{
+		fakeClient: &fakeClient{
+			users:      []iru.User{{ID: "u1", Name: "Alice", Email: "alice@x"}},
+			detections: []iru.Detection{{DeviceID: "d1", CVEID: "CVE-1", Severity: "High", CVSSScore: 7.5}},
+		},
+		devicesByUser: map[string][]iru.Device{"u1": {{DeviceID: "d1"}}},
+	}
+	fake := &fakeGmailSender{err: gmail.ErrRateLimited}
+	opts := overviewOpts{
+		Output:        "email",
+		Yes:           true,
+		EmailFlags:    emailFlagValues{To: "ops@example.com,security@example.com", From: "noreply@example.com"},
+		Profile:       config.Profile{Email: config.EmailConfig{GmailConfigured: true}},
+		EmailNow:      time.Date(2026, 5, 17, 10, 30, 0, 0, time.UTC),
+		KeychainGet:   stubKeychain("{}"),
+		NewSender:     newFakeSenderFactory(fake),
+		gitEmail:      func() (string, error) { return "noreply@example.com", nil },
+		ConfirmReader: strings.NewReader(""),
+	}
+	var stderr bytes.Buffer
+	err := runOverview(context.Background(), c, io.Discard, &stderr, opts)
+
+	// Both recipients should have been attempted (loop did not abort on first error).
+	out := stderr.String()
+	if !strings.Contains(out, "error to=ops@example.com gmail:") {
+		t.Errorf("missing first error line:\n%s", out)
+	}
+	if !strings.Contains(out, "error to=security@example.com gmail:") {
+		t.Errorf("missing second error line:\n%s", out)
+	}
+	if !strings.Contains(out, "summary: sent=0 errors=2") {
+		t.Errorf("summary wrong:\n%s", out)
+	}
+	// runOverview wraps the worst-class sentinel; rate-limit -> exit code 4 via classifyError.
+	if err == nil {
+		t.Fatal("expected wrapped error from counters.exitError, got nil")
+	}
+	if !errors.Is(err, gmail.ErrRateLimited) {
+		t.Errorf("error should wrap gmail.ErrRateLimited, got %v", err)
 	}
 }

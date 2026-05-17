@@ -449,15 +449,15 @@ func runOverviewAdmin(ctx context.Context, stdout, stderr io.Writer, opts overvi
 	for _, to := range recipients {
 		userOpts := baseOpts
 		userOpts.To = to
-		if opts.DryRun {
-			_, _ = fmt.Fprintf(stderr, "would-send to=%s bytes=approx\n", to)
-			counters.wouldSend++
-			continue
-		}
 		var buf bytes.Buffer
 		if err := email.NewOverviewRendererWithStderr(userOpts, stderr).Render(&buf, email.OverviewInput{View: view}); err != nil {
 			_, _ = fmt.Fprintf(stderr, "error to=%s render: %v\n", to, err)
 			counters.recordError(err)
+			continue
+		}
+		if opts.DryRun {
+			_, _ = fmt.Fprintf(stderr, "would-send to=%s bytes=%d\n", to, buf.Len())
+			counters.wouldSend++
 			continue
 		}
 		id, serr := sender.Send(ctx, buf.Bytes())
