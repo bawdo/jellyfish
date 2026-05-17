@@ -19,4 +19,10 @@ test:
 lint:
 	golangci-lint run
 
-.PHONY: build install test lint
+pre-ci:
+	./scripts/pre-ci-check.sh
+
+pre-ci-fix:
+	./scripts/pre-ci-check.sh --fix gofmt
+
+.PHONY: build install test lint pre-ci pre-ci-fix

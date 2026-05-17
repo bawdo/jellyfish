@@ -286,9 +286,8 @@ func TestRunOverviewAdminSend(t *testing.T) {
 	}
 	fake := &fakeGmailSender{returnID: "msg-1"}
 	opts := overviewOpts{
-		Output:        "email",
 		Yes:           true,
-		EmailFlags:    emailFlagValues{To: "ops@example.com", From: "noreply@example.com"},
+		EmailFlags:    emailFlagValues{Send: true, To: "ops@example.com", From: "noreply@example.com"},
 		Profile:       config.Profile{Email: config.EmailConfig{GmailConfigured: true}},
 		EmailNow:      time.Date(2026, 5, 17, 10, 30, 0, 0, time.UTC),
 		KeychainGet:   stubKeychain("{}"),
@@ -320,9 +319,8 @@ func TestRunOverviewAdminDryRun(t *testing.T) {
 		devicesByUser: map[string][]iru.Device{"u1": {{DeviceID: "d1"}}},
 	}
 	opts := overviewOpts{
-		Output:        "email",
 		DryRun:        true,
-		EmailFlags:    emailFlagValues{To: "ops@example.com,security@example.com", From: "noreply@example.com"},
+		EmailFlags:    emailFlagValues{Send: true, To: "ops@example.com,security@example.com", From: "noreply@example.com"},
 		Profile:       config.Profile{Email: config.EmailConfig{GmailConfigured: false}}, // intentional: dry-run bypasses gmail check
 		EmailNow:      time.Date(2026, 5, 17, 10, 30, 0, 0, time.UTC),
 		gitEmail:      func() (string, error) { return "noreply@example.com", nil },
@@ -373,6 +371,7 @@ func TestOverviewCmdRegistered(t *testing.T) {
 		"--email-to", "--email-from", "--email-subject",
 		"--email-header-bg", "--email-logo",
 		"--message", "--message-file",
+		"--send-email",
 		"--dry-run", "--yes", "--no-cache",
 	} {
 		if !strings.Contains(help, flag) {
@@ -401,10 +400,9 @@ func TestRunOverviewPerUser(t *testing.T) {
 	}
 	fake := &fakeGmailSender{returnID: "msg-1"}
 	opts := overviewOpts{
-		Output:        "email",
 		PerUser:       true,
 		Yes:           true,
-		EmailFlags:    emailFlagValues{From: "noreply@example.com"},
+		EmailFlags:    emailFlagValues{Send: true, From: "noreply@example.com"},
 		Profile:       config.Profile{Email: config.EmailConfig{GmailConfigured: true}},
 		EmailNow:      time.Date(2026, 5, 17, 10, 30, 0, 0, time.UTC),
 		KeychainGet:   stubKeychain("{}"),
@@ -447,10 +445,9 @@ func TestRunOverviewPerUserDryRun(t *testing.T) {
 		devicesByUser: map[string][]iru.Device{"u1": {{DeviceID: "d-a"}}},
 	}
 	opts := overviewOpts{
-		Output:        "email",
 		PerUser:       true,
 		DryRun:        true,
-		EmailFlags:    emailFlagValues{From: "noreply@example.com"},
+		EmailFlags:    emailFlagValues{Send: true, From: "noreply@example.com"},
 		Profile:       config.Profile{Email: config.EmailConfig{GmailConfigured: false}},
 		EmailNow:      time.Date(2026, 5, 17, 10, 30, 0, 0, time.UTC),
 		gitEmail:      func() (string, error) { return "noreply@example.com", nil },
@@ -488,9 +485,8 @@ func TestRunOverviewAdminGmailErrorPerRecipient(t *testing.T) {
 	}
 	fake := &fakeGmailSender{err: gmail.ErrRateLimited}
 	opts := overviewOpts{
-		Output:        "email",
 		Yes:           true,
-		EmailFlags:    emailFlagValues{To: "ops@example.com,security@example.com", From: "noreply@example.com"},
+		EmailFlags:    emailFlagValues{Send: true, To: "ops@example.com,security@example.com", From: "noreply@example.com"},
 		Profile:       config.Profile{Email: config.EmailConfig{GmailConfigured: true}},
 		EmailNow:      time.Date(2026, 5, 17, 10, 30, 0, 0, time.UTC),
 		KeychainGet:   stubKeychain("{}"),
@@ -552,10 +548,9 @@ func TestRunOverviewPerUserRedirectsToEmailTo(t *testing.T) {
 	}
 	fake := &fakeGmailSender{returnID: "msg-1"}
 	opts := overviewOpts{
-		Output:        "email",
 		PerUser:       true,
 		Yes:           true,
-		EmailFlags:    emailFlagValues{From: "noreply@example.com", To: "redirect@example.com"},
+		EmailFlags:    emailFlagValues{Send: true, From: "noreply@example.com", To: "redirect@example.com"},
 		Profile:       config.Profile{Email: config.EmailConfig{GmailConfigured: true}},
 		EmailNow:      time.Date(2026, 5, 17, 10, 30, 0, 0, time.UTC),
 		KeychainGet:   stubKeychain("{}"),
@@ -592,10 +587,9 @@ func TestRunOverviewPerUserRedirectDryRun(t *testing.T) {
 		devicesByUser: map[string][]iru.Device{"u1": {{DeviceID: "d-a"}}},
 	}
 	opts := overviewOpts{
-		Output:        "email",
 		PerUser:       true,
 		DryRun:        true,
-		EmailFlags:    emailFlagValues{From: "noreply@example.com", To: "redirect@example.com"},
+		EmailFlags:    emailFlagValues{Send: true, From: "noreply@example.com", To: "redirect@example.com"},
 		Profile:       config.Profile{Email: config.EmailConfig{GmailConfigured: false}},
 		EmailNow:      time.Date(2026, 5, 17, 10, 30, 0, 0, time.UTC),
 		gitEmail:      func() (string, error) { return "noreply@example.com", nil },
@@ -622,14 +616,28 @@ func TestRunOverviewValidationErrors(t *testing.T) {
 		want string
 	}{
 		{
-			name: "per-user with table output",
-			opts: overviewOpts{Output: "table", PerUser: true},
-			want: "--per-user requires --output=email",
+			name: "per-user without --send-email",
+			opts: overviewOpts{PerUser: true},
+			want: "--per-user requires --send-email",
 		},
 		{
-			name: "email without email-to or per-user",
-			opts: overviewOpts{Output: "email"},
+			name: "--send-email without --email-to or --per-user",
+			opts: overviewOpts{EmailFlags: emailFlagValues{Send: true}},
 			want: "--email-to",
+		},
+		{
+			name: "--send-email with explicit non-email output",
+			opts: overviewOpts{
+				Output:         "json",
+				ExplicitOutput: "json",
+				EmailFlags:     emailFlagValues{Send: true, To: "ops@example.com"},
+			},
+			want: "--send-email implies email output",
+		},
+		{
+			name: "-o email --per-user without --send-email",
+			opts: overviewOpts{Output: "email", PerUser: true},
+			want: "--per-user requires --send-email",
 		},
 	}
 	for _, tc := range cases {
@@ -639,6 +647,48 @@ func TestRunOverviewValidationErrors(t *testing.T) {
 				t.Fatalf("err: got %v, want substring %q", err, tc.want)
 			}
 		})
+	}
+}
+
+// TestRunOverviewEmailOutputRendersStdout verifies the new contract: -o email
+// without --send-email writes a single admin .eml to stdout and never touches
+// the Gmail sender.
+func TestRunOverviewEmailOutputRendersStdout(t *testing.T) {
+	c := &overviewFakeClient{
+		fakeClient: &fakeClient{
+			users:      []iru.User{{ID: "u1", Name: "Alice", Email: "alice@x"}},
+			detections: []iru.Detection{{DeviceID: "d1", CVEID: "CVE-1", Severity: "High", CVSSScore: 7.5}},
+		},
+		devicesByUser: map[string][]iru.Device{"u1": {{DeviceID: "d1"}}},
+	}
+	// Wire a fake sender that would fail if invoked, to prove we never call it.
+	fake := &fakeGmailSender{err: errors.New("sender must not be called for -o email render")}
+	opts := overviewOpts{
+		Output:         "email",
+		ExplicitOutput: "email",
+		EmailFlags:     emailFlagValues{To: "ops@example.com", From: "noreply@example.com"},
+		Profile:        config.Profile{Email: config.EmailConfig{GmailConfigured: true}},
+		EmailNow:       time.Date(2026, 5, 17, 10, 30, 0, 0, time.UTC),
+		KeychainGet:    stubKeychain("{}"),
+		NewSender:      newFakeSenderFactory(fake),
+		gitEmail:       func() (string, error) { return "noreply@example.com", nil },
+	}
+	var stdout, stderr bytes.Buffer
+	if err := runOverview(context.Background(), c, &stdout, &stderr, opts); err != nil {
+		t.Fatalf("runOverview: %v\nstderr:\n%s", err, stderr.String())
+	}
+	if len(fake.sent) != 0 {
+		t.Errorf("Gmail sender must not be invoked for -o email render; got %d bytes", len(fake.sent))
+	}
+	body := stdout.String()
+	if !strings.Contains(body, "To: ops@example.com") {
+		t.Errorf("stdout missing To header:\n%s", body)
+	}
+	if !strings.Contains(body, "MIME-Version: 1.0") {
+		t.Errorf("stdout missing MIME-Version header:\n%s", body)
+	}
+	if !strings.Contains(body, "X-Jellyfish-Report: overview") {
+		t.Errorf("stdout missing X-Jellyfish-Report header:\n%s", body)
 	}
 }
 
@@ -774,9 +824,8 @@ func TestRunOverviewAdminMessageFileStdin(t *testing.T) {
 	}
 	fake := &fakeGmailSender{returnID: "msg-1"}
 	opts := overviewOpts{
-		Output:        "email",
 		Yes:           true,
-		EmailFlags:    emailFlagValues{To: "ops@example.com", From: "noreply@example.com", MessageFile: "-"},
+		EmailFlags:    emailFlagValues{Send: true, To: "ops@example.com", From: "noreply@example.com", MessageFile: "-"},
 		Profile:       config.Profile{Email: config.EmailConfig{GmailConfigured: true}},
 		EmailNow:      time.Date(2026, 5, 17, 10, 30, 0, 0, time.UTC),
 		KeychainGet:   stubKeychain("{}"),

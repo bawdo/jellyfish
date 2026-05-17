@@ -363,7 +363,15 @@ func promptGmailJSON(o configureEmailOpts, r *bufio.Reader, prof *config.Profile
 // promptValidated runs promptWithDefault + validateEmailish in a loop up to
 // configureEmailMaxAttempts times. Validation errors print to stderr; the
 // loop re-prompts. The fieldName used in error messages is derived from the
-// label: "Email From" -> "From", "Email default To" -> "DefaultTo".
+// label by stripping everything up to the first space:
+//
+//	"Email From"       -> "From"
+//	"Email default To" -> "default To" -> patched to "DefaultTo"
+//
+// The "default To" -> "DefaultTo" special-case is fragile: renaming the
+// prompt label silently breaks the field name in error wording. If you add
+// a new multi-word label, audit this function and add a matching case (or
+// refactor to pass fieldName explicitly).
 func promptValidated(stdout, stderr io.Writer, r *bufio.Reader, label, current string, allowEmpty bool) (string, error) {
 	fieldName := label
 	if idx := strings.Index(label, " "); idx > 0 {

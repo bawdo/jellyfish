@@ -168,7 +168,7 @@ func TestCaptureMessageFileUnreadable(t *testing.T) {
 
 func TestCaptureMessageEditorStripsCommentLines(t *testing.T) {
 	fake := func(path string) error {
-		body := "# Jellyfish message for: subj\n# To: a@b\n# Lines starting with '#' will be ignored.\n#\n\nHi team\n\nSee you Friday.\n"
+		body := "# Jellyfish message\n# Subject: subj\n# To: a@b\n# Lines starting with '#' will be ignored.\n#\n\nHi team\n\nSee you Friday.\n"
 		return os.WriteFile(path, []byte(body), 0o600)
 	}
 	got, err := captureMessage(
@@ -240,7 +240,7 @@ func TestCaptureMessageEditorTemplateContainsSubjectAndTo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(got, "# Jellyfish message for: Weekly brief") {
+	if !strings.Contains(got, "# Subject: Weekly brief") {
 		t.Errorf("template missing subject line; got:\n%s", got)
 	}
 	if !strings.Contains(got, "# To: alice@example.com") {

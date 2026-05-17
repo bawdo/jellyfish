@@ -191,15 +191,15 @@ func runUsersSendEmail(ctx context.Context, client iruClient, stderr io.Writer, 
 		bundle, rerr := resolveBundleForUser(ctx, client, inputEmail, allDetections)
 		if rerr != nil {
 			if errors.Is(rerr, iru.ErrNotFound) {
-				_, _ = fmt.Fprintf(stderr, "error: %s user not found in Iru\n", inputEmail)
+				_, _ = fmt.Fprintf(stderr, "error input=%s reason=user-not-found\n", inputEmail)
 			} else {
-				_, _ = fmt.Fprintf(stderr, "error: %s lookup: %v\n", inputEmail, rerr)
+				_, _ = fmt.Fprintf(stderr, "error input=%s lookup: %v\n", inputEmail, rerr)
 			}
 			counters.recordError(rerr)
 			continue
 		}
 		if len(bundle.Devices) == 0 {
-			_, _ = fmt.Fprintf(stderr, "skip: %s no devices\n", inputEmail)
+			_, _ = fmt.Fprintf(stderr, "skip input=%s reason=no-devices\n", inputEmail)
 			counters.skipped++
 			continue
 		}
@@ -211,7 +211,7 @@ func runUsersSendEmail(ctx context.Context, client iruClient, stderr io.Writer, 
 			}
 		}
 		if !hasDetections {
-			_, _ = fmt.Fprintf(stderr, "skip: %s no vulnerabilities\n", inputEmail)
+			_, _ = fmt.Fprintf(stderr, "skip input=%s reason=no-vulnerabilities\n", inputEmail)
 			counters.skipped++
 			continue
 		}
@@ -221,24 +221,24 @@ func runUsersSendEmail(ctx context.Context, client iruClient, stderr io.Writer, 
 			userOpts.To = bundle.User.Email
 		}
 		if userOpts.To == "" {
-			_, _ = fmt.Fprintf(stderr, "error: %s no recipient address (user has no email and --email-to not set)\n", inputEmail)
+			_, _ = fmt.Fprintf(stderr, "error input=%s reason=no-recipient\n", inputEmail)
 			counters.recordError(fmt.Errorf("no recipient address for %s: %w", inputEmail, iru.ErrNotFound))
 			continue
 		}
 
 		if opts.DryRun {
-			_, _ = fmt.Fprintf(stderr, "would-send: %s to=%s\n", inputEmail, userOpts.To)
+			_, _ = fmt.Fprintf(stderr, "would-send input=%s to=%s\n", inputEmail, userOpts.To)
 			counters.wouldSend++
 			continue
 		}
 
 		id, serr := sendUserBundle(ctx, sender, userOpts, stderr, bundle)
 		if serr != nil {
-			_, _ = fmt.Fprintf(stderr, "error: %s gmail: %v\n", inputEmail, serr)
+			_, _ = fmt.Fprintf(stderr, "error input=%s gmail: %v\n", inputEmail, serr)
 			counters.recordError(serr)
 			continue
 		}
-		_, _ = fmt.Fprintf(stderr, "sent: %s to=%s gmail-id=%s\n", inputEmail, userOpts.To, id)
+		_, _ = fmt.Fprintf(stderr, "sent input=%s to=%s gmail-id=%s\n", inputEmail, userOpts.To, id)
 		counters.sent++
 	}
 

@@ -38,7 +38,14 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		if !shouldRetry(resp.StatusCode) {
 			return resp, nil
 		}
-		// Drain and close so the conn can be reused.
+		// TODO(known-follow-up): closing the body here means client.do's
+		// decodeAPIError(lastResp) reads empty bytes, so APIError.Message ends
+		// up blank after all retries are exhausted. Status codes survive (and
+		// thus classifyError -> exit code), but the human-readable upstream
+		// text is lost. Fix: read into a []byte and reattach via
+		// io.NopCloser(bytes.NewReader(buf)) before closing. See README
+		// "Known follow-ups → Retry transport drops the upstream error message
+		// body".
 		_ = resp.Body.Close()
 		lastResp = resp
 

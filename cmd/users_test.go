@@ -277,7 +277,7 @@ func TestRunUsersSendEmailHappyPath(t *testing.T) {
 		t.Fatalf("run: %v\nstderr=%s", err, stderr.String())
 	}
 	want := []string{
-		"sent: alice@example.com to=alice@example.com gmail-id=msg-xyz",
+		"sent input=alice@example.com to=alice@example.com gmail-id=msg-xyz",
 		"summary: sent=1 skipped=0 errors=0",
 	}
 	for _, w := range want {
@@ -324,7 +324,7 @@ func TestRunUsersSendEmailUserNotFound(t *testing.T) {
 		t.Fatalf("err: got %v want ErrNotFound", err)
 	}
 	for _, want := range []string{
-		"error: ghost@example.com user not found in Iru",
+		"error input=ghost@example.com reason=user-not-found",
 		"summary: sent=0 skipped=0 errors=1",
 	} {
 		if !strings.Contains(stderr.String(), want) {
@@ -348,7 +348,7 @@ func TestRunUsersSendEmailSkipNoDevices(t *testing.T) {
 	if err := runUsersSendEmail(context.Background(), client, &stderr, opts); err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	if !strings.Contains(stderr.String(), "skip: alice@example.com no devices") {
+	if !strings.Contains(stderr.String(), "skip input=alice@example.com reason=no-devices") {
 		t.Errorf("stderr: %s", stderr.String())
 	}
 	if !strings.Contains(stderr.String(), "summary: sent=0 skipped=1 errors=0") {
@@ -372,7 +372,7 @@ func TestRunUsersSendEmailSkipNoVulns(t *testing.T) {
 	if err := runUsersSendEmail(context.Background(), client, &stderr, opts); err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	if !strings.Contains(stderr.String(), "skip: alice@example.com no vulnerabilities") {
+	if !strings.Contains(stderr.String(), "skip input=alice@example.com reason=no-vulnerabilities") {
 		t.Errorf("stderr: %s", stderr.String())
 	}
 }
@@ -391,7 +391,7 @@ func TestRunUsersSendEmailGmailAuthError(t *testing.T) {
 	if !errors.Is(err, gmail.ErrUnauthorized) {
 		t.Fatalf("err: got %v want gmail.ErrUnauthorized", err)
 	}
-	if !strings.Contains(stderr.String(), "error: alice@example.com gmail:") {
+	if !strings.Contains(stderr.String(), "error input=alice@example.com gmail:") {
 		t.Errorf("stderr: %s", stderr.String())
 	}
 }
@@ -505,7 +505,7 @@ func TestRunUsersSendEmailDryRun(t *testing.T) {
 	}
 	for _, want := range []string{
 		"DRY RUN",
-		"would-send: alice@example.com to=alice@example.com",
+		"would-send input=alice@example.com to=alice@example.com",
 		"summary: would-send=1 skipped=0 errors=0",
 	} {
 		if !strings.Contains(stderr.String(), want) {

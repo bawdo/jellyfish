@@ -8,6 +8,10 @@ import (
 	"github.com/bawdo/jellyfish/internal/version"
 )
 
+// newVersionCmd wires `jellyfish version`. Prints the version line followed
+// by optional commit (with " (dirty)" suffix when the build tree was dirty)
+// and tag lines. Values come from internal/version.Resolve, which prefers
+// ldflags-set values and falls back to runtime build info.
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",

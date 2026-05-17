@@ -20,6 +20,12 @@ type Client struct {
 // Option configures a Client at construction time.
 type Option func(*Client)
 
+// TODO(known-follow-up): WithHTTPClient + WithTimeout option ordering is
+// fragile — applying WithTimeout(d) and then WithHTTPClient(custom) replaces
+// the whole *http.Client and loses the timeout. Not triggered in v1 because
+// WithHTTPClient is never called by production code. Fix path: make
+// WithHTTPClient preserve any timeout already set, or document the ordering
+// contract on each option. See README "Known follow-ups".
 func WithHTTPClient(h *http.Client) Option { return func(c *Client) { c.httpClient = h } }
 func WithUserAgent(ua string) Option       { return func(c *Client) { c.userAgent = ua } }
 func WithTimeout(d time.Duration) Option {

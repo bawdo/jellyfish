@@ -112,7 +112,7 @@ func captureMessageViaEditor(recipient, subject string, runEditor func(path stri
 		display = "(none)"
 	}
 	templateBody := fmt.Sprintf(
-		"# Jellyfish message for: %s\n# To: %s\n# Lines starting with '#' will be ignored.\n#\n\n",
+		"# Jellyfish message\n# Subject: %s\n# To: %s\n# Lines starting with '#' will be ignored.\n#\n\n",
 		subject, display,
 	)
 	var nonce [4]byte

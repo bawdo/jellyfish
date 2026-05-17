@@ -7,11 +7,13 @@ A macOS-only Go CLI for the Iru (formerly Kandji) Endpoint Management API.
 - `jellyfish vulns list` - list vulnerability detections across the fleet (one row per device-CVE intersection), filter by device ID or serial number.
 - `jellyfish vulns summary` - per-CVE rollup view with status, severity, CVSS, KEV (CISA Known Exploited Vulnerabilities) score, affected software, and device count.
 - `jellyfish user show <id-or-email>` - resolve a user, their devices, and the active detections per device.
-- `jellyfish configure` - interactively store the tenant subdomain, region and API token (token in the macOS Keychain).
+- `jellyfish overview` - org-wide `sec_score` rollup per user (sum of CVSS across active detections), with Best-5 / Most-Dangerous-5 leaderboards and a full ranked roster. Renders to table/JSON/YAML/CSV or `.eml`; with `--send-email` sends an admin or per-user fanout via Gmail.
+- `jellyfish users send-email` - bulk per-user vulnerability reports from a CSV file or comma-separated email list.
+- `jellyfish configure` / `jellyfish configure email` - interactively store the tenant subdomain, region, API token, and (optionally) Gmail send credentials (all secrets in the macOS Keychain).
 
 ## Install
 
-Requires Go 1.21+ on macOS. The module path `github.com/bawdo/jellyfish` is
+Requires Go 1.25+ on macOS. The module path `github.com/bawdo/jellyfish` is
 private (no `go-import` meta tag is served), so install from a local checkout
 rather than the network.
 
@@ -41,8 +43,14 @@ make build       # produces ./bin/jellyfish
 After install, confirm the binary is wired up:
 
 ```bash
-jellyfish version    # prints e.g. "jellyfish 7f579d3" (the current git ref)
+$ jellyfish version
+jellyfish v1.0.0
+  commit: 7f579d3a...
+  tag:    v1.0.0
 ```
+
+The commit line is suffixed with ` (dirty)` when the working tree had uncommitted
+changes at build time. The tag line is omitted when HEAD is not tagged.
 
 ### Shell completion
 
@@ -66,7 +74,7 @@ jellyfish configure
 
 Interactive prompts:
 
-1. Tenant subdomain (the bit before `.api.kandji.io`).
+1. Tenant subdomain (the bit before `.api.kandji.io` — the API hostname is still `kandji.io` even though the product was renamed Iru).
 2. Region: `us` or `eu`.
 3. API token (input is masked).
 
@@ -129,6 +137,10 @@ jellyfish vulns list -o csv > vulns.csv           # CSV export
 jellyfish vulns list --no-cache                   # skip cache, always fetch fresh
 ```
 
+`--limit` is clamped to Iru's server-side page maximum (currently 300). Asking
+for more emits a `warning: limit clamped to N (Iru server-side max)` line on
+stderr and returns the clamped count.
+
 ### Detection cache
 
 Both `vulns list` and `user show` walk Iru's `/vulnerability-management/detections`
@@ -143,8 +155,8 @@ indicator on stderr shows pages as they come in). To avoid repeating that
 walk on every command, the result is cached for **15 minutes** at the OS
 cache location:
 
-- macOS: `~/Library/Caches/jellyfish/detections.json` (detections), `~/Library/Caches/jellyfish/vulnerabilities.json` (vulnerability rollups)
-- Linux: `$XDG_CACHE_HOME/jellyfish/detections.json` or `~/.cache/jellyfish/detections.json` (detections), same directory for `vulnerabilities.json`
+- `~/Library/Caches/jellyfish/detections.json` (detections)
+- `~/Library/Caches/jellyfish/vulnerabilities.json` (vulnerability rollups)
 
 Subsequent commands within the TTL skip the walk and return in under a
 second. Pass `--no-cache` (available on both `vulns list` and `user show`)
@@ -386,7 +398,7 @@ with `Has the words: list:example.com` (substitute your own
 domain) and label every Jellyfish mail in one rule.
 
 Per-command discrimination lives in the `X-Jellyfish-Report` header
-(values: `vulns-summary`, `user-show`, `users-send`). Gmail's filter UI
+(values: `vulns-summary`, `user-show`, `users-send`, `overview`). Gmail's filter UI
 does not expose arbitrary header search, but you can view the value in
 "Show original" or in any mail client that surfaces raw headers (sieve,
 mutt, server-side rules). Two more headers are set for audit:
@@ -417,6 +429,9 @@ jellyfish users send-email --csv fleet.csv --dry-run
 
 # Compose one message body, shared across every recipient
 jellyfish users send-email --csv fleet.csv --message
+
+# Force a fresh detection walk instead of using the 15-minute cache
+jellyfish users send-email --csv fleet.csv --no-cache
 ```
 
 `--csv` and `--emails` are mutually exclusive. Email addresses are
@@ -433,19 +448,35 @@ About to send vulnerability reports to 47 users. Continue? [y/N]
 
 Use `--yes` to skip the prompt in scripts.
 
-Stderr emits one record per recipient and a final summary line:
+Stderr emits one record per recipient and a final summary line. Every per-row
+line is `verb input=<addr> [keys...]`; the `input=` value is the address as
+supplied in the CSV / list (not the resolved recipient) — useful for tracing
+each line back to a row in the source file:
 
 ```
-sent: alice@example.com to=alice@example.com gmail-id=msg-abc
-skip: bob@example.com no devices
-skip: carol@example.com no vulnerabilities
-error: dave@example.com user not found in Iru
-summary: sent=1 skipped=2 errors=1
+sent input=alice@example.com to=alice@example.com gmail-id=msg-abc
+skip input=bob@example.com reason=no-devices
+skip input=carol@example.com reason=no-vulnerabilities
+error input=dave@example.com reason=user-not-found
+error input=eve@example.com reason=no-recipient
+error input=frank@example.com lookup: <iru error message>
+error input=greta@example.com gmail: <gmail error message>
+summary: sent=1 skipped=2 errors=4
 ```
 
-`<input-email>` (the first column of each line) is always the address as
-supplied in the CSV / list, not the resolved recipient - useful for
-tracing each line back to a row in the source file.
+`reason=` values:
+
+| Reason | Meaning |
+|---|---|
+| `no-devices` | The Iru user exists but has no devices on file. |
+| `no-vulnerabilities` | The user has devices but no active detections — nothing worth mailing. |
+| `user-not-found` | No Iru user matches that email. |
+| `no-recipient` | User exists but has no email address on their Iru record and `--email-to` was not set. |
+
+Free-text continuations are used for failures with a useful underlying message
+(`lookup: <err>` for Iru lookup failures, `gmail: <err>` for Gmail send
+failures). In dry-run mode the per-row lines become `would-send input=<addr>
+to=<addr>` and the summary uses `would-send=` instead of `sent=`.
 
 Unlike `user show --send-email`, the bulk command intentionally does not
 honour `email.default_to` from config. If you want every email redirected
@@ -461,8 +492,9 @@ Computes a `sec_score` for every user in your Iru tenant - the sum of CVSS
 scores across all active detections on all their devices - and rolls those up
 into org-wide totals, averages, a Best-5 leaderboard, a Most-Dangerous-5
 leaderboard, and a full ranked roster. Supports the standard output formats
-(`table`, `json`, `yaml`, `csv`) plus `email`. With `-o email` you can send a
-single admin report to one or more addresses, or use `--per-user` to fan out a
+(`table`, `json`, `yaml`, `csv`) plus `email`. `-o email` writes the rendered
+admin `.eml` to stdout. `--send-email` sends via Gmail: a single admin report
+when combined with `--email-to`, or with `--per-user` it fans out a
 personalised copy to every user with devices.
 
 #### How `sec_score` is computed
@@ -504,18 +536,31 @@ jellyfish overview
 # CSV for spreadsheets
 jellyfish overview -o csv > scores.csv
 
+# Render the admin .eml to stdout (no mail sent)
+jellyfish overview -o email --email-to security@example.com > overview.eml
+
 # Send an admin report by email
-jellyfish overview -o email --email-to security@example.com
+jellyfish overview --send-email --email-to security@example.com
 
 # Per-user fanout preview (no mail sent)
-jellyfish overview -o email --per-user --dry-run
+jellyfish overview --send-email --per-user --dry-run
+
+# Per-user fanout, all copies redirected to one address (test/audit mode)
+jellyfish overview --send-email --per-user --email-to me@example.com
 
 # Admin report with an editor-composed message
-jellyfish overview -o email --email-to security@example.com --message
+jellyfish overview --send-email --email-to security@example.com --message
 
 # Roster restricted to two users
 jellyfish overview --emails alice@example.com,bob@example.com
 ```
+
+Validation rules (enforced before any network work):
+
+- `--per-user` requires `--send-email` (rendering multiple `.eml`s to stdout is
+  meaningless; per-user only makes sense as a send).
+- `--send-email` without `--per-user` requires `--email-to`.
+- `--send-email` rejects an explicit non-email `-o` (e.g. `--send-email -o json`).
 
 #### Flags
 
@@ -524,16 +569,17 @@ jellyfish overview --emails alice@example.com,bob@example.com
 | `--csv <path>` | Read user emails to include from a CSV file. Mutually exclusive with `--emails`. Default: all users with devices. |
 | `--emails <list>` | Comma-separated user emails to include. Mutually exclusive with `--csv`. Default: all users with devices. |
 | `--csv-email-column <name>` | Override CSV header auto-detection. Default scans for `email`, `user_email`, `e-mail` (case-insensitive). |
-| `--per-user` | Fan out personalised copies (only with `-o email`). Each recipient gets a copy personalised to them - see below. |
-| `--email-to <addr>` | Comma-separated admin recipients. Required for `-o email` without `--per-user`. When combined with `--per-user`, every personalised copy is redirected to this address (test/audit mode); stderr lines include `for=<user-email>` for traceability. |
+| `--send-email` | Send via Gmail. Without `--per-user`: single admin report (requires `--email-to`). With `--per-user`: one personalised copy per user with devices. |
+| `--per-user` | Fan out personalised copies (only with `--send-email`). Each recipient gets a copy personalised to them - see below. |
+| `--email-to <addr>` | Comma-separated admin recipients. Required for `--send-email` without `--per-user`. With `--send-email --per-user`, redirects every personalised copy to this address (test/audit mode); stderr lines include `for=<user-email>` for traceability. With `-o email` (stdout render), populates the `To:` header on the rendered `.eml`. |
 | `--email-from` | From: address (default: `email.from` from config, then git `user.email`). |
 | `--email-subject` | Subject: header (default: per-command default or `email.subject_template`). |
 | `--email-header-bg` | Email header background colour as `#RRGGBB` (default: `email.header_bg` or `#2b3a55`). |
 | `--email-logo` | Path to a PNG to show in the email header (default: `email.logo_path`). |
 | `--message` | Open `$VISUAL`/`$EDITOR` to compose a message rendered above the body (shared across all recipients). |
 | `--message-file` | Read the message body from a file (use `-` for stdin). Mutually exclusive with `--message`. |
-| `--dry-run` | Run the full pipeline including render, but skip the Gmail send. |
-| `--yes` | Skip the interactive confirmation prompt. |
+| `--dry-run` | Render but do not send (only meaningful with `--send-email`). |
+| `--yes` | Skip the interactive confirmation prompt (only meaningful with `--send-email`). |
 | `--no-cache` | Bypass the detection cache; always fetch fresh from Iru. |
 
 #### Stderr line format
@@ -582,7 +628,7 @@ sends only to the filtered users.
 jellyfish overview --emails alice@example.com,bob@example.com
 
 # Subset from a CSV (auto-detects email / user_email / e-mail headers)
-jellyfish overview --csv ./platform-team.csv -o email --per-user
+jellyfish overview --csv ./platform-team.csv --send-email --per-user
 
 # Override the column when the CSV uses a non-default header
 jellyfish overview --csv ./contacts.csv --csv-email-column primary_email
@@ -629,11 +675,30 @@ across all per-user copies; only the `Me` binding changes.
 ## Development
 
 ```bash
-make test
-make lint
+make test     # go test ./...
+make lint     # golangci-lint run
+make pre-ci   # full nine-check local build validator (see below)
+make build    # produces ./bin/jellyfish with version ldflags
 ```
 
-Real-Keychain integration tests:
+### Pre-CI local validator
+
+`scripts/pre-ci-check.sh` (also `make pre-ci`) runs nine checks in sequence
+and prints a build-readiness report at the end. The checks are: Go version,
+`go mod download`, `gofmt -s`, `go test -race ./...`, `golangci-lint`,
+coverage with delta tracking (80% target), versioned build, `govulncheck`,
+and a CLI smoke test (`jellyfish version` exits 0 with the expected output
+shape).
+
+```bash
+make pre-ci          # run the nine checks
+make pre-ci-fix      # auto-fix gofmt issues before the gofmt check runs
+```
+
+All logs land in `coverage/pre-ci-*.txt` for post-mortem. The script exits
+non-zero if any check fails.
+
+### Real-Keychain integration tests
 
 ```bash
 JELLYFISH_KEYCHAIN_TESTS=1 go test ./internal/keychain/... -count=1
@@ -699,13 +764,6 @@ The flattened CSV columns for `jellyfish user show -o csv` are listed in the
 README above and pinned in `cmd/user.go`'s `renderUserBundleCSV`. There is
 currently no test asserting the order. If the order ever needs to change,
 that change should land alongside a golden-file test that locks it down.
-
-### Linux / Windows support
-
-The CLI is macOS-only because the credential store is the macOS Keychain.
-Porting to Linux would mean swapping in libsecret (or similar); Windows would
-need Credential Manager. Non-darwin builds currently fail at compile time on
-the `keychain` package, which is the intended signal.
 
 ### Other future work
 

@@ -307,6 +307,7 @@ func renderOverviewStructured(w io.Writer, format string, v email.OverviewView) 
 
 type overviewOpts struct {
 	Output         string
+	ExplicitOutput string // set iff -o was passed explicitly; used to reject --send-email -o <non-email>
 	PerUser        bool
 	CSVPath        string
 	Emails         string
@@ -334,13 +335,16 @@ func newOverviewCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			outFmt, _ := cmd.Flags().GetString("output")
 			opts.Output = outFmt
+			if cmd.Flags().Changed("output") {
+				opts.ExplicitOutput = outFmt
+			}
 			opts.EmailFlags = readEmailFlags(cmd)
 			opts.EmailNow = time.Now()
 			client, err := buildClient(cmd)
 			if err != nil {
 				return err
 			}
-			if outFmt == "email" {
+			if outFmt == "email" || opts.EmailFlags.Send {
 				prof, err := activeProfile(cmd)
 				if err != nil {
 					return err
@@ -356,18 +360,19 @@ func newOverviewCmd() *cobra.Command {
 			return runOverview(cmd.Context(), client, cmd.OutOrStdout(), cmd.ErrOrStderr(), opts)
 		},
 	}
-	c.Flags().BoolVar(&opts.PerUser, "per-user", false, "With --output=email: send one personalised copy per user with devices")
+	c.Flags().BoolVar(&opts.PerUser, "per-user", false, "With --send-email: send one personalised copy per user with devices")
 	c.Flags().StringVar(&opts.CSVPath, "csv", "", "Path to a CSV file holding the user emails to include. Mutually exclusive with --emails. Default: all users with devices.")
 	c.Flags().StringVar(&opts.Emails, "emails", "", "Comma-separated list of user emails to include. Mutually exclusive with --csv. Default: all users with devices.")
 	c.Flags().StringVar(&opts.CSVEmailColumn, "csv-email-column", "", "CSV column name holding the email address (default: auto-detect email/user_email/e-mail)")
-	c.Flags().String("email-to", "", "Email recipient(s) for the admin report (comma-separated). Ignored with --per-user.")
+	c.Flags().String("email-to", "", "Email recipient(s) for the admin report (comma-separated). Required with --send-email unless --per-user is set. With --send-email --per-user, redirects every personalised copy to this address (test/audit mode).")
 	c.Flags().String("email-from", "", "Email From: header (default: email.from from config, then git user.email)")
 	c.Flags().String("email-subject", "", "Email Subject: header (default: rendered email.subject_template or a per-command default)")
 	c.Flags().String("email-header-bg", "", "Email header background colour as #RRGGBB (default: email.header_bg or #2b3a55)")
 	c.Flags().String("email-logo", "", "Path to a PNG to show in the email header (default: email.logo_path)")
+	c.Flags().Bool("send-email", false, "Send the rendered overview via Gmail (requires `jellyfish configure email` to be run first)")
 	c.Flags().Bool("message", false, "Open $VISUAL/$EDITOR to compose a message rendered above the email body (shared across all recipients)")
 	c.Flags().String("message-file", "", "Read the email message body from a file (use - for stdin)")
-	c.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Render the email but do not send")
+	c.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Render but do not send (only meaningful with --send-email)")
 	c.Flags().BoolVar(&opts.Yes, "yes", false, "Skip the confirmation prompt")
 	c.Flags().BoolVar(&opts.NoCache, "no-cache", false, "Skip the detection cache; always fetch fresh")
 	return c
@@ -376,7 +381,12 @@ func newOverviewCmd() *cobra.Command {
 // runOverview is the orchestration entry point. Steps in order:
 //  1. validate flag combinations
 //  2. assemble the OverviewView (single detection walk + per-user devices)
-//  3. dispatch on --output to a renderer or send path
+//  3. dispatch on --send-email / --output to a renderer or send path
+//
+// Dispatch contract:
+//   - --send-email → admin or per-user Gmail send (runOverviewEmail)
+//   - -o email     → render single admin .eml to stdout (renderOverviewEmailStdout)
+//   - otherwise    → table / json / yaml / csv to stdout
 func runOverview(ctx context.Context, client iruClient, stdout, stderr io.Writer, opts overviewOpts) error {
 	if err := validateOverviewFlags(opts); err != nil {
 		return err
@@ -389,6 +399,9 @@ func runOverview(ctx context.Context, client iruClient, stdout, stderr io.Writer
 	if err != nil {
 		return err
 	}
+	if opts.EmailFlags.Send {
+		return runOverviewEmail(ctx, stderr, opts, view)
+	}
 	switch opts.Output {
 	case "", "table":
 		return renderOverviewTable(stdout, view)
@@ -397,28 +410,75 @@ func runOverview(ctx context.Context, client iruClient, stdout, stderr io.Writer
 	case "csv":
 		return renderOverviewCSV(stdout, view)
 	case "email":
-		return runOverviewEmail(ctx, stderr, opts, view)
+		return renderOverviewEmailStdout(stdout, stderr, opts, view)
 	default:
 		return fmt.Errorf("unsupported output format %q", opts.Output)
 	}
 }
 
 // validateOverviewFlags catches bad flag combinations before any network
-// work. Mirrors the spec's Validation (exit 1) section.
+// work. The contract:
+//   - --per-user requires --send-email (otherwise the fanout has no destination)
+//   - --send-email implies email output: rejecting --send-email -o <non-email>
+//     mirrors the cmd/send_email.go resolveSendOptions check
+//   - --send-email without --per-user requires an explicit --email-to so the
+//     admin path has a recipient
+//   - --csv and --emails are mutually exclusive (only one input source)
 func validateOverviewFlags(opts overviewOpts) error {
-	if err := validateMessageFlags(opts.EmailFlags, opts.Output == "email"); err != nil {
+	hasEmailOutput := opts.Output == "email" || opts.EmailFlags.Send
+	if err := validateMessageFlags(opts.EmailFlags, hasEmailOutput); err != nil {
 		return err
 	}
-	if opts.PerUser && opts.Output != "email" {
-		return errors.New("--per-user requires --output=email")
+	if opts.PerUser && !opts.EmailFlags.Send {
+		return errors.New("--per-user requires --send-email")
 	}
-	if opts.Output == "email" && !opts.PerUser && opts.EmailFlags.To == "" {
-		return errors.New("--output=email without --per-user requires --email-to")
+	if opts.EmailFlags.Send {
+		if opts.ExplicitOutput != "" && opts.ExplicitOutput != "email" {
+			return fmt.Errorf("--send-email implies email output; remove -o %s or set -o email", opts.ExplicitOutput)
+		}
+		if !opts.PerUser && opts.EmailFlags.To == "" {
+			return errors.New("--send-email without --per-user requires --email-to")
+		}
 	}
 	if opts.CSVPath != "" && opts.Emails != "" {
 		return errors.New("--csv and --emails are mutually exclusive")
 	}
 	return nil
+}
+
+// renderOverviewEmailStdout writes a single admin .eml to stdout. To header
+// reflects --email-to (or email.default_to from config; renders as
+// <unspecified> if neither is set). Mirrors `vulns summary -o email` and
+// `user show -o email`: pure rendering, no Gmail credentials are touched.
+func renderOverviewEmailStdout(stdout, stderr io.Writer, opts overviewOpts, view email.OverviewView) error {
+	now := opts.EmailNow
+	if now.IsZero() {
+		now = time.Now()
+	}
+	gitLookup := opts.gitEmail
+	if gitLookup == nil {
+		gitLookup = gitUserEmail
+	}
+	emailOpts, err := resolveEmailOptions(opts.EmailFlags, opts.Profile, gitLookup, now)
+	if err != nil {
+		return err
+	}
+	emailOpts.Report = "overview"
+	emailOpts.Tenant = opts.Profile.Subdomain
+	view.Tenant = opts.Profile.Subdomain
+	if view.GeneratedAt.IsZero() {
+		view.GeneratedAt = now
+	}
+	msgIn := opts.MessageReader
+	if msgIn == nil {
+		msgIn = os.Stdin
+	}
+	message, err := captureMessage(opts.EmailFlags, true, emailOpts.To, emailOpts.Subject, msgIn, stderr, nil)
+	if err != nil {
+		return err
+	}
+	emailOpts.Message = message
+	return email.NewOverviewRendererWithStderr(emailOpts, stderr).Render(stdout, email.OverviewInput{View: view})
 }
 
 // buildOverviewUserFilter parses --csv / --emails into a case-insensitive
@@ -439,8 +499,10 @@ func buildOverviewUserFilter(opts overviewOpts) (map[string]struct{}, error) {
 	return out, nil
 }
 
-// runOverviewEmail builds the email Options, captures the optional message,
-// and dispatches to the admin or per-user path. Per-user is Task 13.
+// runOverviewEmail is the Gmail send entry point (called when --send-email is
+// set). Builds email Options, captures the optional --message, and dispatches
+// to the admin path or the --per-user fanout. The -o email stdout-render path
+// is renderOverviewEmailStdout — separate function, no Gmail credentials.
 func runOverviewEmail(ctx context.Context, stderr io.Writer, opts overviewOpts, view email.OverviewView) error {
 	now := opts.EmailNow
 	if now.IsZero() {
