@@ -46,7 +46,7 @@ type Options struct {
 	// Filterable headers; all optional. Empty string means "skip the header".
 	Report       string // command identity: "vulns-summary" | "user-show" | "users-send"
 	Version      string // jellyfish build version (internal/version.Version)
-	ListIDDomain string // explicit List-Id domain; empty falls back to domain of From
+	ListIDDomain string // explicit List-Id domain; empty falls back to "jellyfish." + domain of From
 
 	// Injected for tests; production leaves these zero so assembleMessage
 	// pulls from crypto/rand.
@@ -96,7 +96,7 @@ type messageHeaders struct {
 	Report       string // X-Jellyfish-Report; empty -> skip
 	Tenant       string // X-Jellyfish-Tenant; empty -> skip
 	Version      string // X-Jellyfish-Version; empty -> skip
-	ListIDDomain string // List-Id domain; empty -> domainFromAddress(From); still empty -> skip
+	ListIDDomain string // List-Id domain; empty -> "jellyfish." + domainFromAddress(From); still empty -> skip
 }
 
 // assembleMessage produces a full RFC 5322 message. When logo is nil, the
@@ -136,7 +136,7 @@ func assembleMessage(
 	listDomain := h.ListIDDomain
 	if listDomain == "" {
 		if d := domainFromAddress(h.From); d != "" && d != "localhost" {
-			listDomain = d
+			listDomain = "jellyfish." + d
 		}
 	}
 	if listDomain != "" {

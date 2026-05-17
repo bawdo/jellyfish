@@ -318,6 +318,12 @@ func runConfigureEmail(ctx context.Context, o configureEmailOpts) error {
 	}
 	prof.Email.LogoPath = newLogo
 
+	listID, err := promptListIDDomain(o.Stdout, o.Stderr, r, prof.Email.ListIDDomain)
+	if err != nil {
+		return err
+	}
+	prof.Email.ListIDDomain = listID
+
 	file["default"] = prof
 
 	if err := config.Save(o.ConfigPath, file); err != nil {
@@ -416,6 +422,41 @@ func promptValidated(stdout, stderr io.Writer, r *bufio.Reader, label, current s
 		return value, nil
 	}
 	return "", fmt.Errorf("invalid %s address after %d attempts", fieldName, configureEmailMaxAttempts)
+}
+
+// validateListIDDomain accepts empty or a domain-like string with no
+// whitespace and no '@'. The RFC 5064/5/6 List-Id value is expected to be a
+// DNS-style domain; this check is intentionally permissive.
+func validateListIDDomain(v string) error {
+	if v == "" {
+		return nil
+	}
+	if strings.ContainsAny(v, " \t\r\n") {
+		return errors.New("List-Id domain must not contain whitespace")
+	}
+	if strings.Contains(v, "@") {
+		return errors.New("List-Id domain must not contain '@'")
+	}
+	return nil
+}
+
+func promptListIDDomain(stdout, stderr io.Writer, r *bufio.Reader, current string) (string, error) {
+	const label = "List-Id domain (optional, e.g. jellyfish.example.com)"
+	for attempt := 1; attempt <= configureEmailMaxAttempts; attempt++ {
+		value, err := promptWithDefault(stdout, r, label, current)
+		if err != nil {
+			return "", err
+		}
+		if value == "" {
+			return "", nil
+		}
+		if vErr := validateListIDDomain(value); vErr != nil {
+			_, _ = fmt.Fprintln(stderr, vErr)
+			continue
+		}
+		return value, nil
+	}
+	return "", fmt.Errorf("invalid List-Id domain after %d attempts", configureEmailMaxAttempts)
 }
 
 func promptHeaderBG(stdout, stderr io.Writer, r *bufio.Reader, current string) (string, error) {

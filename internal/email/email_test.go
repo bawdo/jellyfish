@@ -260,7 +260,7 @@ func TestAssembleMessageNoLogoEmitsMultipartAlternative(t *testing.T) {
 	}
 }
 
-func TestAssembleMessageEmitsListIdFromDomain(t *testing.T) {
+func TestAssembleMessageFallbackPrependsJellyfishToFromDomain(t *testing.T) {
 	hdr := messageHeaders{
 		From:    "ops@example.com",
 		To:      "alice@example.com",
@@ -271,8 +271,11 @@ func TestAssembleMessageEmitsListIdFromDomain(t *testing.T) {
 	if err != nil {
 		t.Fatalf("assembleMessage: %v", err)
 	}
-	if !bytes.Contains(out, []byte("List-Id: <example.com>\r\n")) {
-		t.Fatalf("expected List-Id derived from From domain; got:\n%s", out)
+	if !bytes.Contains(out, []byte("List-Id: <jellyfish.example.com>\r\n")) {
+		t.Fatalf("expected List-Id derived from jellyfish.<From-domain>; got:\n%s", out)
+	}
+	if bytes.Contains(out, []byte("List-Id: <example.com>\r\n")) {
+		t.Fatalf("fallback should prepend jellyfish.; got unprefixed:\n%s", out)
 	}
 }
 

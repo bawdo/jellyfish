@@ -4,7 +4,7 @@ Subject: Vulnerability exposure - Alice Example - 2026-05-16
 Date: Sat, 16 May 2026 10:42:00 +1000
 Message-ID: <fixed-user-id@example.com>
 MIME-Version: 1.0
-List-Id: <example.com>
+List-Id: <jellyfish.example.com>
 X-Jellyfish-Tenant: example
 Content-Type: multipart/alternative; boundary="=_jf_FIXEDBOUNDARY01"
 

@@ -121,32 +121,34 @@ jellyfish configure email
 ```
 
 Prompts (in order): `From`, default `To`, path to a Gmail service-account
-JSON file, header background colour, path to a logo PNG. The first two
-values and `header_bg` are written to the `email:` block of
-`~/.config/jellyfish/config.yml`. When a Gmail JSON path is provided, the
-file is read, validated, then stored in the macOS Keychain (the source
-path is not persisted). When a logo path is provided, the PNG is validated
-(decodable PNG, no larger than 512 KB) and copied into
-`~/.config/jellyfish/logos/<basename>`; the resulting managed path is
-written to `email.logo_path`. The source file is left alone.
+JSON file, header background colour, path to a logo PNG, and an optional
+`List-Id` domain. `From`, default `To`, `header_bg` and `list_id_domain`
+are written to the `email:` block of `~/.config/jellyfish/config.yml`.
+When a Gmail JSON path is provided, the file is read, validated, then
+stored in the macOS Keychain (the source path is not persisted). When a
+logo path is provided, the PNG is validated (decodable PNG, no larger
+than 512 KB) and copied into `~/.config/jellyfish/logos/<basename>`; the
+resulting managed path is written to `email.logo_path`. The source file
+is left alone.
 
 For each prompt: Enter keeps the current value; type a literal `-` to
 clear a field. Clearing the logo also deletes the copy under `logos/`
 (but never any file outside that directory).
 
-The `email:` block also accepts an optional `list_id_domain` key. When
-set, it becomes the value inside the `List-Id` header on every sent
-message; when unset, the domain part of `email.from` is used. Use this
-to give an org-wide audit identity that's distinct from the sending
-mailbox, e.g.:
+The `list_id_domain` value (optional) becomes the value inside the
+`List-Id` header on every sent message. When unset, the fallback is
+`jellyfish.` + the domain part of `email.from` - so a `from` of
+`ops@example.com` yields `List-Id: <jellyfish.example.com>`
+automatically. Set `list_id_domain` explicitly if you want a different
+audit identity, e.g.:
 
 ```yaml
 email:
   from: jellyfish-noreply@example.com
-  list_id_domain: jellyfish.example.com
+  list_id_domain: lists.example.com
 ```
 
-`jellyfish configure email` does not prompt for this value - edit
+You can also edit
 `~/.config/jellyfish/config.yml` directly.
 
 ## Usage

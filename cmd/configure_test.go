@@ -982,6 +982,102 @@ func TestConfigureEmailLogoClearDeletesManagedFile(t *testing.T) {
 	}
 }
 
+func TestConfigureEmailPromptListIDDomainSavesValue(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yml")
+	if err := config.Save(cfgPath, config.File{"default": config.Profile{
+		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Email: config.EmailConfig{From: "ops@example.com"},
+	}}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	// Six prompts: from, defaultTo, gmail, header_bg, logo (all kept), then list_id_domain.
+	in := strings.NewReader("\n\n\n\n\njellyfish.example.com\n")
+	var out, errBuf bytes.Buffer
+	if err := runConfigureEmail(context.Background(), configureEmailOpts{
+		ConfigPath: cfgPath, Stdin: in, Stdout: &out, Stderr: &errBuf,
+	}); err != nil {
+		t.Fatalf("runConfigureEmail: %v\nstderr:\n%s", err, errBuf.String())
+	}
+	loaded, _ := config.Load(cfgPath)
+	if got := loaded["default"].Email.ListIDDomain; got != "jellyfish.example.com" {
+		t.Errorf("ListIDDomain: got %q want %q", got, "jellyfish.example.com")
+	}
+	if !strings.Contains(out.String(), "List-Id domain") {
+		t.Errorf("expected prompt to mention List-Id domain; got %q", out.String())
+	}
+}
+
+func TestConfigureEmailPromptListIDDomainEnterKeepsExisting(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yml")
+	if err := config.Save(cfgPath, config.File{"default": config.Profile{
+		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Email: config.EmailConfig{From: "ops@example.com", ListIDDomain: "jellyfish.example.com"},
+	}}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	in := strings.NewReader("\n\n\n\n\n\n")
+	var out, errBuf bytes.Buffer
+	if err := runConfigureEmail(context.Background(), configureEmailOpts{
+		ConfigPath: cfgPath, Stdin: in, Stdout: &out, Stderr: &errBuf,
+	}); err != nil {
+		t.Fatalf("runConfigureEmail: %v\nstderr:\n%s", err, errBuf.String())
+	}
+	loaded, _ := config.Load(cfgPath)
+	if got := loaded["default"].Email.ListIDDomain; got != "jellyfish.example.com" {
+		t.Errorf("ListIDDomain should be preserved; got %q", got)
+	}
+}
+
+func TestConfigureEmailPromptListIDDomainDashClears(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yml")
+	if err := config.Save(cfgPath, config.File{"default": config.Profile{
+		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Email: config.EmailConfig{From: "ops@example.com", ListIDDomain: "jellyfish.example.com"},
+	}}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	in := strings.NewReader("\n\n\n\n\n-\n")
+	var out, errBuf bytes.Buffer
+	if err := runConfigureEmail(context.Background(), configureEmailOpts{
+		ConfigPath: cfgPath, Stdin: in, Stdout: &out, Stderr: &errBuf,
+	}); err != nil {
+		t.Fatalf("runConfigureEmail: %v\nstderr:\n%s", err, errBuf.String())
+	}
+	loaded, _ := config.Load(cfgPath)
+	if got := loaded["default"].Email.ListIDDomain; got != "" {
+		t.Errorf("ListIDDomain should be cleared; got %q", got)
+	}
+}
+
+func TestConfigureEmailPromptListIDDomainRejectsInvalidThenAccepts(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yml")
+	if err := config.Save(cfgPath, config.File{"default": config.Profile{
+		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Email: config.EmailConfig{From: "ops@example.com"},
+	}}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	// First attempt has '@', second has whitespace, third is valid.
+	in := strings.NewReader("\n\n\n\n\nbad@thing\nbad thing\njellyfish.example.com\n")
+	var out, errBuf bytes.Buffer
+	if err := runConfigureEmail(context.Background(), configureEmailOpts{
+		ConfigPath: cfgPath, Stdin: in, Stdout: &out, Stderr: &errBuf,
+	}); err != nil {
+		t.Fatalf("runConfigureEmail: %v\nstderr:\n%s", err, errBuf.String())
+	}
+	if !strings.Contains(errBuf.String(), "List-Id domain") {
+		t.Errorf("expected stderr to mention List-Id domain validation; got:\n%s", errBuf.String())
+	}
+	loaded, _ := config.Load(cfgPath)
+	if got := loaded["default"].Email.ListIDDomain; got != "jellyfish.example.com" {
+		t.Errorf("ListIDDomain after retry: got %q want %q", got, "jellyfish.example.com")
+	}
+}
+
 func TestConfigureEmailLogoClearLeavesUnmanagedFile(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yml")
