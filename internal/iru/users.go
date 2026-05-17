@@ -48,3 +48,28 @@ func (c *Client) FindUserByEmail(ctx context.Context, email string) (User, error
 	}
 	return p.Results[0], nil
 }
+
+// ListUsersStream walks every user via repeated ListUsersPage calls. The
+// callback receives one page at a time; returning a non-nil error aborts the
+// walk and propagates the error to the caller. Mirrors the shape of
+// ListDetectionsStream so callers can express "do something with every user
+// in the tenant" without managing the cursor themselves.
+func (c *Client) ListUsersStream(ctx context.Context, cb func(page []User) error) error {
+	const pageSize = 100
+	cursor := ""
+	for {
+		page, next, err := c.ListUsersPage(ctx, pageSize, cursor)
+		if err != nil {
+			return err
+		}
+		if len(page) > 0 {
+			if err := cb(page); err != nil {
+				return err
+			}
+		}
+		if next == "" {
+			return nil
+		}
+		cursor = next
+	}
+}
