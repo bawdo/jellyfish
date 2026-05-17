@@ -427,6 +427,15 @@ func TestRunOverviewPerUser(t *testing.T) {
 			t.Errorf("stderr missing %q:\n%s", want, out)
 		}
 	}
+	// No redirect in effect: for= must not appear on sent lines.
+	for _, line := range strings.Split(out, "\n") {
+		if !strings.HasPrefix(line, "sent user=") {
+			continue
+		}
+		if strings.Contains(line, " for=") {
+			t.Errorf("no-redirect sent line must not contain for=: %q", line)
+		}
+	}
 }
 
 func TestRunOverviewPerUserDryRun(t *testing.T) {
@@ -527,19 +536,66 @@ func TestAssembleOverviewDeviceWalkErrorPropagates(t *testing.T) {
 	}
 }
 
-func TestRunOverviewPerUserWarnsOnEmailToConflict(t *testing.T) {
+func TestRunOverviewPerUserRedirectsToEmailTo(t *testing.T) {
+	c := &overviewFakeClient{
+		fakeClient: &fakeClient{
+			users: []iru.User{
+				{ID: "u1", Name: "Alice", Email: "alice@x"},
+				{ID: "u2", Name: "Bob", Email: "bob@x"},
+			},
+			detections: []iru.Detection{{DeviceID: "d-a", Severity: "Low", CVSSScore: 2.0}},
+		},
+		devicesByUser: map[string][]iru.Device{
+			"u1": {{DeviceID: "d-a"}},
+			"u2": {{DeviceID: "d-b"}},
+		},
+	}
+	fake := &fakeGmailSender{returnID: "msg-1"}
+	opts := overviewOpts{
+		Output:        "email",
+		PerUser:       true,
+		Yes:           true,
+		EmailFlags:    emailFlagValues{From: "noreply@example.com", To: "redirect@example.com"},
+		Profile:       config.Profile{Email: config.EmailConfig{GmailConfigured: true}},
+		EmailNow:      time.Date(2026, 5, 17, 10, 30, 0, 0, time.UTC),
+		KeychainGet:   stubKeychain("{}"),
+		NewSender:     newFakeSenderFactory(fake),
+		gitEmail:      func() (string, error) { return "noreply@example.com", nil },
+		ConfirmReader: strings.NewReader(""),
+	}
+	var stderr bytes.Buffer
+	if err := runOverview(context.Background(), c, io.Discard, &stderr, opts); err != nil {
+		t.Fatalf("runOverview: %v", err)
+	}
+	out := stderr.String()
+	if strings.Contains(out, "warn: --email-to ignored") {
+		t.Errorf("warn line should be gone now:\n%s", out)
+	}
+	for _, want := range []string{
+		"note: --email-to set; all 2 personalised overviews will be redirected to redirect@example.com",
+		"sent user=u1 for=alice@x to=redirect@example.com gmail-id=msg-1",
+		"sent user=u2 for=bob@x to=redirect@example.com gmail-id=msg-1",
+		"summary: sent=2 skipped=0 errors=0",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("stderr missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestRunOverviewPerUserRedirectDryRun(t *testing.T) {
 	c := &overviewFakeClient{
 		fakeClient: &fakeClient{
 			users:      []iru.User{{ID: "u1", Name: "Alice", Email: "alice@x"}},
-			detections: []iru.Detection{{DeviceID: "d-a", Severity: "Low", CVSSScore: 2.0}},
+			detections: nil,
 		},
 		devicesByUser: map[string][]iru.Device{"u1": {{DeviceID: "d-a"}}},
 	}
 	opts := overviewOpts{
 		Output:        "email",
 		PerUser:       true,
-		DryRun:        true, // skip Gmail; the warn line is what we care about
-		EmailFlags:    emailFlagValues{From: "noreply@example.com", To: "ops@example.com"}, // --email-to set: should be warned-and-ignored
+		DryRun:        true,
+		EmailFlags:    emailFlagValues{From: "noreply@example.com", To: "redirect@example.com"},
 		Profile:       config.Profile{Email: config.EmailConfig{GmailConfigured: false}},
 		EmailNow:      time.Date(2026, 5, 17, 10, 30, 0, 0, time.UTC),
 		gitEmail:      func() (string, error) { return "noreply@example.com", nil },
@@ -549,12 +605,9 @@ func TestRunOverviewPerUserWarnsOnEmailToConflict(t *testing.T) {
 	if err := runOverview(context.Background(), c, io.Discard, &stderr, opts); err != nil {
 		t.Fatalf("runOverview: %v", err)
 	}
-	if !strings.Contains(stderr.String(), "warn: --email-to ignored with --per-user") {
-		t.Errorf("stderr missing warn line:\n%s", stderr.String())
-	}
-	// Confirm the per-user fanout still went ahead (recipient = u1's email, not the ignored --email-to).
-	if !strings.Contains(stderr.String(), "would-send user=u1 to=alice@x") {
-		t.Errorf("stderr missing per-user line:\n%s", stderr.String())
+	out := stderr.String()
+	if !strings.Contains(out, "would-send user=u1 for=alice@x to=redirect@example.com") {
+		t.Errorf("stderr missing redirected would-send line:\n%s", out)
 	}
 }
 

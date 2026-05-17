@@ -592,9 +592,7 @@ func confirmSendOverview(stderr io.Writer, in io.Reader, count int, perUser, dry
 }
 
 func runOverviewPerUser(ctx context.Context, stderr io.Writer, opts overviewOpts, view email.OverviewView, baseOpts email.Options, now time.Time) error {
-	if opts.EmailFlags.To != "" {
-		_, _ = fmt.Fprintf(stderr, "warn: --email-to ignored with --per-user (recipients = each user's Iru email)\n")
-	}
+	override := opts.EmailFlags.To
 
 	confirmIn := opts.ConfirmReader
 	if confirmIn == nil {
@@ -607,6 +605,10 @@ func runOverviewPerUser(ctx context.Context, stderr io.Writer, opts overviewOpts
 	if !ok {
 		_, _ = fmt.Fprintln(stderr, "aborted: no mail sent")
 		return nil
+	}
+
+	if override != "" {
+		_, _ = fmt.Fprintf(stderr, "note: --email-to set; all %d personalised overviews will be redirected to %s\n", len(view.Users), override)
 	}
 
 	msgIn := opts.MessageReader
@@ -631,35 +633,39 @@ func runOverviewPerUser(ctx context.Context, stderr io.Writer, opts overviewOpts
 	var counters bulkCounters
 	for i := range view.Users {
 		u := view.Users[i]
-		if u.Email == "" {
+		recipient := override
+		if recipient == "" {
+			recipient = u.Email
+		}
+		if recipient == "" {
 			_, _ = fmt.Fprintf(stderr, "skip user=%s reason=no-email\n", u.UserID)
 			counters.skipped++
 			continue
 		}
 		userOpts := baseOpts
-		userOpts.To = u.Email
+		userOpts.To = recipient
 		// Per-user view: same shared body, just point Me at this user.
 		perUserView := view
 		perUserView.Me = &view.Users[i]
 
 		var buf bytes.Buffer
 		if err := email.NewOverviewRendererWithStderr(userOpts, stderr).Render(&buf, email.OverviewInput{View: perUserView}); err != nil {
-			_, _ = fmt.Fprintf(stderr, "error user=%s render: %v\n", u.UserID, err)
+			_, _ = fmt.Fprintf(stderr, "error user=%s%s render: %v\n", u.UserID, forTag(override, u.Email), err)
 			counters.recordError(err)
 			continue
 		}
 		if opts.DryRun {
-			_, _ = fmt.Fprintf(stderr, "would-send user=%s to=%s bytes=%d\n", u.UserID, u.Email, buf.Len())
+			_, _ = fmt.Fprintf(stderr, "would-send user=%s%s to=%s bytes=%d\n", u.UserID, forTag(override, u.Email), recipient, buf.Len())
 			counters.wouldSend++
 			continue
 		}
 		id, serr := sender.Send(ctx, buf.Bytes())
 		if serr != nil {
-			_, _ = fmt.Fprintf(stderr, "error user=%s gmail: %v\n", u.UserID, serr)
+			_, _ = fmt.Fprintf(stderr, "error user=%s%s gmail: %v\n", u.UserID, forTag(override, u.Email), serr)
 			counters.recordError(serr)
 			continue
 		}
-		_, _ = fmt.Fprintf(stderr, "sent user=%s to=%s gmail-id=%s\n", u.UserID, u.Email, id)
+		_, _ = fmt.Fprintf(stderr, "sent user=%s%s to=%s gmail-id=%s\n", u.UserID, forTag(override, u.Email), recipient, id)
 		counters.sent++
 	}
 
@@ -669,4 +675,14 @@ func runOverviewPerUser(ctx context.Context, stderr io.Writer, opts overviewOpts
 		_, _ = fmt.Fprintf(stderr, "summary: sent=%d skipped=%d errors=%d\n", counters.sent, counters.skipped, counters.errs)
 	}
 	return counters.exitError()
+}
+
+// forTag returns " for=<userEmail>" when a redirect is in effect and the
+// user has an email; otherwise "". Used to disambiguate stderr lines when
+// every send goes to the override address.
+func forTag(override, userEmail string) string {
+	if override == "" || userEmail == "" {
+		return ""
+	}
+	return " for=" + userEmail
 }

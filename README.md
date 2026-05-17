@@ -520,7 +520,7 @@ jellyfish overview --emails alice@example.com,bob@example.com
 | `--emails <list>` | Comma-separated user emails to include. Mutually exclusive with `--csv`. Default: all users with devices. |
 | `--csv-email-column <name>` | Override CSV header auto-detection. Default scans for `email`, `user_email`, `e-mail` (case-insensitive). |
 | `--per-user` | Fan out personalised copies (only with `-o email`). Each recipient gets a copy personalised to them - see below. |
-| `--email-to <addr>` | Comma-separated admin recipients. Required for `-o email` without `--per-user`. Warned and ignored when `--per-user` is set. |
+| `--email-to <addr>` | Comma-separated admin recipients. Required for `-o email` without `--per-user`. When combined with `--per-user`, every personalised copy is redirected to this address (test/audit mode); stderr lines include `for=<user-email>` for traceability. |
 | `--email-from` | From: address (default: `email.from` from config, then git `user.email`). |
 | `--email-subject` | Subject: header (default: per-command default or `email.subject_template`). |
 | `--email-header-bg` | Email header background colour as `#RRGGBB` (default: `email.header_bg` or `#2b3a55`). |
@@ -552,9 +552,17 @@ error user=<id> gmail: <reason>
 summary: sent=N skipped=M errors=K              # per-user path totals
 ```
 
-The trailing `summary:` line is always emitted, even at zero counts. If
-`--email-to` is set alongside `--per-user`, `--email-to` is silently ignored
-with a warning on stderr - it is not treated as an error.
+When `--email-to` is also set, every personalised copy is redirected to that
+address (test/audit mode) and lines gain a `for=<user-email>` field:
+
+```
+note: --email-to set; all N personalised overviews will be redirected to <addr>
+sent user=<id> for=alice@acme.com to=<addr> gmail-id=<id>
+would-send user=<id> for=alice@acme.com to=<addr> bytes=NNN
+error user=<id> for=alice@acme.com gmail: <reason>
+```
+
+The trailing `summary:` line is always emitted, even at zero counts.
 
 #### Filtering the roster
 

@@ -61,7 +61,7 @@ jellyfish overview
 | `--csv <path>` | Restrict the roster to users listed in this CSV file. Auto-detects `email`/`user_email`/`e-mail` header. Mutually exclusive with `--emails`. Default: all users with devices. |
 | `--emails <list>` | Comma-separated list of user emails to include in the roster. Mutually exclusive with `--csv`. Default: all users with devices. |
 | `--csv-email-column <name>` | Override CSV header auto-detection for `--csv`. |
-| `--email-to <addr>` | Recipient(s) for the admin report. Comma-separated list accepted. Required when `--output=email` and `--per-user` is not set. Warned-and-ignored when `--per-user` is set. |
+| `--email-to <addr>` | Recipient(s) for the admin report. Comma-separated list accepted. Required when `--output=email` and `--per-user` is not set. When combined with `--per-user`, every personalised copy is redirected to this address (test/audit mode); stderr lines include `for=<user-email>` for traceability. |
 | `--email-from`, `--email-subject`, `--email-header-bg`, `--email-logo` | Standard email options. Resolved by the existing `resolveEmailOptions()` (flag > config > git). |
 | `--message`, `--message-file <path>` | Optional editor / file message inserted via `_message.html.tmpl`. Verbatim for every send (admin or per-user). Mutually exclusive. |
 | `--dry-run` | Run the full pipeline including render, but skip the Gmail send. |
@@ -93,11 +93,18 @@ jellyfish overview
   copies — only `Me` differs, which lights up the `Your standing`
   callout and tints the recipient's row in the full roster.
 
-`--per-user` and `--email-to` are intentionally not combined. If both
+~~`--per-user` and `--email-to` are intentionally not combined. If both
 are set, `--email-to` is ignored with a stderr warning. The reason: the
 admin redirect pattern (`--email-to me@example.com` for testing) doesn't
 make sense for a fanout where the audit value is "the right person got
-their copy".
+their copy".~~
+
+When both `--per-user` and `--email-to` are set, every personalised copy
+is redirected to the `--email-to` address (test/audit mode). Each user's
+personalisation (`Me` callout, `YOU` row) is preserved - the content is
+identical to what that user would receive in production. To make each
+user's copy identifiable on stderr, lines gain a `for=<user-email>` field
+when a redirect is in effect and the user has a non-empty email.
 
 ## Execution flow
 
@@ -530,7 +537,7 @@ in place for `users send-email`.
 | `OverviewRenderer` (golden tests) | admin variant; per-user variant; with message; without message; with logo; without logo; empty Best 5 if N < 5 (degenerate roster) |
 | `sendOverviewAdmin` | multi-recipient loop; dry-run; gmail error per recipient does not abort; stderr line format; exit-code precedence |
 | `sendOverviewPerUser` | skip no-email user; per-user `Me` is correct in each rendered copy; YOU row highlighted in goldens; dry-run; same exit-code precedence |
-| `--per-user` flag conflicts | error on `--output=table`; warn-and-ignore on `--email-to`; works with `--dry-run` |
+| `--per-user` flag combinations | error on `--output=table`; redirect to `--email-to` when set (test/audit mode); works with `--dry-run` |
 | Confirm prompt | both paths' prompt copy differs (admin vs per-user); EOF; `--yes` short-circuit |
 
 ## Documentation
