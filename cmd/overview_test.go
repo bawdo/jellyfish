@@ -535,6 +535,37 @@ func TestAssembleOverviewSkipsDeviceFetchErrors(t *testing.T) {
 	}
 }
 
+func TestRunOverviewPerUserWarnsOnEmailToConflict(t *testing.T) {
+	c := &overviewFakeClient{
+		fakeClient: &fakeClient{
+			users:      []iru.User{{ID: "u1", Name: "Alice", Email: "alice@x"}},
+			detections: []iru.Detection{{DeviceID: "d-a", Severity: "Low", CVSSScore: 2.0}},
+		},
+		devicesByUser: map[string][]iru.Device{"u1": {{DeviceID: "d-a"}}},
+	}
+	opts := overviewOpts{
+		Output:        "email",
+		PerUser:       true,
+		DryRun:        true, // skip Gmail; the warn line is what we care about
+		EmailFlags:    emailFlagValues{From: "noreply@example.com", To: "ops@example.com"}, // --email-to set: should be warned-and-ignored
+		Profile:       config.Profile{Email: config.EmailConfig{GmailConfigured: false}},
+		EmailNow:      time.Date(2026, 5, 17, 10, 30, 0, 0, time.UTC),
+		gitEmail:      func() (string, error) { return "noreply@example.com", nil },
+		ConfirmReader: strings.NewReader(""),
+	}
+	var stderr bytes.Buffer
+	if err := runOverview(context.Background(), c, io.Discard, &stderr, opts); err != nil {
+		t.Fatalf("runOverview: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "warn: --email-to ignored with --per-user") {
+		t.Errorf("stderr missing warn line:\n%s", stderr.String())
+	}
+	// Confirm the per-user fanout still went ahead (recipient = u1's email, not the ignored --email-to).
+	if !strings.Contains(stderr.String(), "would-send user=u1 to=alice@x") {
+		t.Errorf("stderr missing per-user line:\n%s", stderr.String())
+	}
+}
+
 func TestRunOverviewValidationErrors(t *testing.T) {
 	c := &overviewFakeClient{
 		fakeClient:    &fakeClient{users: []iru.User{{ID: "u1", Name: "Alice", Email: "alice@x"}}},

@@ -362,7 +362,7 @@ func runOverview(ctx context.Context, client iruClient, stdout, stderr io.Writer
 	case "csv":
 		return renderOverviewCSV(stdout, view)
 	case "email":
-		return runOverviewEmail(ctx, stdout, stderr, opts, view)
+		return runOverviewEmail(ctx, stderr, opts, view)
 	default:
 		return fmt.Errorf("unsupported output format %q", opts.Output)
 	}
@@ -385,7 +385,7 @@ func validateOverviewFlags(opts overviewOpts) error {
 
 // runOverviewEmail builds the email Options, captures the optional message,
 // and dispatches to the admin or per-user path. Per-user is Task 13.
-func runOverviewEmail(ctx context.Context, stdout, stderr io.Writer, opts overviewOpts, view email.OverviewView) error {
+func runOverviewEmail(ctx context.Context, stderr io.Writer, opts overviewOpts, view email.OverviewView) error {
 	now := opts.EmailNow
 	if now.IsZero() {
 		now = time.Now()
@@ -411,12 +411,12 @@ func runOverviewEmail(ctx context.Context, stdout, stderr io.Writer, opts overvi
 	}
 
 	if opts.PerUser {
-		return runOverviewPerUser(ctx, stdout, stderr, opts, view, baseEmailOpts, now)
+		return runOverviewPerUser(ctx, stderr, opts, view, baseEmailOpts, now)
 	}
-	return runOverviewAdmin(ctx, stdout, stderr, opts, view, baseEmailOpts, now)
+	return runOverviewAdmin(ctx, stderr, opts, view, baseEmailOpts, now)
 }
 
-func runOverviewAdmin(ctx context.Context, stdout, stderr io.Writer, opts overviewOpts, view email.OverviewView, baseOpts email.Options, now time.Time) error {
+func runOverviewAdmin(ctx context.Context, stderr io.Writer, opts overviewOpts, view email.OverviewView, baseOpts email.Options, now time.Time) error {
 	recipients, err := splitEmails(baseOpts.To)
 	if err != nil {
 		return err
@@ -533,7 +533,7 @@ func confirmSendOverview(stderr io.Writer, in io.Reader, count int, perUser, dry
 	return answer == "y" || answer == "yes", nil
 }
 
-func runOverviewPerUser(ctx context.Context, stdout, stderr io.Writer, opts overviewOpts, view email.OverviewView, baseOpts email.Options, now time.Time) error {
+func runOverviewPerUser(ctx context.Context, stderr io.Writer, opts overviewOpts, view email.OverviewView, baseOpts email.Options, now time.Time) error {
 	if opts.EmailFlags.To != "" {
 		_, _ = fmt.Fprintf(stderr, "warn: --email-to ignored with --per-user (recipients = each user's Iru email)\n")
 	}
