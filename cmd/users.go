@@ -36,6 +36,7 @@ type usersSendEmailOpts struct {
 	KeychainGet   func() ([]byte, error)
 	NewSender     gmailNewSender
 	ConfirmReader io.Reader
+	MessageReader io.Reader
 }
 
 func newUsersCmd() *cobra.Command {
@@ -146,7 +147,11 @@ func runUsersSendEmail(ctx context.Context, client iruClient, stderr io.Writer, 
 	if opts.EmailFlags.To != "" {
 		templateDisplay = opts.EmailFlags.To + " (redirect)"
 	}
-	message, err := captureMessage(opts.EmailFlags, true, templateDisplay, baseEmailOpts.Subject, os.Stdin, stderr, nil)
+	msgIn := opts.MessageReader
+	if msgIn == nil {
+		msgIn = os.Stdin
+	}
+	message, err := captureMessage(opts.EmailFlags, true, templateDisplay, baseEmailOpts.Subject, msgIn, stderr, nil)
 	if err != nil {
 		return err
 	}

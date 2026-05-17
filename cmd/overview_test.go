@@ -596,3 +596,37 @@ func TestRunOverviewValidationErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestRunOverviewAdminMessageFileStdin(t *testing.T) {
+	c := &overviewFakeClient{
+		fakeClient: &fakeClient{
+			users:      []iru.User{{ID: "u1", Name: "Alice", Email: "alice@x"}},
+			detections: []iru.Detection{{DeviceID: "d-a", Severity: "High", CVSSScore: 7.5}},
+		},
+		devicesByUser: map[string][]iru.Device{"u1": {{DeviceID: "d-a"}}},
+	}
+	fake := &fakeGmailSender{returnID: "msg-1"}
+	opts := overviewOpts{
+		Output:        "email",
+		Yes:           true,
+		EmailFlags:    emailFlagValues{To: "ops@example.com", From: "noreply@example.com", MessageFile: "-"},
+		Profile:       config.Profile{Email: config.EmailConfig{GmailConfigured: true}},
+		EmailNow:      time.Date(2026, 5, 17, 10, 30, 0, 0, time.UTC),
+		KeychainGet:   stubKeychain("{}"),
+		NewSender:     newFakeSenderFactory(fake),
+		gitEmail:      func() (string, error) { return "noreply@example.com", nil },
+		ConfirmReader: strings.NewReader(""),
+		MessageReader: strings.NewReader("Hello team, this is the security overview."),
+	}
+	var stderr bytes.Buffer
+	if err := runOverview(context.Background(), c, io.Discard, &stderr, opts); err != nil {
+		t.Fatalf("runOverview: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "sent to=ops@example.com gmail-id=msg-1") {
+		t.Errorf("stderr missing sent line:\n%s", stderr.String())
+	}
+	// The Gmail sender captured the rendered email; the message body should appear in it.
+	if !strings.Contains(string(fake.sent), "Hello team, this is the security overview") {
+		t.Errorf("rendered email missing the injected message; .sent =\n%s", string(fake.sent))
+	}
+}

@@ -295,6 +295,7 @@ type overviewOpts struct {
 	KeychainGet   func() ([]byte, error)
 	NewSender     gmailNewSender
 	ConfirmReader io.Reader
+	MessageReader io.Reader
 }
 
 // newOverviewCmd wires the `jellyfish overview` cobra command.
@@ -436,7 +437,11 @@ func runOverviewAdmin(ctx context.Context, stderr io.Writer, opts overviewOpts, 
 	}
 
 	display := fmt.Sprintf("%d recipients", len(recipients))
-	message, err := captureMessage(opts.EmailFlags, true, display, baseOpts.Subject, os.Stdin, stderr, nil)
+	msgIn := opts.MessageReader
+	if msgIn == nil {
+		msgIn = os.Stdin
+	}
+	message, err := captureMessage(opts.EmailFlags, true, display, baseOpts.Subject, msgIn, stderr, nil)
 	if err != nil {
 		return err
 	}
@@ -551,7 +556,11 @@ func runOverviewPerUser(ctx context.Context, stderr io.Writer, opts overviewOpts
 		return nil
 	}
 
-	message, err := captureMessage(opts.EmailFlags, true, fmt.Sprintf("%d users", len(view.Users)), baseOpts.Subject, os.Stdin, stderr, nil)
+	msgIn := opts.MessageReader
+	if msgIn == nil {
+		msgIn = os.Stdin
+	}
+	message, err := captureMessage(opts.EmailFlags, true, fmt.Sprintf("%d users", len(view.Users)), baseOpts.Subject, msgIn, stderr, nil)
 	if err != nil {
 		return err
 	}
