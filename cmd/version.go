@@ -11,9 +11,21 @@ import (
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
-		Short: "Print the jellyfish version",
+		Short: "Print the jellyfish version, commit, and tag",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "jellyfish %s\n", version.Version)
+			info := version.Resolve()
+			w := cmd.OutOrStdout()
+			_, _ = fmt.Fprintf(w, "jellyfish %s\n", info.Version)
+			if info.Commit != "" {
+				suffix := ""
+				if info.Dirty {
+					suffix = " (dirty)"
+				}
+				_, _ = fmt.Fprintf(w, "  commit: %s%s\n", info.Commit, suffix)
+			}
+			if info.Tag != "" {
+				_, _ = fmt.Fprintf(w, "  tag:    %s\n", info.Tag)
+			}
 			return nil
 		},
 	}

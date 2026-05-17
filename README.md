@@ -22,7 +22,9 @@ make install
 
 `make install` runs `go install .` with version metadata baked in via
 `-ldflags`. It places `jellyfish` in `$GOBIN` if set, otherwise `$GOPATH/bin`
-(default `~/go/bin`). Add that directory to your `PATH` once:
+(default `~/go/bin`). Note: `go install ./` without make will still show the
+commit SHA via Go's automatic VCS stamping but won't include the tag - for
+full version info use `make install`. Add that directory to your `PATH` once:
 
 ```bash
 echo 'export PATH="$HOME/go/bin:$PATH"' >> ~/.zshrc
