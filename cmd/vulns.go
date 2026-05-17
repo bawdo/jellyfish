@@ -14,7 +14,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bawdo/jellyfish/internal/cache"
 	"github.com/bawdo/jellyfish/internal/config"
 	"github.com/bawdo/jellyfish/internal/email"
 	"github.com/bawdo/jellyfish/internal/gmail"
@@ -29,6 +28,7 @@ type vulnsListOpts struct {
 	Limit    int
 	Output   string
 	NoCache  bool
+	CacheTTL time.Duration
 }
 
 func newVulnsCmd() *cobra.Command {
@@ -54,6 +54,11 @@ func newVulnsListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			ttl, err := resolveCacheTTL(cmd)
+			if err != nil {
+				return err
+			}
+			opts.CacheTTL = ttl
 			return runVulnsList(cmd.Context(), client, cmd.OutOrStdout(), cmd.ErrOrStderr(), opts)
 		},
 	}
@@ -83,7 +88,7 @@ func runVulnsList(ctx context.Context, client iruClient, w, stderr io.Writer, op
 	switch {
 	case targetDeviceID != "":
 		// Iru ignores per-device filters on /detections, so walk and filter.
-		all, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache, cache.DefaultTTL)
+		all, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache, opts.CacheTTL)
 		if err != nil {
 			return err
 		}
@@ -104,7 +109,7 @@ func runVulnsList(ctx context.Context, client iruClient, w, stderr io.Writer, op
 		}
 		detections = ds
 	default:
-		ds, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache, cache.DefaultTTL)
+		ds, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache, opts.CacheTTL)
 		if err != nil {
 			return err
 		}
@@ -169,6 +174,7 @@ type vulnsSummaryOpts struct {
 	Limit          int
 	Output         string
 	NoCache        bool
+	CacheTTL       time.Duration
 	EmailFlags     emailFlagValues
 	EmailNow       time.Time
 	Profile        config.Profile
@@ -219,6 +225,11 @@ minutes; pass --no-cache to force a fresh fetch.`,
 			if err != nil {
 				return err
 			}
+			ttl, err := resolveCacheTTL(cmd)
+			if err != nil {
+				return err
+			}
+			opts.CacheTTL = ttl
 			return runVulnsSummary(cmd.Context(), client, cmd.OutOrStdout(), cmd.ErrOrStderr(), opts)
 		},
 	}
@@ -239,7 +250,7 @@ minutes; pass --no-cache to force a fresh fetch.`,
 }
 
 func runVulnsSummary(ctx context.Context, client iruClient, w, stderr io.Writer, opts vulnsSummaryOpts) error {
-	all, err := fetchAllVulnerabilities(ctx, client, stderr, !opts.NoCache, cache.DefaultTTL)
+	all, err := fetchAllVulnerabilities(ctx, client, stderr, !opts.NoCache, opts.CacheTTL)
 	if err != nil {
 		return err
 	}
