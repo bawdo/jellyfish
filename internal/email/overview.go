@@ -232,10 +232,10 @@ func renderOverviewText(data overviewTplData) (string, error) {
 func (r *overviewRenderer) Render(w io.Writer, v any) error {
 	in, ok := v.(OverviewInput)
 	if !ok {
-		return fmt.Errorf("email overview renderer expected OverviewInput, got %T", v)
+		return fmt.Errorf("%w: email overview renderer expected OverviewInput, got %T", ErrRender, v)
 	}
 	if r.opts.From == "" {
-		return fmt.Errorf("email renderer requires a non-empty From address")
+		return fmt.Errorf("%w: email renderer requires a non-empty From address", ErrRender)
 	}
 
 	data := buildOverviewTplData(in.View, r.opts)
@@ -270,32 +270,32 @@ func (r *overviewRenderer) Render(w io.Writer, v any) error {
 
 	htmlBody, err := renderOverviewHTML(data)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %v", ErrRender, err)
 	}
 	textBody, err := renderOverviewText(data)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %v", ErrRender, err)
 	}
 
 	boundary := r.opts.BoundaryOverride
 	if boundary == "" {
 		boundary, err = randomBoundary()
 		if err != nil {
-			return err
+			return fmt.Errorf("%w: %v", ErrRender, err)
 		}
 	}
 	messageID := r.opts.MessageIDOverride
 	if messageID == "" {
 		messageID, err = randomMessageID(domainFromAddress(r.opts.From))
 		if err != nil {
-			return err
+			return fmt.Errorf("%w: %v", ErrRender, err)
 		}
 	}
 	outerBoundary := r.opts.RelatedBoundaryOverride
 	if outerBoundary == "" && logo != nil {
 		outerBoundary, err = randomRelatedBoundary()
 		if err != nil {
-			return err
+			return fmt.Errorf("%w: %v", ErrRender, err)
 		}
 	}
 
@@ -310,8 +310,10 @@ func (r *overviewRenderer) Render(w io.Writer, v any) error {
 		ListIDDomain: r.opts.ListIDDomain,
 	}, htmlBody, textBody, boundary, messageID, outerBoundary, logo)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %v", ErrRender, err)
 	}
-	_, err = w.Write(bytesOut)
-	return err
+	if _, err = w.Write(bytesOut); err != nil {
+		return fmt.Errorf("%w: %v", ErrRender, err)
+	}
+	return nil
 }

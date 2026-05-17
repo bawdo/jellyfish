@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/mail"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/bawdo/jellyfish/internal/config"
+	"github.com/bawdo/jellyfish/internal/email"
 	"github.com/bawdo/jellyfish/internal/gmail"
 	"github.com/bawdo/jellyfish/internal/iru"
 )
@@ -513,6 +515,7 @@ func TestRunUsersSendEmailDryRun(t *testing.T) {
 }
 
 func TestBulkCountersExitError(t *testing.T) {
+	renderErr := fmt.Errorf("%w: bad template", email.ErrRender)
 	cases := []struct {
 		name     string
 		record   []error
@@ -523,9 +526,13 @@ func TestBulkCountersExitError(t *testing.T) {
 		{name: "user not found alone", record: []error{iru.ErrNotFound}, want: iru.ErrNotFound},
 		{name: "gmail auth alone", record: []error{gmail.ErrUnauthorized}, want: gmail.ErrUnauthorized},
 		{name: "gmail rate alone", record: []error{gmail.ErrRateLimited}, want: gmail.ErrRateLimited},
+		{name: "render alone", record: []error{renderErr}, want: email.ErrRender},
 		{name: "rate beats not-found", record: []error{iru.ErrNotFound, gmail.ErrRateLimited}, want: gmail.ErrRateLimited},
+		{name: "rate beats render", record: []error{renderErr, gmail.ErrRateLimited}, want: gmail.ErrRateLimited},
+		{name: "not-found beats render", record: []error{renderErr, iru.ErrNotFound}, want: iru.ErrNotFound},
 		{name: "auth beats rate", record: []error{gmail.ErrRateLimited, gmail.ErrUnauthorized}, want: gmail.ErrUnauthorized},
 		{name: "auth beats not-found", record: []error{iru.ErrNotFound, gmail.ErrUnauthorized}, want: gmail.ErrUnauthorized},
+		{name: "auth beats render", record: []error{renderErr, gmail.ErrUnauthorized}, want: gmail.ErrUnauthorized},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

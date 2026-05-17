@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/bawdo/jellyfish/internal/email"
 	"github.com/bawdo/jellyfish/internal/gmail"
 	"github.com/bawdo/jellyfish/internal/iru"
 )
@@ -42,6 +43,8 @@ func classifyError(err error) int {
 		return 2
 	case errors.Is(err, gmail.ErrRateLimited), errors.Is(err, gmail.ErrUpstream):
 		return 4
+	case errors.Is(err, email.ErrRender):
+		return 1
 	}
 	var apiErr *iru.APIError
 	if errors.As(err, &apiErr) {
