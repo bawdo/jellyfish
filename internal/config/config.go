@@ -25,11 +25,29 @@ type EmailConfig struct {
 	ListIDDomain     string `yaml:"list_id_domain,omitempty"`
 }
 
+// CacheTTLMinMinutes / CacheTTLMaxMinutes bound the configurable cache TTL.
+// 0 (or unset) means "use the built-in default"; 1440 minutes = 24h is the
+// upper limit to discourage acting on dangerously stale data.
+const (
+	CacheTTLMinMinutes = 1
+	CacheTTLMaxMinutes = 1440
+)
+
+// ValidateCacheTTLMinutes returns nil iff n is in [CacheTTLMinMinutes, CacheTTLMaxMinutes].
+func ValidateCacheTTLMinutes(n int) error {
+	if n < CacheTTLMinMinutes || n > CacheTTLMaxMinutes {
+		return fmt.Errorf("cache_ttl_minutes %d out of range [%d, %d]",
+			n, CacheTTLMinMinutes, CacheTTLMaxMinutes)
+	}
+	return nil
+}
+
 type Profile struct {
-	Subdomain string      `yaml:"subdomain"`
-	Region    string      `yaml:"region"`
-	BaseURL   string      `yaml:"base_url"`
-	Email     EmailConfig `yaml:"email,omitempty"`
+	Subdomain       string      `yaml:"subdomain"`
+	Region          string      `yaml:"region"`
+	BaseURL         string      `yaml:"base_url"`
+	CacheTTLMinutes int         `yaml:"cache_ttl_minutes,omitempty"`
+	Email           EmailConfig `yaml:"email,omitempty"`
 }
 
 // File maps profile name to its configuration. v1 only honours "default".
@@ -56,6 +74,13 @@ func Load(path string) (File, error) {
 	var f File
 	if err := yaml.Unmarshal(data, &f); err != nil {
 		return nil, fmt.Errorf("parse config %s: %w", path, err)
+	}
+	for name, prof := range f {
+		if prof.CacheTTLMinutes != 0 {
+			if err := ValidateCacheTTLMinutes(prof.CacheTTLMinutes); err != nil {
+				return nil, fmt.Errorf("profile %q: %w", name, err)
+			}
+		}
 	}
 	return f, nil
 }

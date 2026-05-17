@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -185,5 +186,73 @@ func TestEmailConfigRoundTripIncludesHeaderBGAndLogoPath(t *testing.T) {
 	}
 	if got.LogoPath != "/Users/keith/.config/jellyfish/logos/header-logo.png" {
 		t.Errorf("LogoPath: got %q", got.LogoPath)
+	}
+}
+
+func TestValidateCacheTTLMinutes(t *testing.T) {
+	good := []int{1, 15, 60, 1440}
+	for _, n := range good {
+		if err := ValidateCacheTTLMinutes(n); err != nil {
+			t.Errorf("ValidateCacheTTLMinutes(%d): unexpected err: %v", n, err)
+		}
+	}
+	bad := []int{0, -1, -100, 1441, 100000}
+	for _, n := range bad {
+		if err := ValidateCacheTTLMinutes(n); err == nil {
+			t.Errorf("ValidateCacheTTLMinutes(%d): expected error, got nil", n)
+		}
+	}
+}
+
+func TestLoadRejectsInvalidCacheTTL(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	content := []byte("default:\n  subdomain: acme\n  region: us\n  cache_ttl_minutes: -5\n")
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("Load: expected error for cache_ttl_minutes=-5, got nil")
+	}
+	if !strings.Contains(err.Error(), "cache_ttl_minutes") {
+		t.Errorf("Load error %q: want substring %q", err, "cache_ttl_minutes")
+	}
+}
+
+func TestSaveLoadPreservesCacheTTLMinutes(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	in := File{"default": Profile{
+		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		CacheTTLMinutes: 30,
+	}}
+	if err := Save(path, in); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	out, err := Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if got := out["default"].CacheTTLMinutes; got != 30 {
+		t.Errorf("CacheTTLMinutes: got %d want 30", got)
+	}
+}
+
+func TestSaveOmitsZeroCacheTTLMinutes(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	in := File{"default": Profile{
+		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+	}}
+	if err := Save(path, in); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if strings.Contains(string(raw), "cache_ttl_minutes") {
+		t.Errorf("zero CacheTTLMinutes was written to YAML:\n%s", raw)
 	}
 }
