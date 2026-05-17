@@ -74,5 +74,28 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newUserCmd())
 	root.AddCommand(newUsersCmd())
 	root.AddCommand(newOverviewCmd())
+	applyHelpBareword(root)
 	return root
+}
+
+// applyHelpBareword walks cmd and every descendant so that the literal token
+// "help" as the first positional argument prints that command's help and
+// returns without invoking RunE. This makes `jellyfish overview help` work
+// alongside the standard `jellyfish overview --help`, idiomatic across the
+// CLI. Parent commands with no RunE already fall through to help when an
+// unmatched positional arg is passed; the wrapper is only load-bearing for
+// leaves.
+func applyHelpBareword(cmd *cobra.Command) {
+	orig := cmd.RunE
+	if orig != nil {
+		cmd.RunE = func(c *cobra.Command, args []string) error {
+			if len(args) > 0 && args[0] == "help" {
+				return c.Help()
+			}
+			return orig(c, args)
+		}
+	}
+	for _, sub := range cmd.Commands() {
+		applyHelpBareword(sub)
+	}
 }

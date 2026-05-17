@@ -55,16 +55,37 @@ changes at build time. The tag line is omitted when HEAD is not tagged.
 ### Shell completion
 
 `jellyfish` ships Cobra's auto-generated completion script. To enable Zsh
-completion (the macOS default shell), drop the script somewhere Zsh's `fpath`
-already covers:
+completion (the macOS default shell), write the script into a per-user
+completions directory on `fpath`:
 
 ```bash
-mkdir -p "$(brew --prefix)/share/zsh/site-functions"
-jellyfish completion zsh > "$(brew --prefix)/share/zsh/site-functions/_jellyfish"
+mkdir -p ~/.zsh/completions
+jellyfish completion zsh > ~/.zsh/completions/_jellyfish
 exec zsh    # reload
 ```
 
+If `~/.zsh/completions` isn't already on `fpath`, add this to your `~/.zshrc`
+(once):
+
+```zsh
+fpath=(~/.zsh/completions $fpath)
+autoload -U compinit
+compinit
+zstyle ':completion::complete:*' use-cache 1
+```
+
 For other shells: `jellyfish completion {bash,fish,powershell} --help`.
+
+**Updating after an upgrade:** the completion script is generated from the
+running binary's command tree, so to pick up new commands or flags after an
+upgrade just re-run the same one-liner above (`jellyfish completion zsh > ...`)
+and `exec zsh` (or open a new terminal).
+
+### Getting help
+
+Every command accepts either `--help` / `-h` or the bareword `help` as the
+first positional, so `jellyfish overview --help` and `jellyfish overview help`
+print the same usage. The standard `jellyfish help <command>` form also works.
 
 ## Configure
 
