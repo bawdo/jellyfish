@@ -15,7 +15,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bawdo/jellyfish/internal/cache"
 	"github.com/bawdo/jellyfish/internal/config"
 	"github.com/bawdo/jellyfish/internal/email"
 	"github.com/bawdo/jellyfish/internal/gmail"
@@ -37,8 +36,8 @@ import (
 //
 // Returns an error if either Iru call fails or the (filtered) roster is
 // empty.
-func assembleOverview(ctx context.Context, client iruClient, stderr io.Writer, noCache bool, userFilter map[string]struct{}) (email.OverviewView, error) {
-	allDetections, err := fetchAllDetections(ctx, client, stderr, !noCache, cache.DefaultTTL)
+func assembleOverview(ctx context.Context, client iruClient, stderr io.Writer, noCache bool, userFilter map[string]struct{}, ttl time.Duration) (email.OverviewView, error) {
+	allDetections, err := fetchAllDetections(ctx, client, stderr, !noCache, ttl)
 	if err != nil {
 		return email.OverviewView{}, err
 	}
@@ -317,6 +316,7 @@ type overviewOpts struct {
 	DryRun         bool
 	Yes            bool
 	NoCache        bool
+	CacheTTL       time.Duration
 	Profile        config.Profile
 	EmailNow       time.Time
 	// Injected for tests:
@@ -345,6 +345,11 @@ func newOverviewCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			ttl, err := resolveCacheTTL(cmd)
+			if err != nil {
+				return err
+			}
+			opts.CacheTTL = ttl
 			if outFmt == "email" || opts.EmailFlags.Send {
 				prof, err := activeProfile(cmd)
 				if err != nil {
@@ -396,7 +401,7 @@ func runOverview(ctx context.Context, client iruClient, stdout, stderr io.Writer
 	if err != nil {
 		return err
 	}
-	view, err := assembleOverview(ctx, client, stderr, opts.NoCache, filter)
+	view, err := assembleOverview(ctx, client, stderr, opts.NoCache, filter, opts.CacheTTL)
 	if err != nil {
 		return err
 	}

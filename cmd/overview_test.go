@@ -70,7 +70,7 @@ func TestAssembleOverviewSumsAndSorts(t *testing.T) {
 		},
 	}
 
-	view, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil)
+	view, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil, time.Duration(0))
 	if err != nil {
 		t.Fatalf("assembleOverview: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestAssembleOverviewEmptyRosterErrors(t *testing.T) {
 		fakeClient:    &fakeClient{users: []iru.User{{ID: "u1", Name: "x"}}},
 		devicesByUser: map[string][]iru.Device{"u1": nil},
 	}
-	_, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil)
+	_, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil, time.Duration(0))
 	if err == nil || err.Error() == "" {
 		t.Fatalf("expected an empty-roster error, got nil")
 	}
@@ -146,7 +146,7 @@ func TestAssembleOverviewTieBreakerByName(t *testing.T) {
 			"u-b": {{DeviceID: "d-b"}},
 		},
 	}
-	view, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil)
+	view, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil, time.Duration(0))
 	if err != nil {
 		t.Fatalf("assembleOverview: %v", err)
 	}
@@ -526,7 +526,7 @@ func TestAssembleOverviewDeviceWalkErrorPropagates(t *testing.T) {
 		devicesByUser: map[string][]iru.Device{"u1": {{DeviceID: "d-a"}}},
 		streamErr:     errors.New("iru down"),
 	}
-	_, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil)
+	_, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil, time.Duration(0))
 	if err == nil || !strings.Contains(err.Error(), "iru down") {
 		t.Fatalf("expected iru down error, got %v", err)
 	}
@@ -718,7 +718,7 @@ func TestAssembleOverviewFilterByEmails(t *testing.T) {
 		"ghost@x": {}, // not in tenant -> should produce a warn line
 	}
 	var stderr bytes.Buffer
-	view, err := assembleOverview(context.Background(), c, &stderr, false, filter)
+	view, err := assembleOverview(context.Background(), c, &stderr, false, filter, time.Duration(0))
 	if err != nil {
 		t.Fatalf("assembleOverview: %v", err)
 	}
@@ -844,5 +844,29 @@ func TestRunOverviewAdminMessageFileStdin(t *testing.T) {
 	// The Gmail sender captured the rendered email; the message body should appear in it.
 	if !strings.Contains(string(fake.sent), "Hello team, this is the security overview") {
 		t.Errorf("rendered email missing the injected message; .sent =\n%s", string(fake.sent))
+	}
+}
+
+func TestAssembleOverviewAcceptsCustomTTL(t *testing.T) {
+	// noCache=false so the ttl is actually carried into the cache-aware
+	// branch of fetchAllDetections. The test cache dir is empty (TestMain
+	// redirects HOME to a temp dir), so the read misses and the fake
+	// client's data is used. Cache-hit semantics are exercised in the
+	// internal/cache tests.
+	c := &overviewFakeClient{
+		fakeClient: &fakeClient{
+			users: []iru.User{{ID: "u1", Name: "U1", Email: "u1@x"}},
+			detections: []iru.Detection{
+				{DeviceID: "d1", CVEID: "CVE-A", CVSSScore: 5.0, Severity: "Medium"},
+			},
+		},
+		devicesByUser: map[string][]iru.Device{"u1": {{DeviceID: "d1"}}},
+	}
+	view, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil, 30*time.Minute)
+	if err != nil {
+		t.Fatalf("assembleOverview: %v", err)
+	}
+	if len(view.Users) != 1 {
+		t.Fatalf("Users len: got %d want 1", len(view.Users))
 	}
 }
