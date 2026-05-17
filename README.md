@@ -183,6 +183,11 @@ Subsequent commands within the TTL skip the walk and return in under a
 second. Pass `--no-cache` (available on both `vulns list` and `user show`)
 to force a fresh fetch. Delete the file by hand to invalidate manually.
 
+The 15-minute default is per-profile configurable. Set
+`cache_ttl_minutes: <1-1440>` under the profile in
+`~/.config/jellyfish/config.yml`, or run `jellyfish configure cache` for an
+interactive prompt. `--no-cache` still bypasses for a single invocation.
+
 ### Iru detection semantics
 
 Iru's `/detections` endpoint returns one record per (device, CVE, package
@@ -793,7 +798,6 @@ that change should land alongside a golden-file test that locks it down.
   so extending this is mainly a `--profile` plumbing change.
 - Env-var fallback for the token (`JELLYFISH_API_TOKEN`) for CI environments
   with no Keychain.
-- A configurable `--cache-ttl` flag (currently the 15-minute TTL is hardcoded).
 - Write operations (acknowledge, suppress, kick off remediation).
 - A `-vv` extra-verbose mode that logs response bodies with token + PII
   redaction.
