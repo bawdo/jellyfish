@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Security overview</title>
+</head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#0f172a;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:20px 0;">
+<tr><td align="center">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;width:600px;max-width:600px;">
+
+{{template "header" .}}
+{{- template "message" .}}
+
+<tr><td style="padding:0;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="1" bgcolor="#e2e8f0" style="border-collapse:separate;border-spacing:1px;background:#e2e8f0;width:100%;">
+<tr>
+  <td bgcolor="#ffffff" style="background:#ffffff;padding:14px 12px;width:25%;">
+    <div style="font:800 26px/1 -apple-system,system-ui,sans-serif;color:#0f172a;">{{.Totals.UserCount}}</div>
+    <div style="font:600 10px/1.2 -apple-system,system-ui,sans-serif;color:#64748b;letter-spacing:.08em;text-transform:uppercase;margin-top:6px;">Users</div>
+    <div style="font:11px/1 -apple-system,system-ui,sans-serif;color:#94a3b8;margin-top:4px;">&nbsp;</div>
+  </td>
+  <td bgcolor="#ffffff" style="background:#ffffff;padding:14px 12px;width:25%;">
+    <div style="font:800 26px/1 -apple-system,system-ui,sans-serif;color:#0f172a;">{{.Totals.DeviceCount}}</div>
+    <div style="font:600 10px/1.2 -apple-system,system-ui,sans-serif;color:#64748b;letter-spacing:.08em;text-transform:uppercase;margin-top:6px;">Devices</div>
+    <div style="font:11px/1 -apple-system,system-ui,sans-serif;color:#94a3b8;margin-top:4px;">{{.AveragesView.Devices}} / user</div>
+  </td>
+  <td bgcolor="#ffffff" style="background:#ffffff;padding:14px 12px;width:25%;">
+    <div style="font:800 26px/1 -apple-system,system-ui,sans-serif;color:#0f172a;">{{.Totals.TotalIssues}}</div>
+    <div style="font:600 10px/1.2 -apple-system,system-ui,sans-serif;color:#64748b;letter-spacing:.08em;text-transform:uppercase;margin-top:6px;">Issues</div>
+    <div style="font:11px/1 -apple-system,system-ui,sans-serif;color:#94a3b8;margin-top:4px;">{{.AveragesView.Issues}} / user</div>
+  </td>
+  <td bgcolor="#ffffff" style="background:#ffffff;padding:14px 12px;width:25%;">
+    <div style="font:800 26px/1 -apple-system,system-ui,sans-serif;color:#0f172a;">{{.TotalsView.SecScore}}</div>
+    <div style="font:600 10px/1.2 -apple-system,system-ui,sans-serif;color:#64748b;letter-spacing:.08em;text-transform:uppercase;margin-top:6px;">Sec score</div>
+    <div style="font:11px/1 -apple-system,system-ui,sans-serif;color:#94a3b8;margin-top:4px;">{{.AveragesView.SecScore}} / user</div>
+  </td>
+</tr>
+<tr>
+  <td bgcolor="#ffffff" style="background:#ffffff;padding:14px 12px;width:25%;">
+    <div style="font:800 26px/1 -apple-system,system-ui,sans-serif;color:#dc2626;">{{.Totals.Critical}}</div>
+    <div style="font:600 10px/1.2 -apple-system,system-ui,sans-serif;color:#64748b;letter-spacing:.08em;text-transform:uppercase;margin-top:6px;">Critical</div>
+    <div style="font:11px/1 -apple-system,system-ui,sans-serif;color:#94a3b8;margin-top:4px;">{{.AveragesView.Critical}} / user</div>
+  </td>
+  <td bgcolor="#ffffff" style="background:#ffffff;padding:14px 12px;width:25%;">
+    <div style="font:800 26px/1 -apple-system,system-ui,sans-serif;color:#ea580c;">{{.Totals.High}}</div>
+    <div style="font:600 10px/1.2 -apple-system,system-ui,sans-serif;color:#64748b;letter-spacing:.08em;text-transform:uppercase;margin-top:6px;">High</div>
+    <div style="font:11px/1 -apple-system,system-ui,sans-serif;color:#94a3b8;margin-top:4px;">{{.AveragesView.High}} / user</div>
+  </td>
+  <td bgcolor="#ffffff" style="background:#ffffff;padding:14px 12px;width:25%;">
+    <div style="font:800 26px/1 -apple-system,system-ui,sans-serif;color:#ca8a04;">{{.Totals.Medium}}</div>
+    <div style="font:600 10px/1.2 -apple-system,system-ui,sans-serif;color:#64748b;letter-spacing:.08em;text-transform:uppercase;margin-top:6px;">Medium</div>
+    <div style="font:11px/1 -apple-system,system-ui,sans-serif;color:#94a3b8;margin-top:4px;">{{.AveragesView.Medium}} / user</div>
+  </td>
+  <td bgcolor="#ffffff" style="background:#ffffff;padding:14px 12px;width:25%;">
+    <div style="font:800 26px/1 -apple-system,system-ui,sans-serif;color:#0369a1;">{{.Totals.Low}}</div>
+    <div style="font:600 10px/1.2 -apple-system,system-ui,sans-serif;color:#64748b;letter-spacing:.08em;text-transform:uppercase;margin-top:6px;">Low</div>
+    <div style="font:11px/1 -apple-system,system-ui,sans-serif;color:#94a3b8;margin-top:4px;">{{.AveragesView.Low}} / user</div>
+  </td>
+</tr>
+</table>
+</td></tr>
+
+{{define "leader_row"}}
+<tr><td style="padding:12px 16px;border-bottom:1px solid #f1f5f9;border-left:3px solid {{.BorderColour}};">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+  <td valign="middle" style="width:28px;font:700 16px/1 -apple-system,system-ui,sans-serif;color:{{.BorderColour}};">{{.Position}}</td>
+  <td valign="middle" style="font:600 14px/1.2 -apple-system,system-ui,sans-serif;color:#0f172a;">{{.Name}}</td>
+  <td valign="middle" align="right" style="white-space:nowrap;">
+    <span style="display:inline-block;background:#fef2f2;color:#dc2626;font:700 9px/1 -apple-system,system-ui,sans-serif;padding:3px 5px;border-radius:3px;margin-left:3px;">C {{.Critical}}</span>
+    <span style="display:inline-block;background:#fff7ed;color:#ea580c;font:700 9px/1 -apple-system,system-ui,sans-serif;padding:3px 5px;border-radius:3px;margin-left:3px;">H {{.High}}</span>
+    <span style="display:inline-block;background:#fefce8;color:#ca8a04;font:700 9px/1 -apple-system,system-ui,sans-serif;padding:3px 5px;border-radius:3px;margin-left:3px;">M {{.Medium}}</span>
+    <span style="display:inline-block;background:#f0f9ff;color:#0369a1;font:700 9px/1 -apple-system,system-ui,sans-serif;padding:3px 5px;border-radius:3px;margin-left:3px;">L {{.Low}}</span>
+    <span style="display:inline-block;font:700 14px/1 'SF Mono','Menlo','Consolas',monospace;color:{{.BorderColour}};margin-left:10px;">{{.ScoreStr}}</span>
+  </td>
+</tr></table>
+</td></tr>
+{{end}}
+
+<tr><td style="padding:14px 16px 10px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;font:700 11px/1 -apple-system,system-ui,sans-serif;color:#0f172a;letter-spacing:.1em;text-transform:uppercase;">
+  <span style="display:inline-block;width:8px;height:8px;background:#16a34a;border-radius:2px;vertical-align:middle;margin-right:6px;"></span>The best 5
+</td></tr>
+<tr><td style="padding:0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+{{range $i, $row := .BestRows}}{{template "leader_row" $row}}{{end}}
+</table></td></tr>
+
+<tr><td style="padding:14px 16px 10px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;font:700 11px/1 -apple-system,system-ui,sans-serif;color:#0f172a;letter-spacing:.1em;text-transform:uppercase;">
+  <span style="display:inline-block;width:8px;height:8px;background:#dc2626;border-radius:2px;vertical-align:middle;margin-right:6px;"></span>The most dangerous 5
+</td></tr>
+<tr><td style="padding:0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+{{range $i, $row := .DangerousRows}}{{template "leader_row" $row}}{{end}}
+</table></td></tr>
+
+{{if .MeRow}}
+<tr><td style="padding:14px 16px 10px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;font:700 11px/1 -apple-system,system-ui,sans-serif;color:#0f172a;letter-spacing:.1em;text-transform:uppercase;">
+  <span style="display:inline-block;width:8px;height:8px;background:#2563eb;border-radius:2px;vertical-align:middle;margin-right:6px;"></span>Your standing
+</td></tr>
+<tr><td style="padding:14px 16px;background:#eff6ff;border-left:3px solid #2563eb;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+  <td valign="middle" style="width:64px;">
+    <div style="font:800 28px/1 -apple-system,system-ui,sans-serif;color:#2563eb;">{{.MeRow.RankStr}}</div>
+    <div style="font:600 9px/1 -apple-system,system-ui,sans-serif;color:#64748b;letter-spacing:.08em;text-transform:uppercase;margin-top:4px;">of {{.Totals.UserCount}}</div>
+  </td>
+  <td valign="middle" style="padding-left:8px;">
+    <div style="font:600 14px/1.2 -apple-system,system-ui,sans-serif;color:#0f172a;">{{.MeRow.Name}}</div>
+    <div style="font:11px/1.4 -apple-system,system-ui,sans-serif;color:#64748b;margin-top:2px;">{{.MeRow.DeviceCount}} devices · {{.MeRow.TotalIssues}} issues</div>
+  </td>
+  <td valign="middle" align="right" style="white-space:nowrap;">
+    <span style="display:inline-block;background:#fef2f2;color:#dc2626;font:700 9px/1 -apple-system,system-ui,sans-serif;padding:3px 5px;border-radius:3px;margin-left:3px;">C {{.MeRow.Critical}}</span>
+    <span style="display:inline-block;background:#fff7ed;color:#ea580c;font:700 9px/1 -apple-system,system-ui,sans-serif;padding:3px 5px;border-radius:3px;margin-left:3px;">H {{.MeRow.High}}</span>
+    <span style="display:inline-block;background:#fefce8;color:#ca8a04;font:700 9px/1 -apple-system,system-ui,sans-serif;padding:3px 5px;border-radius:3px;margin-left:3px;">M {{.MeRow.Medium}}</span>
+    <span style="display:inline-block;background:#f0f9ff;color:#0369a1;font:700 9px/1 -apple-system,system-ui,sans-serif;padding:3px 5px;border-radius:3px;margin-left:3px;">L {{.MeRow.Low}}</span>
+    <span style="display:inline-block;font:700 16px/1 'SF Mono','Menlo','Consolas',monospace;color:#2563eb;margin-left:10px;">{{.MeRow.ScoreStr}}</span>
+  </td>
+</tr></table>
+</td></tr>
+{{end}}
+
+<tr><td style="padding:14px 16px 10px;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;font:700 11px/1 -apple-system,system-ui,sans-serif;color:#0f172a;letter-spacing:.1em;text-transform:uppercase;">
+  <span style="display:inline-block;width:8px;height:8px;background:#64748b;border-radius:2px;vertical-align:middle;margin-right:6px;"></span>All users <span style="font-weight:400;color:#94a3b8;">({{.Totals.UserCount}})</span>
+</td></tr>
+<tr><td style="padding:0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+{{range $i, $row := .RosterRows}}{{template "leader_row" $row}}{{end}}
+</table></td></tr>
+
+<tr><td bgcolor="#f8fafc" style="background:#f8fafc;padding:14px 24px 18px;font:11px/1.5 -apple-system,system-ui,sans-serif;color:#64748b;border-top:1px solid #e2e8f0;">
+Generated by jellyfish overview. sec_score = sum of CVSS across all active issues on each user's devices.
+</td></tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>
