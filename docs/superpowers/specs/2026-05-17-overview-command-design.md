@@ -33,6 +33,11 @@ recipient sees where they sit in the ranking.
 - No concurrency for the `--per-user` send loop. Strictly sequential.
 - No "summary by department" or "summary by blueprint". One axis (user)
   for this command; other dimensions can be future siblings.
+- No `--csv` / `--emails` recipient list flags. `--email-to` covers the
+  admin path; `--per-user` covers the whole-org fanout. Anyone wanting
+  to mail a subset of users can pipe `jellyfish overview --output=csv`
+  into their own filter and feed the resulting list to
+  `jellyfish users send-email`.
 
 ## Command surface
 
