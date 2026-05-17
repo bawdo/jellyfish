@@ -26,7 +26,7 @@ import (
 // assembleOverview walks all detections (cached) and all devices (single
 // paginated stream), derives the user roster from device.User (Iru embeds
 // id/name/email/active/is_archived on each device record), buckets
-// detections by device, sums CVSS per user, sorts by SecScore desc with
+// detections by device, sums CVSS per user, sorts by SecScore asc with
 // deterministic tie-breakers, and produces an OverviewView with totals,
 // averages, BestFive, MostDangerousFive, and the full roster.
 //
@@ -127,10 +127,12 @@ func assembleOverview(ctx context.Context, client iruClient, stderr io.Writer, n
 		return email.OverviewView{}, errors.New("no users with devices")
 	}
 
-	// Roster + MostDangerous: SecScore desc, name asc, id asc.
+	// Roster: SecScore asc (most secure first), name asc, id asc. Rank 1 =
+	// lowest sec_score (most secure). MostDangerousFive is derived by re-sorting
+	// a copy desc so the leaderboard's internal order shows worst first.
 	sort.SliceStable(stats, func(i, j int) bool {
 		if stats[i].SecScore != stats[j].SecScore {
-			return stats[i].SecScore > stats[j].SecScore
+			return stats[i].SecScore < stats[j].SecScore
 		}
 		if stats[i].Name != stats[j].Name {
 			return stats[i].Name < stats[j].Name
@@ -140,19 +142,19 @@ func assembleOverview(ctx context.Context, client iruClient, stderr io.Writer, n
 	for i := range stats {
 		stats[i].Rank = i + 1
 	}
-	dangerousFive := append([]email.UserStats(nil), stats[:min(5, len(stats))]...)
+	bestFive := append([]email.UserStats(nil), stats[:min(5, len(stats))]...)
 
-	bestSorted := append([]email.UserStats(nil), stats...)
-	sort.SliceStable(bestSorted, func(i, j int) bool {
-		if bestSorted[i].SecScore != bestSorted[j].SecScore {
-			return bestSorted[i].SecScore < bestSorted[j].SecScore
+	dangerousSorted := append([]email.UserStats(nil), stats...)
+	sort.SliceStable(dangerousSorted, func(i, j int) bool {
+		if dangerousSorted[i].SecScore != dangerousSorted[j].SecScore {
+			return dangerousSorted[i].SecScore > dangerousSorted[j].SecScore
 		}
-		if bestSorted[i].Name != bestSorted[j].Name {
-			return bestSorted[i].Name < bestSorted[j].Name
+		if dangerousSorted[i].Name != dangerousSorted[j].Name {
+			return dangerousSorted[i].Name < dangerousSorted[j].Name
 		}
-		return bestSorted[i].UserID < bestSorted[j].UserID
+		return dangerousSorted[i].UserID < dangerousSorted[j].UserID
 	})
-	bestFive := append([]email.UserStats(nil), bestSorted[:min(5, len(bestSorted))]...)
+	dangerousFive := append([]email.UserStats(nil), dangerousSorted[:min(5, len(dangerousSorted))]...)
 
 	var totals email.OverviewTotals
 	for _, s := range stats {
@@ -275,7 +277,7 @@ func secScoreTier(score float64) string {
 }
 
 // renderOverviewCSV writes one header row plus one row per user, in the
-// same Users order as the email roster (SecScore desc). No totals row, no
+// same Users order as the email roster (SecScore asc). No totals row, no
 // sections — leaderboards can be derived by sorting in a spreadsheet.
 func renderOverviewCSV(w io.Writer, v email.OverviewView) error {
 	c := output.CSV().WithColumns([]output.Column{

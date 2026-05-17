@@ -476,6 +476,9 @@ personalised copy to every user with devices.
   `total_issues` for a given user.
 - Users with no devices are excluded from totals, averages, leaderboards, and
   the roster entirely.
+- The roster is sorted by `sec_score` ascending - rank 1 is the user with the
+  lowest `sec_score` (most secure). The "Your standing" line in the per-user
+  email therefore reads "Nth of M" where 1st is the safest user in the org.
 
 #### Tier thresholds
 

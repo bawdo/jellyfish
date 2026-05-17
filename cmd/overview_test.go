@@ -82,12 +82,12 @@ func TestAssembleOverviewSumsAndSorts(t *testing.T) {
 
 	// Alice: 9.8 + 7.5 + 5.0 = 22.3, 3 issues, C=1 H=1 M=1 L=0, 2 devices.
 	// Bob:   2.5,                    1 issue,  C=0 H=0 M=0 L=1, 1 device.
-	// Sort: SecScore desc -> Alice rank 1, Bob rank 2.
+	// Sort: SecScore asc -> Bob rank 1 (most secure), Alice rank 2.
 	want := []email.UserStats{
-		{UserID: "u-alice", Name: "Alice", Email: "alice@x", DeviceCount: 2,
-			SecScore: 22.3, TotalIssues: 3, Critical: 1, High: 1, Medium: 1, Low: 0, Rank: 1},
 		{UserID: "u-bob", Name: "Bob", Email: "bob@x", DeviceCount: 1,
-			SecScore: 2.5, TotalIssues: 1, Critical: 0, High: 0, Medium: 0, Low: 1, Rank: 2},
+			SecScore: 2.5, TotalIssues: 1, Critical: 0, High: 0, Medium: 0, Low: 1, Rank: 1},
+		{UserID: "u-alice", Name: "Alice", Email: "alice@x", DeviceCount: 2,
+			SecScore: 22.3, TotalIssues: 3, Critical: 1, High: 1, Medium: 1, Low: 0, Rank: 2},
 	}
 	for i := range want {
 		// float compare with one-decimal tolerance to dodge FP noise.
@@ -684,6 +684,19 @@ func TestAssembleOverviewFilterByEmails(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "warn: ghost@x not in tenant devices") {
 		t.Errorf("stderr missing warn for ghost@x:\n%s", stderr.String())
+	}
+	// Alice score 5.0 < Carol score 9.5, so Alice is rank 1 (most secure).
+	for _, u := range view.Users {
+		switch u.Name {
+		case "Alice":
+			if u.Rank != 1 {
+				t.Errorf("Alice rank: got %d, want 1 (lower score should be rank 1)", u.Rank)
+			}
+		case "Carol":
+			if u.Rank != 2 {
+				t.Errorf("Carol rank: got %d, want 2", u.Rank)
+			}
+		}
 	}
 }
 

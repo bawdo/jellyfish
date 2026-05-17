@@ -126,7 +126,7 @@ when a redirect is in effect and the user has a non-empty email.
    - filter users where DeviceCount > 0
    - sum CVSS across detections-on-their-devices -> SecScore
    - tally Critical/High/Medium/Low counts (severity field)
-6. sort by SecScore desc, name asc tiebreak; assign Rank (1 = highest)
+6. sort by SecScore asc, name asc tiebreak; assign Rank (1 = lowest sec_score = most secure)
 7. compute OverviewTotals + OverviewAverages
    (averages denominated by users-with-devices count)
 8. dispatch on --output:
@@ -153,18 +153,21 @@ when a redirect is in effect and the user has a non-empty email.
   would understate per-user numbers in a misleading way.
 - **`sec_score` precision.** Stored as `float64`, formatted `%.1f`
   everywhere (matches CVSS convention). Averages also one decimal.
-- **Tie-breakers.** Roster and Most Dangerous 5 sort by `SecScore desc,
-  name asc, user-id asc`. Best 5 sorts by `SecScore asc, name asc,
-  user-id asc`. Output is deterministic across runs and renderers.
+- **Tie-breakers.** Roster and Best 5 sort by `SecScore asc, name asc,
+  user-id asc`. Most Dangerous 5 re-sorts a copy by `SecScore desc,
+  name asc, user-id asc`. Output is deterministic across runs and
+  renderers.
 
 - **Rank semantics.** The `UserStats.Rank` field is the global rank
-  (1 = highest SecScore in the org). Leaderboard sections in the email
-  display a *leaderboard position* (1-5) computed from the slice index,
-  not the global rank, so "1" in Best 5 is the safest user and "1" in
-  Most Dangerous 5 is the most dangerous user. The global Rank is only
-  displayed in (a) the full roster's rank tile, (b) the per-user
-  `Your standing` callout copy ("14th of 87"), and (c) the `Rank`
-  column in JSON / YAML output.
+  (**1 = lowest SecScore = most secure**). The roster is sorted SecScore
+  asc, so position-in-roster equals Rank. Leaderboard sections in the
+  email display a *leaderboard position* (1-5) computed from the slice
+  index, not the global rank, so position 1 in "Best 5" is the most
+  secure user and position 1 in "Most Dangerous 5" is the most dangerous
+  user. The global Rank is only displayed in (a) the full roster's rank
+  tile, (b) the per-user `Your standing` callout copy ("14th of 87"
+  where 1st is the safest user in the org), and (c) the `Rank` column
+  in JSON / YAML output.
 
 - **View types live in `internal/email`.** Following the existing
   `email.UserBundleInput` pattern, the `OverviewView`, `UserStats`,
@@ -260,7 +263,7 @@ type UserStats struct {
     High        int
     Medium      int
     Low         int
-    Rank        int      // 1 = highest SecScore
+    Rank        int      // 1 = lowest SecScore (most secure)
 }
 
 type OverviewTotals struct {
@@ -289,9 +292,9 @@ type OverviewView struct {
     GeneratedAt     time.Time
     Totals          OverviewTotals
     Averages        OverviewAverages
-    BestFive        []UserStats   // SecScore asc, then name asc
-    MostDangerousFive []UserStats // SecScore desc, then name asc
-    Users           []UserStats   // full roster, SecScore desc, then name asc
+    BestFive        []UserStats   // SecScore asc, then name asc (lowest score first)
+    MostDangerousFive []UserStats // SecScore desc, then name asc (highest score first)
+    Users           []UserStats   // full roster, SecScore asc, then name asc (rank 1 = most secure)
     Me              *UserStats    // nil unless rendering a per-user copy
 }
 ```
@@ -404,8 +407,8 @@ CLI:
   "generated_at": "2026-05-17T10:30:00Z",
   "totals": { "user_count": 87, "device_count": 142, ... },
   "averages": { "devices_per_user": 1.6, ... },
-  "best_five": [{ "rank": 87, "name": "Ada Lovelace", ... }, ...],
-  "most_dangerous_five": [{ "rank": 1, "name": "Walter White", ... }, ...],
+  "best_five": [{ "rank": 1, "name": "Ada Lovelace", ... }, ...],
+  "most_dangerous_five": [{ "rank": 87, "name": "Walter White", ... }, ...],
   "users": [{ "rank": 1, ... }, ...]
 }
 ```
