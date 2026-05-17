@@ -3,10 +3,13 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"io"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/bawdo/jellyfish/internal/config"
 	"github.com/bawdo/jellyfish/internal/email"
 	"github.com/bawdo/jellyfish/internal/iru"
 )
@@ -250,6 +253,72 @@ func TestRenderOverviewYAML(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "tenant: acme") {
 		t.Errorf("YAML missing tenant key:\n%s", buf.String())
+	}
+}
+
+func TestRunOverviewAdminSend(t *testing.T) {
+	c := &overviewFakeClient{
+		fakeClient: &fakeClient{
+			users:      []iru.User{{ID: "u1", Name: "Alice", Email: "alice@x"}},
+			detections: []iru.Detection{{DeviceID: "d1", CVEID: "CVE-1", Severity: "High", CVSSScore: 7.5}},
+		},
+		devicesByUser: map[string][]iru.Device{"u1": {{DeviceID: "d1"}}},
+	}
+	fake := &fakeGmailSender{returnID: "msg-1"}
+	opts := overviewOpts{
+		Output:        "email",
+		Yes:           true,
+		EmailFlags:    emailFlagValues{To: "ops@example.com", From: "noreply@example.com"},
+		Profile:       config.Profile{Email: config.EmailConfig{GmailConfigured: true}},
+		EmailNow:      time.Date(2026, 5, 17, 10, 30, 0, 0, time.UTC),
+		KeychainGet:   stubKeychain("{}"),
+		NewSender:     newFakeSenderFactory(fake),
+		gitEmail:      func() (string, error) { return "noreply@example.com", nil },
+		ConfirmReader: strings.NewReader(""),
+	}
+	var stderr bytes.Buffer
+	if err := runOverview(context.Background(), c, io.Discard, &stderr, opts); err != nil {
+		t.Fatalf("runOverview: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "sent to=ops@example.com gmail-id=msg-1") {
+		t.Errorf("stderr missing sent line:\n%s", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "summary: sent=1 errors=0") {
+		t.Errorf("stderr missing summary:\n%s", stderr.String())
+	}
+	if len(fake.sent) == 0 {
+		t.Fatal("sender was not called")
+	}
+}
+
+func TestRunOverviewAdminDryRun(t *testing.T) {
+	c := &overviewFakeClient{
+		fakeClient: &fakeClient{
+			users:      []iru.User{{ID: "u1", Name: "Alice", Email: "alice@x"}},
+			detections: []iru.Detection{{DeviceID: "d1", CVEID: "CVE-1", Severity: "High", CVSSScore: 7.5}},
+		},
+		devicesByUser: map[string][]iru.Device{"u1": {{DeviceID: "d1"}}},
+	}
+	opts := overviewOpts{
+		Output:        "email",
+		DryRun:        true,
+		EmailFlags:    emailFlagValues{To: "ops@example.com,security@example.com", From: "noreply@example.com"},
+		Profile:       config.Profile{Email: config.EmailConfig{GmailConfigured: false}}, // intentional: dry-run bypasses gmail check
+		EmailNow:      time.Date(2026, 5, 17, 10, 30, 0, 0, time.UTC),
+		gitEmail:      func() (string, error) { return "noreply@example.com", nil },
+		ConfirmReader: strings.NewReader(""),
+	}
+	var stderr bytes.Buffer
+	if err := runOverview(context.Background(), c, io.Discard, &stderr, opts); err != nil {
+		t.Fatalf("runOverview: %v", err)
+	}
+	for _, want := range []string{
+		"DRY RUN", "would-send to=ops@example.com", "would-send to=security@example.com",
+		"summary: would-send=2 errors=0",
+	} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("stderr missing %q:\n%s", want, stderr.String())
+		}
 	}
 }
 

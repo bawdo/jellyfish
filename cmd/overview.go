@@ -1,10 +1,13 @@
 package cmd
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -374,8 +377,157 @@ func validateOverviewFlags(opts overviewOpts) error {
 	return nil
 }
 
-// runOverviewEmail is the placeholder send dispatcher; Task 12 and 13 fill
-// in the admin and per-user paths.
+// runOverviewEmail builds the email Options, captures the optional message,
+// and dispatches to the admin or per-user path. Per-user is Task 13.
 func runOverviewEmail(ctx context.Context, stdout, stderr io.Writer, opts overviewOpts, view email.OverviewView) error {
-	return errors.New("overview email send not yet implemented")
+	now := opts.EmailNow
+	if now.IsZero() {
+		now = time.Now()
+	}
+	gitLookup := opts.gitEmail
+	if gitLookup == nil {
+		gitLookup = gitUserEmail
+	}
+
+	// Bulk-style: don't honour email.default_to.
+	profForOpts := opts.Profile
+	profForOpts.Email.DefaultTo = ""
+
+	baseEmailOpts, err := resolveEmailOptions(opts.EmailFlags, profForOpts, gitLookup, now)
+	if err != nil {
+		return err
+	}
+	baseEmailOpts.Report = "overview"
+	baseEmailOpts.Tenant = opts.Profile.Subdomain
+	view.Tenant = opts.Profile.Subdomain
+	if view.GeneratedAt.IsZero() {
+		view.GeneratedAt = now
+	}
+
+	if opts.PerUser {
+		return runOverviewPerUser(ctx, stdout, stderr, opts, view, baseEmailOpts, now)
+	}
+	return runOverviewAdmin(ctx, stdout, stderr, opts, view, baseEmailOpts, now)
+}
+
+func runOverviewAdmin(ctx context.Context, stdout, stderr io.Writer, opts overviewOpts, view email.OverviewView, baseOpts email.Options, now time.Time) error {
+	recipients, err := splitEmails(baseOpts.To)
+	if err != nil {
+		return err
+	}
+
+	confirmIn := opts.ConfirmReader
+	if confirmIn == nil {
+		confirmIn = os.Stdin
+	}
+	ok, err := confirmSendOverview(stderr, confirmIn, len(recipients), false, opts.DryRun, opts.Yes)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		_, _ = fmt.Fprintln(stderr, "aborted: no mail sent")
+		return nil
+	}
+
+	display := fmt.Sprintf("%d recipients", len(recipients))
+	message, err := captureMessage(opts.EmailFlags, true, display, baseOpts.Subject, os.Stdin, stderr, nil)
+	if err != nil {
+		return err
+	}
+	baseOpts.Message = message
+
+	var sender gmail.Sender
+	if !opts.DryRun {
+		s, err := buildOverviewSender(ctx, opts, baseOpts.From)
+		if err != nil {
+			return err
+		}
+		sender = s
+	}
+
+	var counters bulkCounters
+	for _, to := range recipients {
+		userOpts := baseOpts
+		userOpts.To = to
+		if opts.DryRun {
+			_, _ = fmt.Fprintf(stderr, "would-send to=%s bytes=approx\n", to)
+			counters.wouldSend++
+			continue
+		}
+		var buf bytes.Buffer
+		if err := email.NewOverviewRendererWithStderr(userOpts, stderr).Render(&buf, email.OverviewInput{View: view}); err != nil {
+			_, _ = fmt.Fprintf(stderr, "error to=%s render: %v\n", to, err)
+			counters.recordError(err)
+			continue
+		}
+		id, serr := sender.Send(ctx, buf.Bytes())
+		if serr != nil {
+			_, _ = fmt.Fprintf(stderr, "error to=%s gmail: %v\n", to, serr)
+			counters.recordError(serr)
+			continue
+		}
+		_, _ = fmt.Fprintf(stderr, "sent to=%s gmail-id=%s\n", to, id)
+		counters.sent++
+	}
+
+	if opts.DryRun {
+		_, _ = fmt.Fprintf(stderr, "summary: would-send=%d errors=%d\n", counters.wouldSend, counters.errs)
+	} else {
+		_, _ = fmt.Fprintf(stderr, "summary: sent=%d errors=%d\n", counters.sent, counters.errs)
+	}
+	return counters.exitError()
+}
+
+// buildOverviewSender constructs a Gmail sender. Centralised so admin and
+// per-user paths share the keychain + factory plumbing.
+func buildOverviewSender(ctx context.Context, opts overviewOpts, from string) (gmail.Sender, error) {
+	if !opts.Profile.Email.GmailConfigured {
+		return nil, errors.New(`sending email requires Gmail credentials. Run "jellyfish configure email" to install a service-account JSON, or pass --dry-run to preview without sending`)
+	}
+	kchGet := opts.KeychainGet
+	if kchGet == nil {
+		return nil, errors.New("internal: KeychainGet not wired")
+	}
+	newSender := opts.NewSender
+	if newSender == nil {
+		return nil, errors.New("internal: NewSender not wired")
+	}
+	saJSON, kerr := kchGet()
+	if kerr != nil {
+		return nil, fmt.Errorf(`read Gmail credentials from Keychain: %w. Run "jellyfish configure email" to reinstall`, kerr)
+	}
+	return newSender(ctx, saJSON, from)
+}
+
+// confirmSendOverview is the overview's confirm-prompt. perUser switches the
+// prompt copy. Otherwise identical to confirmSend in users.go.
+func confirmSendOverview(stderr io.Writer, in io.Reader, count int, perUser, dryRun, yes bool) (bool, error) {
+	if dryRun {
+		_, _ = fmt.Fprintln(stderr, "DRY RUN - no mail will be sent")
+		return true, nil
+	}
+	if yes {
+		return true, nil
+	}
+	noun := "recipient"
+	if count != 1 {
+		noun = "recipients"
+	}
+	verb := "send the overview"
+	if perUser {
+		verb = "send personalised overviews"
+	}
+	_, _ = fmt.Fprintf(stderr, "About to %s to %d %s. Continue? [y/N] ", verb, count, noun)
+	br := bufio.NewReader(in)
+	line, err := br.ReadString('\n')
+	if err != nil && err != io.EOF {
+		return false, err
+	}
+	answer := strings.ToLower(strings.TrimSpace(line))
+	return answer == "y" || answer == "yes", nil
+}
+
+// runOverviewPerUser is the Task 13 stub.
+func runOverviewPerUser(ctx context.Context, stdout, stderr io.Writer, opts overviewOpts, view email.OverviewView, baseOpts email.Options, now time.Time) error {
+	return errors.New("overview --per-user not yet implemented")
 }
