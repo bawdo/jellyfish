@@ -28,8 +28,8 @@ func TestHexToRGB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hexToRGB: %v", err)
 	}
-	if r != 0x75 || g != 0x66 || b != 0xFF {
-		t.Errorf("got (%d,%d,%d) want (117,102,255)", r, g, b)
+	if r != 0x2b || g != 0x3a || b != 0x55 {
+		t.Errorf("got (%d,%d,%d) want (43,58,85)", r, g, b)
 	}
 }
 

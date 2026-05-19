@@ -300,16 +300,13 @@ Recipient, sender, and subject default from the `email:` block in
 | `--email-to`         | `email.default_to`       | empty (header renders as `<unspecified>`) |
 | `--email-from`       | `email.from`             | `git config user.email` |
 | `--email-subject`    | `email.subject_template` | per-command default |
-| `--email-header-bg`  | `email.header_bg`        | `#2b3a55` (default header colour) |
+| `--email-header-bg`  | `email.header_bg`        | `#2b3a55` (slate blue) |
 | `--email-logo`       | `email.logo_path`        | empty (no logo) |
 | `--message`          | -                        | unset (no message section) |
 | `--message-file`     | -                        | unset (no message section) |
 
-The default `#2b3a55` is the default header colour. A logo whose recognisable
-element is the same purple (the logo, for example) will blend into
-that background - pair the default with a logo whose distinguishing element
-is white or dark, or pick a contrasting header colour such as `#C6B8FE`
-(light lavender) or `#6846D8` (deep purple).
+The default `#2b3a55` is a neutral slate blue. Pick a contrasting header
+colour such as `#C6B8FE` (light lavender) or `#6846D8` (deep purple).
 
 **Logo dimensions.** The header renders the logo at a fixed 56px height; width
 scales by the source PNG's aspect ratio (the renderer never crops or distorts).
