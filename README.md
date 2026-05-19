@@ -13,27 +13,21 @@ A macOS-only Go CLI for the Iru (formerly Kandji) Endpoint Management API.
 
 ## Install
 
-Requires Go 1.25+ on macOS. The module path `github.com/bawdo/jellyfish` is
-private (no `go-import` meta tag is served), so install from a local checkout
-rather than the network.
+Requires Go 1.25+ on macOS. Install with:
 
 ```bash
-git clone <repo-url> jellyfish && cd jellyfish
-make install
+go install github.com/bawdo/jellyfish@latest
 ```
 
-`make install` runs `go install .` with version metadata baked in via
-`-ldflags`. It places `jellyfish` in `$GOBIN` if set, otherwise `$GOPATH/bin`
-(default `~/go/bin`). Note: `go install ./` without make will still show the
-commit SHA via Go's automatic VCS stamping but won't include the tag - for
-full version info use `make install`. Add that directory to your `PATH` once:
+This places `jellyfish` in `$GOBIN` if set, otherwise `$GOPATH/bin`
+(default `~/go/bin`). Add that directory to your `PATH` once:
 
 ```bash
 echo 'export PATH="$HOME/go/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
-For an in-tree build (no install) use:
+For a local in-tree build (no install) use:
 
 ```bash
 make build       # produces ./bin/jellyfish
@@ -44,13 +38,10 @@ After install, confirm the binary is wired up:
 
 ```bash
 $ jellyfish version
-jellyfish v1.0.0
-  commit: 7f579d3a...
-  tag:    v1.0.0
+jellyfish v0.1.0
+  commit: abc1234...
+  tag:    v0.1.0
 ```
-
-The commit line is suffixed with ` (dirty)` when the working tree had uncommitted
-changes at build time. The tag line is omitted when HEAD is not tagged.
 
 ### Shell completion
 
