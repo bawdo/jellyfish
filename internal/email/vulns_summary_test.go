@@ -26,7 +26,7 @@ func sampleVulns() []iru.Vulnerability {
 
 func TestBuildVulnSummaryView(t *testing.T) {
 	view := buildVulnSummaryView(sampleVulns(), Options{
-		Tenant:      "example",
+		Tenant: "example",
 		GeneratedAt: time.Date(2026, 5, 16, 10, 42, 0, 0, time.UTC),
 	}.withDefaults())
 
@@ -194,7 +194,7 @@ func newPinnedOpts() Options {
 		From:              "Jellyfish <alice@example.com>",
 		To:                "secops@example.com",
 		Subject:           "Jellyfish vulnerability summary - 2026-05-16",
-		Tenant:            "example",
+		Tenant: "example",
 		GeneratedAt:       time.Date(2026, 5, 16, 10, 42, 0, 0, time.FixedZone("AEST", 10*3600)),
 		BoundaryOverride:  "=_jf_FIXEDBOUNDARY00",
 		MessageIDOverride: "<fixed-id@example.com>",
