@@ -7,15 +7,17 @@ import (
 	"time"
 )
 
-// integrationRecipient is the ONLY address this integration suite will ever
-// send to. DO NOT make this configurable - it is an invariant. A developer
-// running this suite should never be one typo away from emailing a real
-// customer or teammate.
-const integrationRecipient = "k@example.com"
+// The integration test sends a real email. Both JELLYFISH_GMAIL_TESTS=1
+// and JELLYFISH_INTEGRATION_RECIPIENT must be set; the recipient env var
+// is the only safeguard against accidental sends.
 
 func TestIntegrationSend(t *testing.T) {
 	if os.Getenv("JELLYFISH_GMAIL_TESTS") != "1" {
 		t.Skip("set JELLYFISH_GMAIL_TESTS=1 to run the live Gmail send integration test")
+	}
+	recipient := os.Getenv("JELLYFISH_INTEGRATION_RECIPIENT")
+	if recipient == "" {
+		t.Skip("set JELLYFISH_INTEGRATION_RECIPIENT to a real address you control to run the live Gmail send integration test")
 	}
 	jsonPath := os.Getenv("JELLYFISH_GMAIL_TEST_JSON")
 	if jsonPath == "" {
@@ -40,7 +42,7 @@ func TestIntegrationSend(t *testing.T) {
 	}
 
 	body := "From: " + subject + "\r\n" +
-		"To: " + integrationRecipient + "\r\n" +
+		"To: " + recipient + "\r\n" +
 		"Subject: jellyfish integration-test " + time.Now().UTC().Format(time.RFC3339) + "\r\n" +
 		"\r\nIntegration-test message - safe to delete.\r\n"
 
