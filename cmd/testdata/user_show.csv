@@ -1,0 +1,4 @@
+user_id,user_email,user_name,device_id,device_name,serial_number,cve_id,package_name,package_version,severity,cvss_score,detection_datetime
+u-1,alice@example.com,Alice,d-1,Alice MBP,SN1,CVE-2024-3094,xz-utils,5.6.1,Critical,10.0,2026-05-10T08:00:00Z
+u-1,alice@example.com,Alice,d-1,Alice MBP,SN1,CVE-2024-6387,openssh-server,9.6,High,8.1,2026-05-11T09:30:00Z
+u-1,alice@example.com,Alice,d-2,Alice iPad,SN2,,,,,0.0,

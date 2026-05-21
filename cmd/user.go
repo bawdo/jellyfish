@@ -264,11 +264,10 @@ func renderUserBundleTable(w io.Writer, b UserBundle) error {
 	return nil
 }
 
-// TODO(known-follow-up): the column order below is pinned by the README
-// "Output formats" section but has no golden-file test. Any change to the
-// header list or ordering MUST land alongside a test that locks the schema
-// down. See README "Known follow-ups → CSV column order for user show is
-// fixed without a test".
+// The column order below is a documented contract: it is pinned by the README
+// "Output formats" section and locked by TestUserShowCSVColumnOrder's golden
+// file. Any change to the header list or ordering must land alongside a
+// refreshed golden (go test ./cmd -update-golden).
 func renderUserBundleCSV(w io.Writer, b UserBundle) error {
 	type row struct {
 		userID, userEmail, userName        string

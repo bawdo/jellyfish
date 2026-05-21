@@ -284,19 +284,7 @@ JELLYFISH_KEYCHAIN_TESTS=1 go test ./internal/keychain/... -count=1
 
 The first run pops a macOS dialog asking to allow the test binary to read your Keychain; approve it and re-run.
 
-## Known follow-ups
-
-These items were noted during development but are not blocking. Captured
-here so they do not get lost.
-
-### CSV column order for `user show` is fixed without a test
-
-The flattened CSV columns for `jellyfish user show -o csv` are listed in the
-README above and pinned in `cmd/user.go`'s `renderUserBundleCSV`. There is
-currently no test asserting the order. If the order ever needs to change,
-that change should land alongside a golden-file test that locks it down.
-
-### Other future work
+## Future work
 
 - Env-var fallback for the token (`JELLYFISH_API_TOKEN`) for CI environments
   with no Keychain.

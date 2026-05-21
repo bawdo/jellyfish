@@ -103,6 +103,39 @@ func TestUserShowCSVSortsBySeverity(t *testing.T) {
 	}
 }
 
+func TestUserShowCSVColumnOrder(t *testing.T) {
+	client := &fakeClient{
+		users: []iru.User{{ID: "u-1", Name: "Alice", Email: "alice@example.com"}},
+		devices: []iru.Device{
+			{DeviceID: "d-1", DeviceName: "Alice MBP", SerialNumber: "SN1"},
+			{DeviceID: "d-2", DeviceName: "Alice iPad", SerialNumber: "SN2"},
+		},
+		detections: []iru.Detection{
+			{
+				DeviceID: "d-1", CVEID: "CVE-2024-3094", Severity: "Critical",
+				CVSSScore: 10.0, Name: "xz-utils", Version: "5.6.1",
+				DetectionDatetime: "2026-05-10T08:00:00Z",
+			},
+			{
+				DeviceID: "d-1", CVEID: "CVE-2024-6387", Severity: "High",
+				CVSSScore: 8.1, Name: "openssh-server", Version: "9.6",
+				DetectionDatetime: "2026-05-11T09:30:00Z",
+			},
+		},
+	}
+	buf := &bytes.Buffer{}
+	err := runUserShow(context.Background(), client, buf, io.Discard, userShowOpts{
+		Identifier: "u-1", Output: "csv", NoCache: true,
+	})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	// The fixture covers a device with detections (exercising the severity
+	// sort) and a device with none (the empty-CVE-columns branch). The golden
+	// pins the header set and column order documented in the README.
+	goldenAssert(t, "user_show.csv", buf.Bytes())
+}
+
 func TestUserShowTextSortsDetectionsBySeverity(t *testing.T) {
 	client := &fakeClient{
 		users:   []iru.User{{ID: "u-1", Name: "Alice", Email: "alice@example.com"}},
