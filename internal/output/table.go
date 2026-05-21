@@ -42,24 +42,42 @@ func (r *tableRenderer) Render(w io.Writer, v any) error {
 	}
 	t.AppendHeader(header)
 
-	rv := reflect.ValueOf(v)
-	switch rv.Kind() {
-	case reflect.Slice, reflect.Array:
-		for i := 0; i < rv.Len(); i++ {
-			t.AppendRow(r.rowFor(rv.Index(i).Interface()))
+	err := eachRow(r.columns, v, func(cells []string) error {
+		row := make(table.Row, len(cells))
+		for i, c := range cells {
+			row[i] = c
 		}
-	default:
-		t.AppendRow(r.rowFor(v))
+		t.AppendRow(row)
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 
 	t.Render()
 	return nil
 }
 
-func (r *tableRenderer) rowFor(v any) table.Row {
-	row := make(table.Row, len(r.columns))
-	for i, c := range r.columns {
-		row[i] = c.Extract(v)
+// eachRow calls emit once per row of v, with each row's cells as a []string.
+// v must be a struct or a slice/array of structs. The first emit error stops
+// iteration and is returned.
+func eachRow(cols []Column, v any, emit func(cells []string) error) error {
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
+		for i := 0; i < rv.Len(); i++ {
+			if err := emitCells(cols, rv.Index(i).Interface(), emit); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
-	return row
+	return emitCells(cols, v, emit)
+}
+
+func emitCells(cols []Column, v any, emit func(cells []string) error) error {
+	cells := make([]string, len(cols))
+	for i, c := range cols {
+		cells[i] = c.Extract(v)
+	}
+	return emit(cells)
 }

@@ -4,7 +4,6 @@ import (
 	"encoding/csv"
 	"errors"
 	"io"
-	"reflect"
 )
 
 type csvRenderer struct {
@@ -34,27 +33,9 @@ func (r *csvRenderer) Render(w io.Writer, v any) error {
 		return err
 	}
 
-	rv := reflect.ValueOf(v)
-	switch rv.Kind() {
-	case reflect.Slice, reflect.Array:
-		for i := 0; i < rv.Len(); i++ {
-			if err := r.writeRow(cw, rv.Index(i).Interface()); err != nil {
-				return err
-			}
-		}
-	default:
-		if err := r.writeRow(cw, v); err != nil {
-			return err
-		}
+	if err := eachRow(r.columns, v, cw.Write); err != nil {
+		return err
 	}
 	cw.Flush()
 	return cw.Error()
-}
-
-func (r *csvRenderer) writeRow(cw *csv.Writer, v any) error {
-	row := make([]string, len(r.columns))
-	for i, c := range r.columns {
-		row[i] = c.Extract(v)
-	}
-	return cw.Write(row)
 }
