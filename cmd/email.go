@@ -138,6 +138,19 @@ func gitUserEmail() (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// resolveNowAndGitLookup applies the defaults shared by every email render
+// path: a zero now becomes time.Now(), and a nil git lookup becomes
+// gitUserEmail. Both are test-injection seams on the per-command opts structs.
+func resolveNowAndGitLookup(now time.Time, lookupGit gitEmailLookup) (time.Time, gitEmailLookup) {
+	if now.IsZero() {
+		now = time.Now()
+	}
+	if lookupGit == nil {
+		lookupGit = gitUserEmail
+	}
+	return now, lookupGit
+}
+
 func firstNonEmpty(values ...string) string {
 	for _, v := range values {
 		if v != "" {

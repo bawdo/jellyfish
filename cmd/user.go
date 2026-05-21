@@ -146,14 +146,7 @@ func renderUserBundle(w io.Writer, stderr io.Writer, opts userShowOpts, b UserBu
 	case "table", "":
 		return renderUserBundleTable(w, b)
 	case "email":
-		now := opts.EmailNow
-		if now.IsZero() {
-			now = time.Now()
-		}
-		gitLookup := opts.gitEmail
-		if gitLookup == nil {
-			gitLookup = gitUserEmail
-		}
+		now, gitLookup := resolveNowAndGitLookup(opts.EmailNow, opts.gitEmail)
 		emailOpts, err := resolveEmailOptions(opts.EmailFlags, opts.Profile, gitLookup, now)
 		if err != nil {
 			return err
@@ -171,14 +164,7 @@ func renderUserBundle(w io.Writer, stderr io.Writer, opts userShowOpts, b UserBu
 }
 
 func runSendUserShow(ctx context.Context, stderr io.Writer, opts userShowOpts, b UserBundle) error {
-	now := opts.EmailNow
-	if now.IsZero() {
-		now = time.Now()
-	}
-	gitLookup := opts.gitEmail
-	if gitLookup == nil {
-		gitLookup = gitUserEmail
-	}
+	now, gitLookup := resolveNowAndGitLookup(opts.EmailNow, opts.gitEmail)
 	emailOpts, err := resolveEmailOptions(opts.EmailFlags, opts.Profile, gitLookup, now)
 	if err != nil {
 		return err

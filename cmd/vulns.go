@@ -312,14 +312,7 @@ func renderVulns(w io.Writer, stderr io.Writer, opts vulnsSummaryOpts, vs []iru.
 		c := output.CSV().WithColumns(vulnColumns())
 		return c.Render(w, vs)
 	case "email":
-		now := opts.EmailNow
-		if now.IsZero() {
-			now = time.Now()
-		}
-		gitLookup := opts.gitEmail
-		if gitLookup == nil {
-			gitLookup = gitUserEmail
-		}
+		now, gitLookup := resolveNowAndGitLookup(opts.EmailNow, opts.gitEmail)
 		emailOpts, err := resolveEmailOptions(opts.EmailFlags, opts.Profile, gitLookup, now)
 		if err != nil {
 			return err
@@ -340,14 +333,7 @@ func renderVulns(w io.Writer, stderr io.Writer, opts vulnsSummaryOpts, vs []iru.
 }
 
 func runSendVulnsSummary(ctx context.Context, stderr io.Writer, opts vulnsSummaryOpts, vs []iru.Vulnerability) error {
-	now := opts.EmailNow
-	if now.IsZero() {
-		now = time.Now()
-	}
-	gitLookup := opts.gitEmail
-	if gitLookup == nil {
-		gitLookup = gitUserEmail
-	}
+	now, gitLookup := resolveNowAndGitLookup(opts.EmailNow, opts.gitEmail)
 	emailOpts, err := resolveEmailOptions(opts.EmailFlags, opts.Profile, gitLookup, now)
 	if err != nil {
 		return err

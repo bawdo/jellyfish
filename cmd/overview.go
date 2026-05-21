@@ -457,14 +457,7 @@ func validateOverviewFlags(opts overviewOpts) error {
 // <unspecified> if neither is set). Mirrors `vulns summary -o email` and
 // `user show -o email`: pure rendering, no Gmail credentials are touched.
 func renderOverviewEmailStdout(stdout, stderr io.Writer, opts overviewOpts, view email.OverviewView) error {
-	now := opts.EmailNow
-	if now.IsZero() {
-		now = time.Now()
-	}
-	gitLookup := opts.gitEmail
-	if gitLookup == nil {
-		gitLookup = gitUserEmail
-	}
+	now, gitLookup := resolveNowAndGitLookup(opts.EmailNow, opts.gitEmail)
 	emailOpts, err := resolveEmailOptions(opts.EmailFlags, opts.Profile, gitLookup, now)
 	if err != nil {
 		return err
@@ -510,14 +503,7 @@ func buildOverviewUserFilter(opts overviewOpts) (map[string]struct{}, error) {
 // to the admin path or the --per-user fanout. The -o email stdout-render path
 // is renderOverviewEmailStdout — separate function, no Gmail credentials.
 func runOverviewEmail(ctx context.Context, stderr io.Writer, opts overviewOpts, view email.OverviewView) error {
-	now := opts.EmailNow
-	if now.IsZero() {
-		now = time.Now()
-	}
-	gitLookup := opts.gitEmail
-	if gitLookup == nil {
-		gitLookup = gitUserEmail
-	}
+	now, gitLookup := resolveNowAndGitLookup(opts.EmailNow, opts.gitEmail)
 
 	// Bulk-style: don't honour email.default_to.
 	profForOpts := opts.Profile
