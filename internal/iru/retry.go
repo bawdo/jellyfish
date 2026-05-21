@@ -1,6 +1,8 @@
 package iru
 
 import (
+	"bytes"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -38,15 +40,12 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		if !shouldRetry(resp.StatusCode) {
 			return resp, nil
 		}
-		// TODO(known-follow-up): closing the body here means client.do's
-		// decodeAPIError(lastResp) reads empty bytes, so APIError.Message ends
-		// up blank after all retries are exhausted. Status codes survive (and
-		// thus classifyError -> exit code), but the human-readable upstream
-		// text is lost. Fix: read into a []byte and reattach via
-		// io.NopCloser(bytes.NewReader(buf)) before closing. See README
-		// "Known follow-ups → Retry transport drops the upstream error message
-		// body".
+		// Buffer the body before closing so a later decodeAPIError on the
+		// returned lastResp still sees the upstream error text. Reading to
+		// EOF then closing also lets the transport reuse the connection.
+		buf, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
+		resp.Body = io.NopCloser(bytes.NewReader(buf))
 		lastResp = resp
 
 		wait := backoff

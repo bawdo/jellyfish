@@ -289,42 +289,6 @@ The first run pops a macOS dialog asking to allow the test binary to read your K
 These items were noted during development but are not blocking. Captured
 here so they do not get lost.
 
-### Iru response shape probing (resolved)
-
-`internal/iru/types.go` was originally authored without a live tenant. A
-series of v1.1 commits realigned the code against the real Iru API after
-live probing:
-
-- `/users` paginates with `?cursor=<value>` and returns `{next, previous,
-  results}` where `next` is a full URL.
-- `/detections` paginates with `?after=<value>` and returns the same
-  wrapper but with `next` as a raw cursor string. `nextCursor()` handles
-  both shapes.
-- `/devices` returns a top-level JSON array; no wrapper.
-- Iru ignores per-device filters on `/detections` entirely. Detection
-  filtering happens client-side after a full walk; results are cached
-  for 15 minutes.
-- User lookup by email uses `/users?email=<address>` directly (single
-  request, no walk).
-- `Detection` records have no `status` field. `User` and `Device` structs
-  expanded with the rich fields Iru returns.
-
-### Retry transport drops the upstream error message body
-
-When `internal/iru/retry.go` exhausts all three attempts on a 429 or 5xx, it
-drains and closes each response body in the retry loop, then returns the last
-response. By the time `client.do` calls `decodeAPIError(resp)`, the body is
-already closed and reads as empty - so `APIError.Message` ends up blank.
-
-Status codes are preserved correctly (so `classifyError` still maps 429 to
-exit 4 and 5xx to exit 4), and exit-code behaviour is unaffected. The only
-loss is the human-readable error text from Iru.
-
-Fix path: in the retry loop, read the body into a `[]byte` before closing,
-then restore it via `io.NopCloser(bytes.NewReader(buf))` on the response
-returned to the caller. Small change; needs a test that asserts the message
-survives after retries.
-
 ### `WithHTTPClient` plus `WithTimeout` option ordering is fragile
 
 If a caller passes both `iru.WithTimeout(d)` and `iru.WithHTTPClient(custom)`

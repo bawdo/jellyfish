@@ -2,6 +2,7 @@ package iru
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -28,6 +29,26 @@ func TestRetriesOn429ThenSucceeds(t *testing.T) {
 	}
 	if got := calls.Load(); got != 3 {
 		t.Fatalf("expected 3 attempts, got %d", got)
+	}
+}
+
+func TestRetryPreservesErrorBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "0")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"detail":"slow down"}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	c := NewClient(srv.URL, "tkn")
+	err := c.do(context.Background(), http.MethodGet, "/x", nil, nil)
+
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected *APIError, got %v", err)
+	}
+	if apiErr.Message != "slow down" {
+		t.Fatalf("expected upstream message to survive retries, got %q", apiErr.Message)
 	}
 }
 
