@@ -14,6 +14,7 @@
 # Claude/Superpowers stuff
 .superpowers/
 docs/superpowers
+.claude/
 
 # Git worktrees
 .worktrees/
