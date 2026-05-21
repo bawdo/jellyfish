@@ -1,12 +1,10 @@
 package keychain
 
+import "errors"
+
 // Service is the macOS Keychain service identifier used by jellyfish.
 const Service = "jellyfish.secrets"
 
-// ErrNotFound is returned when no item exists for the given account.
-type notFoundError struct{}
-
-func (notFoundError) Error() string { return "keychain item not found" }
-
-// ErrNotFound is the sentinel callers can compare against with errors.Is.
-var ErrNotFound = notFoundError{}
+// ErrNotFound is the sentinel returned when no item exists for the given
+// account. Callers compare against it with errors.Is.
+var ErrNotFound = errors.New("keychain item not found")

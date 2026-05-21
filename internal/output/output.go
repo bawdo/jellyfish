@@ -10,19 +10,15 @@ type Renderer interface {
 	Render(w io.Writer, v any) error
 }
 
-// For renders a value v to w using the renderer chosen by format.
-// Supported formats: table, json, yaml, csv (later tasks add the others).
+// For returns the whole-value renderer for format. Only json and yaml are
+// handled here; table and csv are column-based and must be built by the caller
+// with Table()/CSV().WithColumns(...).
 func For(format string) (Renderer, error) {
 	switch format {
 	case "json":
 		return JSON(), nil
 	case "yaml":
 		return YAML(), nil
-	case "csv":
-		return CSV(), nil
-	case "table", "":
-		// Table requires columns per-command; callers should construct it directly.
-		return Table(), nil
 	default:
 		return nil, fmt.Errorf("unsupported output format %q", format)
 	}
