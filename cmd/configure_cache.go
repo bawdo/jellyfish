@@ -52,73 +52,65 @@ func runConfigureCache(o configureCacheOpts) error {
 		return errors.New(`no "default" profile yet - run "jellyfish configure" first to set up tenant + token`)
 	}
 
-	r := bufio.NewReader(o.Stdin)
-
 	current := ""
 	if prof.CacheTTLMinutes > 0 {
 		current = strconv.Itoa(prof.CacheTTLMinutes)
 	}
 
-	var chosen int
-	var setExplicitly bool
-	cleared := false
-
-	for attempt := 1; attempt <= configureEmailMaxAttempts; attempt++ {
-		line, err := promptWithDefault(o.Stdout, r, "Cache TTL in minutes", current)
-		if err != nil {
-			return err
-		}
-		switch line {
-		case current:
-			// User pressed Enter; keep whatever we had (which may be "").
-			if prof.CacheTTLMinutes == 0 {
-				_, _ = fmt.Fprintln(o.Stdout, "Cache TTL unchanged (using built-in default)")
-				return nil
-			}
+	newTTL, keep, err := promptCacheTTL(o.Stdout, o.Stderr, bufio.NewReader(o.Stdin), current)
+	if err != nil {
+		return err
+	}
+	if keep {
+		if prof.CacheTTLMinutes == 0 {
+			_, _ = fmt.Fprintln(o.Stdout, "Cache TTL unchanged (using built-in default)")
+		} else {
 			_, _ = fmt.Fprintf(o.Stdout, "Cache TTL unchanged (%d minutes)\n", prof.CacheTTLMinutes)
-			return nil
-		case "":
-			// User typed "-" (collapsed to empty by promptWithDefault) on a
-			// profile that has a value set. When current=="" (no value set)
-			// this case is unreachable because the `current` case above
-			// matches first (Go evaluates cases in source order), so typing
-			// "-" on an unset TTL is treated as a no-op keep.
-			cleared = true
-		default:
-			n, perr := strconv.Atoi(line)
-			if perr != nil {
-				_, _ = fmt.Fprintf(o.Stderr, "invalid number: %v\n", perr)
-				continue
-			}
-			if vErr := config.ValidateCacheTTLMinutes(n); vErr != nil {
-				_, _ = fmt.Fprintln(o.Stderr, vErr)
-				continue
-			}
-			chosen = n
-			setExplicitly = true
 		}
-		break
+		return nil
 	}
 
-	if !cleared && !setExplicitly {
-		return fmt.Errorf("invalid cache TTL after %d attempts", configureEmailMaxAttempts)
-	}
-
-	if cleared {
-		prof.CacheTTLMinutes = 0
-	} else {
-		prof.CacheTTLMinutes = chosen
-	}
+	prof.CacheTTLMinutes = newTTL
 	file["default"] = prof
-
 	if err := config.Save(o.ConfigPath, file); err != nil {
 		return err
 	}
 
-	if cleared {
+	if newTTL == 0 {
 		_, _ = fmt.Fprintf(o.Stdout, "Cache TTL cleared (using built-in default; saved to %s)\n", o.ConfigPath)
 	} else {
-		_, _ = fmt.Fprintf(o.Stdout, "Cache TTL set to %d minutes (saved to %s)\n", chosen, o.ConfigPath)
+		_, _ = fmt.Fprintf(o.Stdout, "Cache TTL set to %d minutes (saved to %s)\n", newTTL, o.ConfigPath)
 	}
 	return nil
+}
+
+// promptCacheTTL drives the re-prompt loop. keep is true when the user pressed
+// Enter (leave the config untouched); otherwise newTTL is the value to save,
+// where 0 means the user cleared it back to the built-in default. Typing "-"
+// on a profile with no TTL set reads as Enter, so it is treated as keep.
+func promptCacheTTL(stdout, stderr io.Writer, r *bufio.Reader, current string) (newTTL int, keep bool, err error) {
+	for attempt := 1; attempt <= configureEmailMaxAttempts; attempt++ {
+		line, perr := promptWithDefault(stdout, r, "Cache TTL in minutes", current)
+		if perr != nil {
+			return 0, false, perr
+		}
+		switch line {
+		case current:
+			return 0, true, nil
+		case "":
+			return 0, false, nil // "-" cleared a set value
+		default:
+			n, convErr := strconv.Atoi(line)
+			if convErr != nil {
+				_, _ = fmt.Fprintf(stderr, "invalid number: %v\n", convErr)
+				continue
+			}
+			if vErr := config.ValidateCacheTTLMinutes(n); vErr != nil {
+				_, _ = fmt.Fprintln(stderr, vErr)
+				continue
+			}
+			return n, false, nil
+		}
+	}
+	return 0, false, fmt.Errorf("invalid cache TTL after %d attempts", configureEmailMaxAttempts)
 }
