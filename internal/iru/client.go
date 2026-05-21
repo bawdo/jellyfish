@@ -17,50 +17,68 @@ type Client struct {
 	userAgent  string
 }
 
-// Option configures a Client at construction time.
-type Option func(*Client)
+// Option configures a Client at construction time. Options record intent into
+// a clientConfig; NewClient reconciles them once after all are applied, so
+// option ordering never changes the result.
+type Option func(*clientConfig)
 
-// TODO(known-follow-up): WithHTTPClient + WithTimeout option ordering is
-// fragile — applying WithTimeout(d) and then WithHTTPClient(custom) replaces
-// the whole *http.Client and loses the timeout. Not triggered in v1 because
-// WithHTTPClient is never called by production code. Fix path: make
-// WithHTTPClient preserve any timeout already set, or document the ordering
-// contract on each option. See README "Known follow-ups".
-func WithHTTPClient(h *http.Client) Option { return func(c *Client) { c.httpClient = h } }
-func WithUserAgent(ua string) Option       { return func(c *Client) { c.userAgent = ua } }
+// clientConfig collects option intent before NewClient builds the Client.
+type clientConfig struct {
+	httpClient *http.Client
+	userAgent  string
+	timeout    *time.Duration
+}
+
+// WithHTTPClient supplies a custom *http.Client. NewClient attaches the auth
+// transport when the supplied client has none, and still applies WithTimeout
+// (if also given) regardless of the order the two options are passed in.
+func WithHTTPClient(h *http.Client) Option {
+	return func(cfg *clientConfig) { cfg.httpClient = h }
+}
+
+// WithUserAgent overrides the User-Agent header.
+func WithUserAgent(ua string) Option {
+	return func(cfg *clientConfig) { cfg.userAgent = ua }
+}
+
+// WithTimeout sets the http.Client timeout. It is honoured whether passed
+// before or after WithHTTPClient.
 func WithTimeout(d time.Duration) Option {
-	return func(c *Client) {
-		if c.httpClient == nil {
-			c.httpClient = &http.Client{}
-		}
-		c.httpClient.Timeout = d
-	}
+	return func(cfg *clientConfig) { cfg.timeout = &d }
 }
 
 // NewClient constructs a Client. baseURL must end with /api/v1 (no trailing slash).
 func NewClient(baseURL, token string, opts ...Option) *Client {
-	c := &Client{
-		baseURL:   baseURL,
-		userAgent: "jellyfish/dev",
-		httpClient: &http.Client{
-			Transport: &authTransport{
-				token: token,
-				base:  &retryTransport{base: http.DefaultTransport},
-			},
-			Timeout: 30 * time.Second,
-		},
-	}
+	cfg := clientConfig{}
 	for _, o := range opts {
-		o(c)
+		o(&cfg)
+	}
+
+	httpClient := cfg.httpClient
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 30 * time.Second}
 	}
 	// Preserve the auth transport when callers swap in their own http.Client.
-	if c.httpClient.Transport == nil {
-		c.httpClient.Transport = &authTransport{
+	if httpClient.Transport == nil {
+		httpClient.Transport = &authTransport{
 			token: token,
 			base:  &retryTransport{base: http.DefaultTransport},
 		}
 	}
-	return c
+	if cfg.timeout != nil {
+		httpClient.Timeout = *cfg.timeout
+	}
+
+	userAgent := "jellyfish/dev"
+	if cfg.userAgent != "" {
+		userAgent = cfg.userAgent
+	}
+
+	return &Client{
+		baseURL:    baseURL,
+		userAgent:  userAgent,
+		httpClient: httpClient,
+	}
 }
 
 // do builds and sends a request. If out is non-nil and the response status is 2xx,

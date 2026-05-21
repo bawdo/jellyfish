@@ -289,16 +289,6 @@ The first run pops a macOS dialog asking to allow the test binary to read your K
 These items were noted during development but are not blocking. Captured
 here so they do not get lost.
 
-### `WithHTTPClient` plus `WithTimeout` option ordering is fragile
-
-If a caller passes both `iru.WithTimeout(d)` and `iru.WithHTTPClient(custom)`
-in that order, `WithHTTPClient` replaces the whole `*http.Client` and the
-timeout from the previous option is lost. This is not triggered anywhere in
-v1 because `WithHTTPClient` is never called by production code (only the
-constructor's default `*http.Client` is used). Worth fixing before exposing
-the option more broadly. Either make `WithHTTPClient` preserve any timeout
-already set, or document the ordering contract on each option.
-
 ### CSV column order for `user show` is fixed without a test
 
 The flattened CSV columns for `jellyfish user show -o csv` are listed in the
