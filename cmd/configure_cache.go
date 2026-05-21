@@ -25,15 +25,9 @@ func newConfigureCacheCmd() *cobra.Command {
 		Use:   "cache",
 		Short: "Interactively configure the detection/vulnerability cache TTL",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfgPath, err := cmd.Flags().GetString("config")
+			cfgPath, err := resolveConfigPath(cmd)
 			if err != nil {
 				return err
-			}
-			if cfgPath == "" {
-				cfgPath, err = config.DefaultPath()
-				if err != nil {
-					return err
-				}
 			}
 			return runConfigureCache(configureCacheOpts{
 				ConfigPath: cfgPath,

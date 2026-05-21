@@ -47,15 +47,9 @@ func newConfigureCmd() *cobra.Command {
 		Use:   "configure",
 		Short: "Interactively configure jellyfish credentials",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfgPath, err := cmd.Flags().GetString("config")
+			cfgPath, err := resolveConfigPath(cmd)
 			if err != nil {
 				return err
-			}
-			if cfgPath == "" {
-				cfgPath, err = config.DefaultPath()
-				if err != nil {
-					return err
-				}
 			}
 			return runConfigure(cmd.Context(), configureOpts{
 				ConfigPath:    cfgPath,
@@ -77,15 +71,9 @@ func newConfigureEmailCmd() *cobra.Command {
 		Use:   "email",
 		Short: "Interactively configure email output defaults (From, default To, Gmail credentials)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfgPath, err := cmd.Flags().GetString("config")
+			cfgPath, err := resolveConfigPath(cmd)
 			if err != nil {
 				return err
-			}
-			if cfgPath == "" {
-				cfgPath, err = config.DefaultPath()
-				if err != nil {
-					return err
-				}
 			}
 			return runConfigureEmail(cmd.Context(), configureEmailOpts{
 				ConfigPath:      cfgPath,

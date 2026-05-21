@@ -12,14 +12,23 @@ import (
 	"github.com/bawdo/jellyfish/internal/version"
 )
 
+// resolveConfigPath returns the config file path to use: the --config flag
+// value, or config.DefaultPath() when the flag is unset.
+func resolveConfigPath(cmd *cobra.Command) (string, error) {
+	cfgPath, err := cmd.Flags().GetString("config")
+	if err != nil {
+		return "", err
+	}
+	if cfgPath != "" {
+		return cfgPath, nil
+	}
+	return config.DefaultPath()
+}
+
 func buildClient(cmd *cobra.Command) (iruClient, error) {
-	cfgPath, _ := cmd.Flags().GetString("config")
-	if cfgPath == "" {
-		p, err := config.DefaultPath()
-		if err != nil {
-			return nil, err
-		}
-		cfgPath = p
+	cfgPath, err := resolveConfigPath(cmd)
+	if err != nil {
+		return nil, err
 	}
 	f, err := config.Load(cfgPath)
 	if err != nil {
@@ -40,13 +49,9 @@ func buildClient(cmd *cobra.Command) (iruClient, error) {
 // today). A missing config file is treated as "no profile" rather than an
 // error so the email command can still rely purely on flags + git fallback.
 func activeProfile(cmd *cobra.Command) (config.Profile, error) {
-	cfgPath, _ := cmd.Flags().GetString("config")
-	if cfgPath == "" {
-		p, err := config.DefaultPath()
-		if err != nil {
-			return config.Profile{}, err
-		}
-		cfgPath = p
+	cfgPath, err := resolveConfigPath(cmd)
+	if err != nil {
+		return config.Profile{}, err
 	}
 	f, err := config.Load(cfgPath)
 	if err != nil {
