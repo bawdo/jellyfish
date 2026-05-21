@@ -68,6 +68,19 @@ Prompts for `From`, default `To`, a Gmail service-account JSON path, header back
 
 `list_id_domain` sets the `List-Id` header on sent mail. Left unset, it falls back to `jellyfish.` plus the domain of `email.from` - so a `from` of `ops@example.com` yields `List-Id: <jellyfish.example.com>`. You can also edit `config.yml` directly.
 
+The Gmail service-account JSON is only needed if you want `--send-email` to deliver mail directly. If you would rather not set that up, skip it: every reporting command can still produce email with `-o email`, which writes a ready-to-send `.eml` file you can open or send from your own mail client (see [Email output](#email-output)).
+
+#### Gmail send setup (GCP and Google Workspace)
+
+`--send-email` delivers through the Gmail API using a GCP service account with domain-wide delegation - it does not use your personal Google login. Setting it up is a one-off admin task and needs both a Google Cloud project and Google Workspace super-admin access:
+
+1. In a Google Cloud project, enable the **Gmail API**.
+2. Create a **service account** and generate a **JSON key** - this is the file `jellyfish configure email` asks for.
+3. Note the service account's **OAuth client ID** (a numeric ID on its details page).
+4. In the Google Workspace Admin console, grant that client ID **domain-wide delegation** for exactly one scope: `https://www.googleapis.com/auth/gmail.send`.
+
+The `From` address you configure must be a real mailbox in that Workspace domain - the service account impersonates it to send. Google's official guide: [Using OAuth 2.0 for server-to-server applications](https://developers.google.com/identity/protocols/oauth2/service-account).
+
 ## Usage
 
 ### Vulnerability detections
