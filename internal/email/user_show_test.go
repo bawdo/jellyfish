@@ -132,7 +132,7 @@ func newPinnedUserShowOpts() Options {
 		From:              "Jellyfish <alice@example.com>",
 		To:                "alice@example.com",
 		Subject:           "Vulnerability exposure - Alice Example - 2026-05-16",
-		Tenant: "example",
+		Tenant:            "example",
 		GeneratedAt:       time.Date(2026, 5, 16, 10, 42, 0, 0, time.FixedZone("AEST", 10*3600)),
 		BoundaryOverride:  "=_jf_FIXEDBOUNDARY01",
 		MessageIDOverride: "<fixed-user-id@example.com>",
