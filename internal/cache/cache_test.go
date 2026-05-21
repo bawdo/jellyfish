@@ -86,6 +86,25 @@ func TestLoadCorrupt(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsSupersededFormat(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "detections.json")
+	// A file written by a previous cache schema (version 1, "detections" key).
+	// A schema bump must treat it as a miss, not silently decode it as empty.
+	old := `{"version":1,"fetched_at":"` + time.Now().UTC().Format(time.RFC3339) +
+		`","detections":[{"cve_id":"CVE-OLD","device_id":"d-old"}]}`
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, hit, err := Load(path, 1*time.Minute)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if hit || out != nil {
+		t.Fatalf("expected a miss for a superseded cache format, got hit=%v out=%+v", hit, out)
+	}
+}
+
 func TestSaveAndLoadVulnerabilitiesRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "vulnerabilities.json")

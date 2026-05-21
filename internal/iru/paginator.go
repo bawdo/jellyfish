@@ -139,3 +139,14 @@ func WalkCursor[T any](
 		cursor = next
 	}
 }
+
+// collect drains a streaming List*Stream call into a single slice, adapting the
+// page-callback shape shared by every resource's *Stream method.
+func collect[T any](stream func(cb func(page []T) error) error) ([]T, error) {
+	var all []T
+	err := stream(func(page []T) error {
+		all = append(all, page...)
+		return nil
+	})
+	return all, err
+}

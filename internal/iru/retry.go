@@ -13,55 +13,51 @@ const maxAttempts = 3
 // retryTransport retries idempotent requests on 429 and 5xx with backoff.
 type retryTransport struct {
 	base http.RoundTripper
-	// sleep allows tests to inject a no-op sleeper.
-	sleep func(time.Duration)
 }
 
 func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if t.sleep == nil {
-		t.sleep = time.Sleep
-	}
 	if req.Method != http.MethodGet && req.Method != http.MethodHead {
 		return t.base.RoundTrip(req)
 	}
 
+	ctx := req.Context()
 	var lastResp *http.Response
 	var lastErr error
 	backoff := 200 * time.Millisecond
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		resp, err := t.base.RoundTrip(req.Clone(req.Context()))
-		if err != nil {
-			lastErr = err
-			t.sleep(backoff)
-			backoff *= 2
-			continue
-		}
-		if !shouldRetry(resp.StatusCode) {
+		resp, err := t.base.RoundTrip(req.Clone(ctx))
+		if err == nil && !shouldRetry(resp.StatusCode) {
 			return resp, nil
 		}
-		// Buffer the body before closing so a later decodeAPIError on the
-		// returned lastResp still sees the upstream error text. Reading to
-		// EOF then closing also lets the transport reuse the connection.
-		buf, _ := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-		resp.Body = io.NopCloser(bytes.NewReader(buf))
-		lastResp = resp
 
 		wait := backoff
-		if ra := resp.Header.Get("Retry-After"); ra != "" {
-			if secs, err := strconv.Atoi(ra); err == nil {
-				wait = time.Duration(secs) * time.Second
+		if err != nil {
+			lastErr = err
+		} else {
+			// Buffer the body before closing so a later decodeAPIError on the
+			// returned lastResp still sees the upstream error text. Reading to
+			// EOF then closing also lets the transport reuse the connection.
+			buf, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			resp.Body = io.NopCloser(bytes.NewReader(buf))
+			lastResp = resp
+			if ra := resp.Header.Get("Retry-After"); ra != "" {
+				if secs, err := strconv.Atoi(ra); err == nil {
+					wait = time.Duration(secs) * time.Second
+				}
 			}
 		}
-		if attempt < maxAttempts {
-			select {
-			case <-req.Context().Done():
-				return nil, req.Context().Err()
-			case <-time.After(wait):
-			}
-			backoff *= 2
+
+		if attempt == maxAttempts {
+			break
 		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(wait):
+		}
+		backoff *= 2
 	}
 
 	if lastResp != nil {

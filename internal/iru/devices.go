@@ -27,17 +27,9 @@ func (c *Client) ListDevicesPage(ctx context.Context, f DeviceFilters, limit, of
 
 // ListDevices auto-paginates /devices using DefaultLimit.
 func (c *Client) ListDevices(ctx context.Context, f DeviceFilters) ([]Device, error) {
-	var all []Device
-	err := Walk[Device](ctx, DefaultLimit,
-		func(ctx context.Context, limit, offset int) ([]Device, error) {
-			return c.ListDevicesPage(ctx, f, limit, offset)
-		},
-		func(page []Device) error {
-			all = append(all, page...)
-			return nil
-		},
-	)
-	return all, err
+	return collect(func(cb func(page []Device) error) error {
+		return c.ListDevicesStream(ctx, f, cb)
+	})
 }
 
 // ListDevicesStream walks every device via Walk[Device]. The callback

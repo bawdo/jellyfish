@@ -52,6 +52,33 @@ func TestRetryPreservesErrorBody(t *testing.T) {
 	}
 }
 
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestRetryHonoursContextCancellationOnTransportError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	var calls atomic.Int32
+	rt := &retryTransport{base: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		calls.Add(1)
+		return nil, errors.New("dial tcp: connection refused")
+	})}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://example.test/x", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = rt.RoundTrip(req)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled when ctx is cancelled mid-retry, got %v", err)
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("expected to stop after 1 attempt once ctx is cancelled, got %d", got)
+	}
+}
+
 func TestRetriesGiveUpAfterMaxAttempts(t *testing.T) {
 	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

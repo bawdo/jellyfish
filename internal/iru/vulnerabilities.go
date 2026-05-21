@@ -42,12 +42,9 @@ func (c *Client) ListDetectionsStream(ctx context.Context, f DetectionFilters, c
 
 // ListDetections accumulates all detections in memory.
 func (c *Client) ListDetections(ctx context.Context, f DetectionFilters) ([]Detection, error) {
-	var all []Detection
-	err := c.ListDetectionsStream(ctx, f, func(page []Detection) error {
-		all = append(all, page...)
-		return nil
+	return collect(func(cb func(page []Detection) error) error {
+		return c.ListDetectionsStream(ctx, f, cb)
 	})
-	return all, err
 }
 
 // ListVulnerabilitiesPage fetches one page of vulnerabilities. page is
@@ -78,10 +75,7 @@ func (c *Client) ListVulnerabilitiesStream(ctx context.Context, f VulnerabilityF
 
 // ListVulnerabilities accumulates every vulnerability in the tenant.
 func (c *Client) ListVulnerabilities(ctx context.Context, f VulnerabilityFilters) ([]Vulnerability, error) {
-	var all []Vulnerability
-	err := c.ListVulnerabilitiesStream(ctx, f, func(page []Vulnerability) error {
-		all = append(all, page...)
-		return nil
+	return collect(func(cb func(page []Vulnerability) error) error {
+		return c.ListVulnerabilitiesStream(ctx, f, cb)
 	})
-	return all, err
 }
