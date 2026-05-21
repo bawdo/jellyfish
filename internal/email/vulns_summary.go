@@ -5,7 +5,6 @@ import (
 	"fmt"
 	htmltmpl "html/template"
 	"io"
-	"os"
 	"sort"
 	"strings"
 	texttmpl "text/template"
@@ -25,15 +24,12 @@ type vulnSummaryView struct {
 	GeneratedAtStr string
 	GeneratedDate  string
 	TotalCVEs      int
-	CriticalCount  int
-	HighCount      int
-	MediumCount    int
-	LowCount       int
-	KEVCount       int
-	DeviceCount    int
-	Rows           []vulnSummaryRow
-	Message        string
-	MessageHTML    htmltmpl.HTML
+	severityCounts
+	KEVCount    int
+	DeviceCount int
+	Rows        []vulnSummaryRow
+	Message     string
+	MessageHTML htmltmpl.HTML
 }
 
 type vulnSummaryRow struct {
@@ -47,21 +43,6 @@ type vulnSummaryRow struct {
 	Status        string
 	NVDLink       string
 	MITRELink     string
-}
-
-func severityClass(sev string) string {
-	switch strings.ToLower(sev) {
-	case "critical":
-		return "crit"
-	case "high":
-		return "high"
-	case "medium":
-		return "med"
-	case "low":
-		return "low"
-	default:
-		return "und"
-	}
 }
 
 func buildVulnSummaryView(vs []iru.Vulnerability, opts Options) vulnSummaryView {
@@ -86,16 +67,7 @@ func buildVulnSummaryView(vs []iru.Vulnerability, opts Options) vulnSummaryView 
 		if isKEV {
 			view.KEVCount++
 		}
-		switch strings.ToLower(v.Severity) {
-		case "critical":
-			view.CriticalCount++
-		case "high":
-			view.HighCount++
-		case "medium":
-			view.MediumCount++
-		case "low":
-			view.LowCount++
-		}
+		view.tally(v.Severity)
 		if v.DeviceCount > maxDevices {
 			maxDevices = v.DeviceCount
 		}
@@ -183,26 +155,15 @@ func (r *vulnSummaryRenderer) Render(w io.Writer, v any) error {
 	if !ok {
 		return fmt.Errorf("%w: email vulns summary renderer expected []iru.Vulnerability, got %T", ErrRender, v)
 	}
-	if err := validateLinkTemplate("primary", r.opts.CVELinkPrimary); err != nil {
-		return fmt.Errorf("%w: %v", ErrRender, err)
-	}
-	if err := validateLinkTemplate("secondary", r.opts.CVELinkSecondary); err != nil {
-		return fmt.Errorf("%w: %v", ErrRender, err)
+	if err := validateCVELinks(r.opts); err != nil {
+		return err
 	}
 	if r.opts.From == "" {
 		return fmt.Errorf("%w: email renderer requires a non-empty From address", ErrRender)
 	}
 
 	view := buildVulnSummaryView(vs, r.opts)
-
-	warn := r.warn
-	if warn == nil {
-		warn = os.Stderr
-	}
-	logo, logoErr := loadLogo(r.opts.LogoPath)
-	if logoErr != nil {
-		_, _ = fmt.Fprintf(warn, "warn: email logo not loaded (%v); rendering without logo\n", logoErr)
-	}
+	logo := resolveLogo(r.opts.LogoPath, r.warn)
 
 	subtitle := view.GeneratedAtStr
 	if view.Tenant != "" {
@@ -231,45 +192,7 @@ func (r *vulnSummaryRenderer) Render(w io.Writer, v any) error {
 		return fmt.Errorf("%w: %v", ErrRender, err)
 	}
 
-	boundary := r.opts.BoundaryOverride
-	if boundary == "" {
-		boundary, err = randomBoundary()
-		if err != nil {
-			return fmt.Errorf("%w: %v", ErrRender, err)
-		}
-	}
-	messageID := r.opts.MessageIDOverride
-	if messageID == "" {
-		messageID, err = randomMessageID(domainFromAddress(r.opts.From))
-		if err != nil {
-			return fmt.Errorf("%w: %v", ErrRender, err)
-		}
-	}
-
-	outerBoundary := r.opts.RelatedBoundaryOverride
-	if outerBoundary == "" && logo != nil {
-		outerBoundary, err = randomRelatedBoundary()
-		if err != nil {
-			return fmt.Errorf("%w: %v", ErrRender, err)
-		}
-	}
-	bytesOut, err := assembleMessage(messageHeaders{
-		From:         r.opts.From,
-		To:           r.opts.To,
-		Subject:      subject,
-		Date:         r.opts.GeneratedAt,
-		Report:       r.opts.Report,
-		Tenant:       r.opts.Tenant,
-		Version:      r.opts.Version,
-		ListIDDomain: r.opts.ListIDDomain,
-	}, htmlBody, textBody, boundary, messageID, outerBoundary, logo)
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrRender, err)
-	}
-	if _, err = w.Write(bytesOut); err != nil {
-		return fmt.Errorf("%w: %v", ErrRender, err)
-	}
-	return nil
+	return finishEmail(w, r.opts, subject, htmlBody, textBody, logo)
 }
 
 // domainFromAddress extracts the right-hand side of an email address used in

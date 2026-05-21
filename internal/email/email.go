@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"mime/quotedprintable"
+	"os"
 	"strings"
 	"time"
 )
@@ -83,6 +84,18 @@ func buildCVELink(tmpl, cve string) string {
 func validateLinkTemplate(label, tmpl string) error {
 	if !strings.Contains(tmpl, "{cve}") {
 		return fmt.Errorf("email %s CVE link template must contain {cve}: got %q", label, tmpl)
+	}
+	return nil
+}
+
+// validateCVELinks checks both CVE link templates, wrapping any failure as
+// ErrRender so renderers can return it directly.
+func validateCVELinks(opts Options) error {
+	if err := validateLinkTemplate("primary", opts.CVELinkPrimary); err != nil {
+		return fmt.Errorf("%w: %v", ErrRender, err)
+	}
+	if err := validateLinkTemplate("secondary", opts.CVELinkSecondary); err != nil {
+		return fmt.Errorf("%w: %v", ErrRender, err)
 	}
 	return nil
 }
@@ -213,6 +226,64 @@ func assembleMessage(
 	return []byte(sb.String()), nil
 }
 
+// resolveLogo loads the optional logo for path, sending a warning to warn
+// (defaulting to os.Stderr) and returning nil when path is empty or the file
+// cannot be loaded.
+func resolveLogo(path string, warn io.Writer) *logoPart {
+	if warn == nil {
+		warn = os.Stderr
+	}
+	logo, err := loadLogo(path)
+	if err != nil {
+		_, _ = fmt.Fprintf(warn, "warn: email logo not loaded (%v); rendering without logo\n", err)
+	}
+	return logo
+}
+
+// finishEmail is the shared tail of every renderer's Render: it resolves the
+// MIME boundaries and Message-ID, assembles the RFC 5322 message from the
+// rendered bodies, and writes it to w. Failures are wrapped as ErrRender.
+func finishEmail(w io.Writer, opts Options, subject, htmlBody, textBody string, logo *logoPart) error {
+	boundary := opts.BoundaryOverride
+	if boundary == "" {
+		var err error
+		if boundary, err = randomBoundary(); err != nil {
+			return fmt.Errorf("%w: %v", ErrRender, err)
+		}
+	}
+	messageID := opts.MessageIDOverride
+	if messageID == "" {
+		var err error
+		if messageID, err = randomMessageID(domainFromAddress(opts.From)); err != nil {
+			return fmt.Errorf("%w: %v", ErrRender, err)
+		}
+	}
+	outerBoundary := opts.RelatedBoundaryOverride
+	if outerBoundary == "" && logo != nil {
+		var err error
+		if outerBoundary, err = randomRelatedBoundary(); err != nil {
+			return fmt.Errorf("%w: %v", ErrRender, err)
+		}
+	}
+	bytesOut, err := assembleMessage(messageHeaders{
+		From:         opts.From,
+		To:           opts.To,
+		Subject:      subject,
+		Date:         opts.GeneratedAt,
+		Report:       opts.Report,
+		Tenant:       opts.Tenant,
+		Version:      opts.Version,
+		ListIDDomain: opts.ListIDDomain,
+	}, htmlBody, textBody, boundary, messageID, outerBoundary, logo)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrRender, err)
+	}
+	if _, err := w.Write(bytesOut); err != nil {
+		return fmt.Errorf("%w: %v", ErrRender, err)
+	}
+	return nil
+}
+
 // base64Wrap returns the base64 encoding of data with CRLF inserted every
 // lineWidth output chars (RFC 2045 line-length).
 func base64Wrap(data []byte, lineWidth int) string {
@@ -276,41 +347,72 @@ func sanitiseHeaderValue(v string) string {
 	return strings.NewReplacer("\r", "", "\n", "").Replace(v)
 }
 
-func sevRowBG(class string) string {
-	switch class {
-	case "crit":
-		return "#dc2626"
+// sevPalette is the colour set for one severity tier in the HTML email.
+type sevPalette struct {
+	rowBG  string
+	pillBG string
+	pillFG string
+}
+
+// sevPalettes maps a severity class (see severityClass) to its colours.
+// Classes with no entry (e.g. "low", "und") fall back to sevPaletteNeutral.
+var sevPalettes = map[string]sevPalette{
+	"crit": {rowBG: "#dc2626", pillBG: "#fee2e2", pillFG: "#991b1b"},
+	"high": {rowBG: "#ea580c", pillBG: "#ffedd5", pillFG: "#9a3412"},
+	"med":  {rowBG: "#ca8a04", pillBG: "#fef3c7", pillFG: "#854d0e"},
+}
+
+var sevPaletteNeutral = sevPalette{rowBG: "#64748b", pillBG: "#f1f5f9", pillFG: "#334155"}
+
+func paletteFor(class string) sevPalette {
+	if p, ok := sevPalettes[class]; ok {
+		return p
+	}
+	return sevPaletteNeutral
+}
+
+// sevRowBG, sevPillBG and sevPillFG are the template FuncMap accessors for the
+// severity palette.
+func sevRowBG(class string) string  { return paletteFor(class).rowBG }
+func sevPillBG(class string) string { return paletteFor(class).pillBG }
+func sevPillFG(class string) string { return paletteFor(class).pillFG }
+
+// severityClass maps an Iru severity string to the compact class token used by
+// the templates and the severity palette.
+func severityClass(sev string) string {
+	switch strings.ToLower(sev) {
+	case "critical":
+		return "crit"
 	case "high":
-		return "#ea580c"
-	case "med":
-		return "#ca8a04"
+		return "high"
+	case "medium":
+		return "med"
+	case "low":
+		return "low"
 	default:
-		return "#64748b"
+		return "und"
 	}
 }
 
-func sevPillBG(class string) string {
-	switch class {
-	case "crit":
-		return "#fee2e2"
-	case "high":
-		return "#ffedd5"
-	case "med":
-		return "#fef3c7"
-	default:
-		return "#f1f5f9"
-	}
+// severityCounts tallies records by severity tier. It is embedded in the email
+// view structs so templates read .CriticalCount, .HighCount, etc.
+type severityCounts struct {
+	CriticalCount int
+	HighCount     int
+	MediumCount   int
+	LowCount      int
 }
 
-func sevPillFG(class string) string {
-	switch class {
+// tally increments the bucket for sev. Unknown severities are not counted.
+func (c *severityCounts) tally(sev string) {
+	switch severityClass(sev) {
 	case "crit":
-		return "#991b1b"
+		c.CriticalCount++
 	case "high":
-		return "#9a3412"
+		c.HighCount++
 	case "med":
-		return "#854d0e"
-	default:
-		return "#334155"
+		c.MediumCount++
+	case "low":
+		c.LowCount++
 	}
 }

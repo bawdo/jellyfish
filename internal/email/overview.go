@@ -5,7 +5,6 @@ import (
 	"fmt"
 	htmltmpl "html/template"
 	"io"
-	"os"
 	"strconv"
 	"strings"
 	texttmpl "text/template"
@@ -330,15 +329,7 @@ func (r *overviewRenderer) Render(w io.Writer, v any) error {
 	}
 
 	data := buildOverviewTplData(in.View, r.opts)
-
-	warn := r.warn
-	if warn == nil {
-		warn = os.Stderr
-	}
-	logo, logoErr := loadLogo(r.opts.LogoPath)
-	if logoErr != nil {
-		_, _ = fmt.Fprintf(warn, "warn: email logo not loaded (%v); rendering without logo\n", logoErr)
-	}
+	logo := resolveLogo(r.opts.LogoPath, r.warn)
 
 	subtitle := data.GeneratedAtStr
 	if data.Tenant != "" {
@@ -368,43 +359,5 @@ func (r *overviewRenderer) Render(w io.Writer, v any) error {
 		return fmt.Errorf("%w: %v", ErrRender, err)
 	}
 
-	boundary := r.opts.BoundaryOverride
-	if boundary == "" {
-		boundary, err = randomBoundary()
-		if err != nil {
-			return fmt.Errorf("%w: %v", ErrRender, err)
-		}
-	}
-	messageID := r.opts.MessageIDOverride
-	if messageID == "" {
-		messageID, err = randomMessageID(domainFromAddress(r.opts.From))
-		if err != nil {
-			return fmt.Errorf("%w: %v", ErrRender, err)
-		}
-	}
-	outerBoundary := r.opts.RelatedBoundaryOverride
-	if outerBoundary == "" && logo != nil {
-		outerBoundary, err = randomRelatedBoundary()
-		if err != nil {
-			return fmt.Errorf("%w: %v", ErrRender, err)
-		}
-	}
-
-	bytesOut, err := assembleMessage(messageHeaders{
-		From:         r.opts.From,
-		To:           r.opts.To,
-		Subject:      subject,
-		Date:         r.opts.GeneratedAt,
-		Report:       r.opts.Report,
-		Tenant:       r.opts.Tenant,
-		Version:      r.opts.Version,
-		ListIDDomain: r.opts.ListIDDomain,
-	}, htmlBody, textBody, boundary, messageID, outerBoundary, logo)
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrRender, err)
-	}
-	if _, err = w.Write(bytesOut); err != nil {
-		return fmt.Errorf("%w: %v", ErrRender, err)
-	}
-	return nil
+	return finishEmail(w, r.opts, subject, htmlBody, textBody, logo)
 }

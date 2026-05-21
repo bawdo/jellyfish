@@ -5,7 +5,6 @@ import (
 	"fmt"
 	htmltmpl "html/template"
 	"io"
-	"os"
 	"sort"
 	"strings"
 	texttmpl "text/template"
@@ -37,14 +36,11 @@ type userShowView struct {
 	GeneratedAtStr string
 	GeneratedDate  string
 	TotalCVEs      int
-	CriticalCount  int
-	HighCount      int
-	MediumCount    int
-	LowCount       int
-	DeviceCount    int
-	Devices        []userShowDeviceView
-	Message        string
-	MessageHTML    htmltmpl.HTML
+	severityCounts
+	DeviceCount int
+	Devices     []userShowDeviceView
+	Message     string
+	MessageHTML htmltmpl.HTML
 }
 
 type userShowDeviceView struct {
@@ -82,16 +78,7 @@ func buildUserShowView(b UserBundleInput, opts Options) userShowView {
 		})
 		rows := make([]userShowRow, 0, len(dets))
 		for _, det := range dets {
-			switch strings.ToLower(det.Severity) {
-			case "critical":
-				view.CriticalCount++
-			case "high":
-				view.HighCount++
-			case "medium":
-				view.MediumCount++
-			case "low":
-				view.LowCount++
-			}
+			view.tally(det.Severity)
 			view.TotalCVEs++
 			pkg := det.Name
 			if det.Version != "" {
@@ -179,26 +166,15 @@ func (r *userShowRenderer) Render(w io.Writer, v any) error {
 	if !ok {
 		return fmt.Errorf("%w: email user show renderer expected UserBundleInput, got %T", ErrRender, v)
 	}
-	if err := validateLinkTemplate("primary", r.opts.CVELinkPrimary); err != nil {
-		return fmt.Errorf("%w: %v", ErrRender, err)
-	}
-	if err := validateLinkTemplate("secondary", r.opts.CVELinkSecondary); err != nil {
-		return fmt.Errorf("%w: %v", ErrRender, err)
+	if err := validateCVELinks(r.opts); err != nil {
+		return err
 	}
 	if r.opts.From == "" {
 		return fmt.Errorf("%w: email renderer requires a non-empty From address", ErrRender)
 	}
 
 	view := buildUserShowView(bundle, r.opts)
-
-	warn := r.warn
-	if warn == nil {
-		warn = os.Stderr
-	}
-	logo, logoErr := loadLogo(r.opts.LogoPath)
-	if logoErr != nil {
-		_, _ = fmt.Fprintf(warn, "warn: email logo not loaded (%v); rendering without logo\n", logoErr)
-	}
+	logo := resolveLogo(r.opts.LogoPath, r.warn)
 
 	subtitle := r.opts.GeneratedAt.Format("2 Jan 2006 - 15:04 MST")
 	if bundle.User.Email != "" {
@@ -231,43 +207,5 @@ func (r *userShowRenderer) Render(w io.Writer, v any) error {
 		return fmt.Errorf("%w: %v", ErrRender, err)
 	}
 
-	boundary := r.opts.BoundaryOverride
-	if boundary == "" {
-		boundary, err = randomBoundary()
-		if err != nil {
-			return fmt.Errorf("%w: %v", ErrRender, err)
-		}
-	}
-	messageID := r.opts.MessageIDOverride
-	if messageID == "" {
-		messageID, err = randomMessageID(domainFromAddress(r.opts.From))
-		if err != nil {
-			return fmt.Errorf("%w: %v", ErrRender, err)
-		}
-	}
-
-	outerBoundary := r.opts.RelatedBoundaryOverride
-	if outerBoundary == "" && logo != nil {
-		outerBoundary, err = randomRelatedBoundary()
-		if err != nil {
-			return fmt.Errorf("%w: %v", ErrRender, err)
-		}
-	}
-	bytesOut, err := assembleMessage(messageHeaders{
-		From:         r.opts.From,
-		To:           r.opts.To,
-		Subject:      subject,
-		Date:         r.opts.GeneratedAt,
-		Report:       r.opts.Report,
-		Tenant:       r.opts.Tenant,
-		Version:      r.opts.Version,
-		ListIDDomain: r.opts.ListIDDomain,
-	}, htmlBody, textBody, boundary, messageID, outerBoundary, logo)
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrRender, err)
-	}
-	if _, err = w.Write(bytesOut); err != nil {
-		return fmt.Errorf("%w: %v", ErrRender, err)
-	}
-	return nil
+	return finishEmail(w, r.opts, subject, htmlBody, textBody, logo)
 }
