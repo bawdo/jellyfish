@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"errors"
 	"io"
+	"strings"
 )
 
 type csvRenderer struct {
@@ -33,9 +34,31 @@ func (r *csvRenderer) Render(w io.Writer, v any) error {
 		return err
 	}
 
-	if err := eachRow(r.columns, v, cw.Write); err != nil {
+	if err := eachRow(r.columns, v, func(cells []string) error {
+		for i := range cells {
+			cells[i] = sanitiseCell(cells[i])
+		}
+		return cw.Write(cells)
+	}); err != nil {
 		return err
 	}
 	cw.Flush()
 	return cw.Error()
+}
+
+// formulaTriggers are the leading characters a spreadsheet (Excel, Numbers,
+// LibreOffice) treats as the start of a formula. Tab and CR are included
+// because Excel strips them and re-evaluates the following character.
+const formulaTriggers = "=+-@\t\r"
+
+// sanitiseCell neutralises spreadsheet formula injection ("CSV injection"):
+// a cell whose first character could start a formula is prefixed with a
+// single quote so the spreadsheet renders it as literal text. encoding/csv
+// quotes fields containing delimiters but does not stop formula evaluation -
+// only changing the leading character does.
+func sanitiseCell(s string) string {
+	if s != "" && strings.ContainsRune(formulaTriggers, rune(s[0])) {
+		return "'" + s
+	}
+	return s
 }
