@@ -521,74 +521,29 @@ func runOverviewEmail(ctx context.Context, stderr io.Writer, opts overviewOpts, 
 	}
 
 	if opts.PerUser {
-		return runOverviewPerUser(ctx, stderr, opts, view, baseEmailOpts, now)
+		return runOverviewPerUser(ctx, stderr, opts, view, baseEmailOpts)
 	}
-	return runOverviewAdmin(ctx, stderr, opts, view, baseEmailOpts, now)
+	return runOverviewAdmin(ctx, stderr, opts, view, baseEmailOpts)
 }
 
-func runOverviewAdmin(ctx context.Context, stderr io.Writer, opts overviewOpts, view email.OverviewView, baseOpts email.Options, now time.Time) error {
+func runOverviewAdmin(ctx context.Context, stderr io.Writer, opts overviewOpts, view email.OverviewView, baseOpts email.Options) error {
 	recipients, err := splitEmails(baseOpts.To)
 	if err != nil {
 		return err
 	}
 
-	confirmIn := opts.ConfirmReader
-	if confirmIn == nil {
-		confirmIn = os.Stdin
-	}
-	ok, err := confirmSendOverview(stderr, confirmIn, len(recipients), false, opts.DryRun, opts.Yes)
-	if err != nil {
+	sender, proceed, err := prepareOverviewSend(ctx, stderr, opts, &baseOpts, len(recipients), false, fmt.Sprintf("%d recipients", len(recipients)))
+	if err != nil || !proceed {
 		return err
 	}
-	if !ok {
-		_, _ = fmt.Fprintln(stderr, "aborted: no mail sent")
-		return nil
-	}
 
-	display := fmt.Sprintf("%d recipients", len(recipients))
-	msgIn := opts.MessageReader
-	if msgIn == nil {
-		msgIn = os.Stdin
-	}
-	message, err := captureMessage(opts.EmailFlags, true, display, baseOpts.Subject, msgIn, stderr, nil)
-	if err != nil {
-		return err
-	}
-	baseOpts.Message = message
-
-	var sender gmail.Sender
-	if !opts.DryRun {
-		s, err := buildOverviewSender(ctx, opts, baseOpts.From)
-		if err != nil {
-			return err
-		}
-		sender = s
+	items := make([]overviewSendItem, len(recipients))
+	for i, to := range recipients {
+		items[i] = overviewSendItem{view: view, recipient: to, tag: "to=" + to}
 	}
 
 	var counters bulkCounters
-	for _, to := range recipients {
-		userOpts := baseOpts
-		userOpts.To = to
-		var buf bytes.Buffer
-		if err := email.NewOverviewRendererWithStderr(userOpts, stderr).Render(&buf, email.OverviewInput{View: view}); err != nil {
-			_, _ = fmt.Fprintf(stderr, "error to=%s render: %v\n", to, err)
-			counters.recordError(err)
-			continue
-		}
-		if opts.DryRun {
-			_, _ = fmt.Fprintf(stderr, "would-send to=%s bytes=%d\n", to, buf.Len())
-			counters.wouldSend++
-			continue
-		}
-		id, serr := sender.Send(ctx, buf.Bytes())
-		if serr != nil {
-			_, _ = fmt.Fprintf(stderr, "error to=%s gmail: %v\n", to, serr)
-			counters.recordError(serr)
-			continue
-		}
-		_, _ = fmt.Fprintf(stderr, "sent to=%s gmail-id=%s\n", to, id)
-		counters.sent++
-	}
+	sendOverviews(ctx, stderr, baseOpts, items, sender, opts.DryRun, &counters)
 
 	if opts.DryRun {
 		_, _ = fmt.Fprintf(stderr, "summary: would-send=%d errors=%d\n", counters.wouldSend, counters.errs)
@@ -596,6 +551,86 @@ func runOverviewAdmin(ctx context.Context, stderr io.Writer, opts overviewOpts, 
 		_, _ = fmt.Fprintf(stderr, "summary: sent=%d errors=%d\n", counters.sent, counters.errs)
 	}
 	return counters.exitError()
+}
+
+// overviewSendItem is one job in an overview email run. A non-empty skipUserID
+// marks a user with no deliverable address: the loop logs a skip and moves on.
+type overviewSendItem struct {
+	view       email.OverviewView
+	recipient  string
+	tag        string // stderr identity: "to=<addr>" or "user=<id>[ for=<email>]"
+	toSuffix   string // " to=<addr>" appended to success lines, "" when tag already carries it
+	skipUserID string
+}
+
+// sendOverviews renders and sends (or, under dryRun, previews) each item,
+// logging per-item progress to stderr and accumulating counters.
+func sendOverviews(ctx context.Context, stderr io.Writer, baseOpts email.Options, items []overviewSendItem, sender gmail.Sender, dryRun bool, counters *bulkCounters) {
+	for _, it := range items {
+		if it.skipUserID != "" {
+			_, _ = fmt.Fprintf(stderr, "skip user=%s reason=no-email\n", it.skipUserID)
+			counters.skipped++
+			continue
+		}
+		userOpts := baseOpts
+		userOpts.To = it.recipient
+		var buf bytes.Buffer
+		if err := email.NewOverviewRendererWithStderr(userOpts, stderr).Render(&buf, email.OverviewInput{View: it.view}); err != nil {
+			_, _ = fmt.Fprintf(stderr, "error %s render: %v\n", it.tag, err)
+			counters.recordError(err)
+			continue
+		}
+		if dryRun {
+			_, _ = fmt.Fprintf(stderr, "would-send %s%s bytes=%d\n", it.tag, it.toSuffix, buf.Len())
+			counters.wouldSend++
+			continue
+		}
+		id, serr := sender.Send(ctx, buf.Bytes())
+		if serr != nil {
+			_, _ = fmt.Fprintf(stderr, "error %s gmail: %v\n", it.tag, serr)
+			counters.recordError(serr)
+			continue
+		}
+		_, _ = fmt.Fprintf(stderr, "sent %s%s gmail-id=%s\n", it.tag, it.toSuffix, id)
+		counters.sent++
+	}
+}
+
+// prepareOverviewSend runs the confirm prompt, captures the optional --message
+// into baseOpts, and builds the Gmail sender. proceed is false when the user
+// declines at the prompt; sender is nil under DryRun.
+func prepareOverviewSend(ctx context.Context, stderr io.Writer, opts overviewOpts, baseOpts *email.Options, count int, perUser bool, msgDisplay string) (sender gmail.Sender, proceed bool, err error) {
+	confirmIn := opts.ConfirmReader
+	if confirmIn == nil {
+		confirmIn = os.Stdin
+	}
+	ok, err := confirmSendOverview(stderr, confirmIn, count, perUser, opts.DryRun, opts.Yes)
+	if err != nil {
+		return nil, false, err
+	}
+	if !ok {
+		_, _ = fmt.Fprintln(stderr, "aborted: no mail sent")
+		return nil, false, nil
+	}
+
+	msgIn := opts.MessageReader
+	if msgIn == nil {
+		msgIn = os.Stdin
+	}
+	message, err := captureMessage(opts.EmailFlags, true, msgDisplay, baseOpts.Subject, msgIn, stderr, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	baseOpts.Message = message
+
+	if opts.DryRun {
+		return nil, true, nil
+	}
+	sender, err = buildOverviewSender(ctx, opts, baseOpts.From)
+	if err != nil {
+		return nil, false, err
+	}
+	return sender, true, nil
 }
 
 // buildOverviewSender constructs a Gmail sender. Centralised so admin and
@@ -647,46 +682,18 @@ func confirmSendOverview(stderr io.Writer, in io.Reader, count int, perUser, dry
 	return answer == "y" || answer == "yes", nil
 }
 
-func runOverviewPerUser(ctx context.Context, stderr io.Writer, opts overviewOpts, view email.OverviewView, baseOpts email.Options, now time.Time) error {
+func runOverviewPerUser(ctx context.Context, stderr io.Writer, opts overviewOpts, view email.OverviewView, baseOpts email.Options) error {
 	override := opts.EmailFlags.To
-
 	if override != "" {
 		_, _ = fmt.Fprintf(stderr, "note: --email-to set; all %d personalised overviews will be redirected to %s\n", len(view.Users), override)
 	}
 
-	confirmIn := opts.ConfirmReader
-	if confirmIn == nil {
-		confirmIn = os.Stdin
-	}
-	ok, err := confirmSendOverview(stderr, confirmIn, len(view.Users), true, opts.DryRun, opts.Yes)
-	if err != nil {
+	sender, proceed, err := prepareOverviewSend(ctx, stderr, opts, &baseOpts, len(view.Users), true, fmt.Sprintf("%d users", len(view.Users)))
+	if err != nil || !proceed {
 		return err
 	}
-	if !ok {
-		_, _ = fmt.Fprintln(stderr, "aborted: no mail sent")
-		return nil
-	}
 
-	msgIn := opts.MessageReader
-	if msgIn == nil {
-		msgIn = os.Stdin
-	}
-	message, err := captureMessage(opts.EmailFlags, true, fmt.Sprintf("%d users", len(view.Users)), baseOpts.Subject, msgIn, stderr, nil)
-	if err != nil {
-		return err
-	}
-	baseOpts.Message = message
-
-	var sender gmail.Sender
-	if !opts.DryRun {
-		s, err := buildOverviewSender(ctx, opts, baseOpts.From)
-		if err != nil {
-			return err
-		}
-		sender = s
-	}
-
-	var counters bulkCounters
+	items := make([]overviewSendItem, 0, len(view.Users))
 	for i := range view.Users {
 		u := view.Users[i]
 		recipient := override
@@ -694,36 +701,22 @@ func runOverviewPerUser(ctx context.Context, stderr io.Writer, opts overviewOpts
 			recipient = u.Email
 		}
 		if recipient == "" {
-			_, _ = fmt.Fprintf(stderr, "skip user=%s reason=no-email\n", u.UserID)
-			counters.skipped++
+			items = append(items, overviewSendItem{skipUserID: u.UserID})
 			continue
 		}
-		userOpts := baseOpts
-		userOpts.To = recipient
 		// Per-user view: same shared body, just point Me at this user.
 		perUserView := view
 		perUserView.Me = &view.Users[i]
-
-		var buf bytes.Buffer
-		if err := email.NewOverviewRendererWithStderr(userOpts, stderr).Render(&buf, email.OverviewInput{View: perUserView}); err != nil {
-			_, _ = fmt.Fprintf(stderr, "error user=%s%s render: %v\n", u.UserID, forTag(override, u.Email), err)
-			counters.recordError(err)
-			continue
-		}
-		if opts.DryRun {
-			_, _ = fmt.Fprintf(stderr, "would-send user=%s%s to=%s bytes=%d\n", u.UserID, forTag(override, u.Email), recipient, buf.Len())
-			counters.wouldSend++
-			continue
-		}
-		id, serr := sender.Send(ctx, buf.Bytes())
-		if serr != nil {
-			_, _ = fmt.Fprintf(stderr, "error user=%s%s gmail: %v\n", u.UserID, forTag(override, u.Email), serr)
-			counters.recordError(serr)
-			continue
-		}
-		_, _ = fmt.Fprintf(stderr, "sent user=%s%s to=%s gmail-id=%s\n", u.UserID, forTag(override, u.Email), recipient, id)
-		counters.sent++
+		items = append(items, overviewSendItem{
+			view:      perUserView,
+			recipient: recipient,
+			tag:       "user=" + u.UserID + forTag(override, u.Email),
+			toSuffix:  " to=" + recipient,
+		})
 	}
+
+	var counters bulkCounters
+	sendOverviews(ctx, stderr, baseOpts, items, sender, opts.DryRun, &counters)
 
 	if opts.DryRun {
 		_, _ = fmt.Fprintf(stderr, "summary: would-send=%d skipped=%d errors=%d\n", counters.wouldSend, counters.skipped, counters.errs)
