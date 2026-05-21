@@ -83,7 +83,7 @@ func TestConfigureRerunKeepsSubdomainAndRegionOnEnter(t *testing.T) {
 
 	tmp := t.TempDir()
 	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 	}})
 
 	var stored []string
@@ -113,9 +113,6 @@ func TestConfigureRerunKeepsSubdomainAndRegionOnEnter(t *testing.T) {
 	if got.Subdomain != "acme" || got.Region != "us" {
 		t.Fatalf("subdomain/region should be preserved; got %+v", got)
 	}
-	if got.BaseURL != "https://acme.api.kandji.io/api/v1" {
-		t.Errorf("BaseURL should be preserved; got %q", got.BaseURL)
-	}
 	if len(stored) != 1 || stored[0] != "newtkn" {
 		t.Errorf("StoreToken calls: %v", stored)
 	}
@@ -134,7 +131,7 @@ func TestConfigureRerunEnterKeepsTokenSkipsKeychainAndVerify(t *testing.T) {
 
 	tmp := t.TempDir()
 	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 	}})
 
 	var storeCalled bool
@@ -175,7 +172,7 @@ func TestConfigureRerunPreservesEmailAndCacheTTL(t *testing.T) {
 
 	tmp := t.TempDir()
 	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 		CacheTTLMinutes: 30,
 		Email: config.EmailConfig{
 			From:            "alice@example.com",
@@ -225,7 +222,7 @@ func TestConfigureRerunPreservesEmailAndCacheTTL(t *testing.T) {
 	}
 }
 
-func TestConfigureRerunChangedSubdomainRebuildsBaseURL(t *testing.T) {
+func TestConfigureRerunChangedSubdomainUpdatesProfile(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`[]`))
@@ -234,7 +231,7 @@ func TestConfigureRerunChangedSubdomainRebuildsBaseURL(t *testing.T) {
 
 	tmp := t.TempDir()
 	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 	}})
 
 	in := strings.NewReader("newco\n\n") // change subdomain, keep region
@@ -257,15 +254,12 @@ func TestConfigureRerunChangedSubdomainRebuildsBaseURL(t *testing.T) {
 	if got.Subdomain != "newco" {
 		t.Errorf("subdomain: got %q", got.Subdomain)
 	}
-	if got.BaseURL != "https://newco.api.kandji.io/api/v1" {
-		t.Errorf("BaseURL: got %q", got.BaseURL)
-	}
 }
 
 func TestConfigureRerunPromptShowsExistingDefaults(t *testing.T) {
 	tmp := t.TempDir()
 	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 	}})
 
 	in := strings.NewReader("\n\n")
@@ -435,7 +429,7 @@ func seedConfigFile(t *testing.T, dir string, f config.File) string {
 func TestConfigureEmailPromptsAndSaves(t *testing.T) {
 	tmp := t.TempDir()
 	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 	}})
 
 	in := strings.NewReader("alice@example.com\nsecops@example.com\n")
@@ -470,7 +464,7 @@ func TestConfigureEmailPromptsAndSaves(t *testing.T) {
 func TestConfigureEmailPreservesOtherEmailFields(t *testing.T) {
 	tmp := t.TempDir()
 	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 		Email: config.EmailConfig{
 			SubjectTemplate: "Custom - {{.Date}}",
 			CVELinkPrimary:  "https://mirror.example/{cve}",
@@ -503,7 +497,7 @@ func TestConfigureEmailPreservesOtherEmailFields(t *testing.T) {
 func TestConfigureEmailEnterKeepsExisting(t *testing.T) {
 	tmp := t.TempDir()
 	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 		Email: config.EmailConfig{From: "old@x", DefaultTo: "def@x"},
 	}})
 
@@ -530,7 +524,7 @@ func TestConfigureEmailEnterKeepsExisting(t *testing.T) {
 func TestConfigureEmailDashClearsField(t *testing.T) {
 	tmp := t.TempDir()
 	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 		Email: config.EmailConfig{From: "old@x", DefaultTo: "def@x"},
 	}})
 
@@ -557,7 +551,7 @@ func TestConfigureEmailDashClearsField(t *testing.T) {
 func TestConfigureEmailRejectsInvalidFrom(t *testing.T) {
 	tmp := t.TempDir()
 	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 	}})
 
 	in := strings.NewReader("no-at\nstill-no-at\nnope\n")
@@ -577,7 +571,7 @@ func TestConfigureEmailRejectsInvalidFrom(t *testing.T) {
 func TestConfigureEmailRejectsInvalidDefaultTo(t *testing.T) {
 	tmp := t.TempDir()
 	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 	}})
 
 	in := strings.NewReader("alice@example.com\nbad\nbad\nbad\n")
@@ -597,7 +591,7 @@ func TestConfigureEmailRejectsInvalidDefaultTo(t *testing.T) {
 func TestConfigureEmailAllowsEmptyDefaultTo(t *testing.T) {
 	tmp := t.TempDir()
 	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 	}})
 
 	in := strings.NewReader("alice@example.com\n\n")
@@ -691,7 +685,7 @@ func writeGmailJSON(t *testing.T, dir string) string {
 func TestConfigureEmailGmailPromptStoresJSON(t *testing.T) {
 	tmp := t.TempDir()
 	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 	}})
 	jsonPath := writeGmailJSON(t, tmp)
 	kc := &gmailKeychainStubs{}
@@ -719,7 +713,7 @@ func TestConfigureEmailGmailPromptStoresJSON(t *testing.T) {
 func TestConfigureEmailGmailPromptDashClears(t *testing.T) {
 	tmp := t.TempDir()
 	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 		Email: config.EmailConfig{From: "alice@example.com", DefaultTo: "secops@example.com", GmailConfigured: true},
 	}})
 	kc := &gmailKeychainStubs{}
@@ -747,7 +741,7 @@ func TestConfigureEmailGmailPromptDashClears(t *testing.T) {
 func TestConfigureEmailGmailPromptEnterKeepsExisting(t *testing.T) {
 	tmp := t.TempDir()
 	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 		Email: config.EmailConfig{From: "alice@example.com", DefaultTo: "secops@example.com", GmailConfigured: true},
 	}})
 	kc := &gmailKeychainStubs{}
@@ -775,7 +769,7 @@ func TestConfigureEmailGmailPromptEnterKeepsExisting(t *testing.T) {
 func TestConfigureEmailGmailPromptRejectsMissingFile(t *testing.T) {
 	tmp := t.TempDir()
 	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 	}})
 	missing := filepath.Join(tmp, "does-not-exist.json")
 	kc := &gmailKeychainStubs{}
@@ -803,7 +797,7 @@ func TestConfigureEmailGmailPromptRejectsMissingFile(t *testing.T) {
 func TestConfigureEmailGmailPromptRejectsWrongType(t *testing.T) {
 	tmp := t.TempDir()
 	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 	}})
 	badPath := filepath.Join(tmp, "user.json")
 	if err := os.WriteFile(badPath, []byte(`{"type":"authorized_user","client_email":"x@y"}`), 0o600); err != nil {
@@ -832,7 +826,7 @@ func TestConfigureEmailPromptHeaderBGValidAndClear(t *testing.T) {
 	path := filepath.Join(dir, "config.yml")
 	// Seed: requires existing default profile (configure email refuses otherwise).
 	if err := config.Save(path, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 		Email: config.EmailConfig{From: "a@example.com"},
 	}}); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -859,7 +853,7 @@ func TestConfigureEmailPromptHeaderBGEnterWritesDefault(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yml")
 	if err := config.Save(path, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 		Email: config.EmailConfig{From: "a@example.com"},
 	}}); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -882,7 +876,7 @@ func TestConfigureEmailPromptHeaderBGRejectsInvalidThenAccepts(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yml")
 	_ = config.Save(path, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 		Email: config.EmailConfig{From: "a@example.com"},
 	}})
 	// Inputs: from kept, defaultTo kept, gmail kept, bad colour twice, then valid.
@@ -921,7 +915,7 @@ func TestConfigureEmailLogoCopiesIntoLogosDir(t *testing.T) {
 		t.Fatalf("write src: %v", err)
 	}
 	_ = config.Save(cfgPath, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 		Email: config.EmailConfig{From: "a@example.com"},
 	}})
 	// Inputs (in order): from kept, defaultTo kept, gmail kept, header_bg blank kept, logo path supplied.
@@ -959,7 +953,7 @@ func TestConfigureEmailLogoClearDeletesManagedFile(t *testing.T) {
 		t.Fatalf("seed managed file: %v", err)
 	}
 	_ = config.Save(cfgPath, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 		Email: config.EmailConfig{From: "a@example.com", LogoPath: managed},
 	}})
 	in := strings.NewReader("\n\n\n\n-\n")
@@ -986,7 +980,7 @@ func TestConfigureEmailPromptListIDDomainSavesValue(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yml")
 	if err := config.Save(cfgPath, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 		Email: config.EmailConfig{From: "ops@example.com"},
 	}}); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -1012,7 +1006,7 @@ func TestConfigureEmailPromptListIDDomainEnterKeepsExisting(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yml")
 	if err := config.Save(cfgPath, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 		Email: config.EmailConfig{From: "ops@example.com", ListIDDomain: "jellyfish.example.com"},
 	}}); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -1034,7 +1028,7 @@ func TestConfigureEmailPromptListIDDomainDashClears(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yml")
 	if err := config.Save(cfgPath, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 		Email: config.EmailConfig{From: "ops@example.com", ListIDDomain: "jellyfish.example.com"},
 	}}); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -1056,7 +1050,7 @@ func TestConfigureEmailPromptListIDDomainRejectsInvalidThenAccepts(t *testing.T)
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yml")
 	if err := config.Save(cfgPath, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 		Email: config.EmailConfig{From: "ops@example.com"},
 	}}); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -1087,7 +1081,7 @@ func TestConfigureEmailLogoClearLeavesUnmanagedFile(t *testing.T) {
 		t.Fatalf("seed unmanaged: %v", err)
 	}
 	_ = config.Save(cfgPath, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 		Email: config.EmailConfig{From: "a@example.com", LogoPath: unmanaged},
 	}})
 	in := strings.NewReader("\n\n\n\n-\n")

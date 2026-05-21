@@ -13,7 +13,7 @@ func writeBasicConfig(t *testing.T, dir string, ttl int) string {
 	t.Helper()
 	path := filepath.Join(dir, "config.yml")
 	prof := config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 	}
 	if ttl > 0 {
 		prof.CacheTTLMinutes = ttl
@@ -125,7 +125,7 @@ func TestConfigureCacheRequiresDefaultProfile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yml")
 	if err := config.Save(path, config.File{"other": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://x/api/v1",
+		Subdomain: "acme", Region: "us",
 	}}); err != nil {
 		t.Fatalf("save: %v", err)
 	}

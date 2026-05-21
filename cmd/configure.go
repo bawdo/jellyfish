@@ -110,12 +110,12 @@ func runConfigure(ctx context.Context, o configureOpts) error {
 	}
 	region = strings.ToLower(region)
 
-	baseURL := prof.BaseURL
-	if subdomain != prof.Subdomain || region != prof.Region || baseURL == "" {
-		baseURL, err = config.BuildBaseURL(subdomain, region)
-		if err != nil {
-			return err
-		}
+	// Always derive the base URL from subdomain + region; never persist or
+	// trust a stored URL. BuildBaseURL validates both inputs and only ever
+	// emits a real Iru host.
+	baseURL, err := config.BuildBaseURL(subdomain, region)
+	if err != nil {
+		return err
 	}
 
 	if existing {
@@ -135,7 +135,6 @@ func runConfigure(ctx context.Context, o configureOpts) error {
 
 	prof.Subdomain = subdomain
 	prof.Region = region
-	prof.BaseURL = baseURL
 	file["default"] = prof
 	if err := config.Save(o.ConfigPath, file); err != nil {
 		return err

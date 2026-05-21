@@ -47,7 +47,7 @@ func TestResolveCacheTTLZeroFieldReturnsDefault(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yml")
 	if err := config.Save(path, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme/api/v1",
+		Subdomain: "acme", Region: "us",
 	}}); err != nil {
 		t.Fatalf("save: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestResolveCacheTTLHonoursProfileValue(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yml")
 	if err := config.Save(path, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme/api/v1",
+		Subdomain: "acme", Region: "us",
 		CacheTTLMinutes: 30,
 	}}); err != nil {
 		t.Fatalf("save: %v", err)

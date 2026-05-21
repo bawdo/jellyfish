@@ -15,7 +15,6 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 		"default": Profile{
 			Subdomain: "acme",
 			Region:    "us",
-			BaseURL:   "https://acme.api.kandji.io/api/v1",
 		},
 	}
 
@@ -36,9 +35,6 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 		t.Fatalf("load: %v", err)
 	}
 	if out["default"].Subdomain != "acme" {
-		t.Fatalf("got %+v", out)
-	}
-	if out["default"].BaseURL != "https://acme.api.kandji.io/api/v1" {
 		t.Fatalf("got %+v", out)
 	}
 }
@@ -90,6 +86,37 @@ func TestBuildBaseURLRejectsBadInput(t *testing.T) {
 	}
 	if _, err := BuildBaseURL("Bad_Sub", "us"); err == nil {
 		t.Fatal("expected error for invalid subdomain characters")
+	}
+}
+
+func TestLoadIgnoresLegacyBaseURL(t *testing.T) {
+	// Configs written by older jellyfish carry a base_url: line. It must be
+	// ignored - never parsed into the Profile, never trusted - so a stale or
+	// tampered base_url cannot redirect the API token off-host. The now-unknown
+	// key must also not break Load.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	content := []byte("default:\n" +
+		"  subdomain: acme\n" +
+		"  region: us\n" +
+		"  base_url: https://evil.example.com/api/v1\n")
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	out, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got := out["default"]; got.Subdomain != "acme" || got.Region != "us" {
+		t.Fatalf("profile not parsed: %+v", got)
+	}
+	// The only source of truth for the API host is BuildBaseURL.
+	derived, err := BuildBaseURL(out["default"].Subdomain, out["default"].Region)
+	if err != nil {
+		t.Fatalf("BuildBaseURL: %v", err)
+	}
+	if derived != "https://acme.api.kandji.io/api/v1" {
+		t.Errorf("derived base URL: got %q", derived)
 	}
 }
 
@@ -147,7 +174,6 @@ func TestSaveLoadPreservesGmailConfigured(t *testing.T) {
 	in := File{"default": Profile{
 		Subdomain: "acme",
 		Region:    "us",
-		BaseURL:   "https://acme.api.kandji.io/api/v1",
 		Email:     EmailConfig{From: "alice@example.com", GmailConfigured: true},
 	}}
 	if err := Save(path, in); err != nil {
@@ -166,7 +192,7 @@ func TestEmailConfigRoundTripIncludesHeaderBGAndLogoPath(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yml")
 	in := File{"default": Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 		Email: EmailConfig{
 			From:     "alice@example.com",
 			HeaderBG: "#C6B8FE",
@@ -224,7 +250,7 @@ func TestSaveLoadPreservesCacheTTLMinutes(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yml")
 	in := File{"default": Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 		CacheTTLMinutes: 30,
 	}}
 	if err := Save(path, in); err != nil {
@@ -243,7 +269,7 @@ func TestSaveOmitsZeroCacheTTLMinutes(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yml")
 	in := File{"default": Profile{
-		Subdomain: "acme", Region: "us", BaseURL: "https://acme.api.kandji.io/api/v1",
+		Subdomain: "acme", Region: "us",
 	}}
 	if err := Save(path, in); err != nil {
 		t.Fatalf("save: %v", err)

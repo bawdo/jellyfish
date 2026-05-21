@@ -38,11 +38,19 @@ func buildClient(cmd *cobra.Command) (iruClient, error) {
 	if !ok {
 		return nil, errors.New(`no "default" profile in config. Run "jellyfish configure" to set up`)
 	}
+	// Derive the base URL from subdomain + region rather than trusting any
+	// stored value: this guarantees the API token is only ever sent to a
+	// real Iru host, never to an attacker-controlled URL from a tampered
+	// or malicious --config file.
+	baseURL, err := config.BuildBaseURL(prof.Subdomain, prof.Region)
+	if err != nil {
+		return nil, fmt.Errorf(`invalid tenant config in %s (%w). Re-run "jellyfish configure"`, cfgPath, err)
+	}
 	tok, err := keychain.Get("default")
 	if err != nil {
 		return nil, fmt.Errorf(`no token found in Keychain. Run "jellyfish configure" to set up`)
 	}
-	return iru.NewClient(prof.BaseURL, tok, iru.WithUserAgent("jellyfish/"+version.Version)), nil
+	return iru.NewClient(baseURL, tok, iru.WithUserAgent("jellyfish/"+version.Version)), nil
 }
 
 // activeProfile returns the named profile from config (only "default" honoured

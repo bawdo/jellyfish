@@ -42,10 +42,12 @@ func ValidateCacheTTLMinutes(n int) error {
 	return nil
 }
 
+// Profile holds one tenant's settings. The Iru API base URL is never stored:
+// it is always derived from Subdomain + Region via BuildBaseURL, so a tampered
+// config file cannot redirect the API token to an attacker-controlled host.
 type Profile struct {
 	Subdomain       string      `yaml:"subdomain"`
 	Region          string      `yaml:"region"`
-	BaseURL         string      `yaml:"base_url"`
 	CacheTTLMinutes int         `yaml:"cache_ttl_minutes,omitempty"`
 	Email           EmailConfig `yaml:"email,omitempty"`
 }
