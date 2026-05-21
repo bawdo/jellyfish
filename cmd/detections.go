@@ -10,32 +10,42 @@ import (
 	"github.com/bawdo/jellyfish/internal/iru"
 )
 
-// fetchAllDetections returns every detection in the tenant, either from the
-// on-disk cache (when fresh and useCache is true) or by walking the API. The
-// progress indicator on stderr lets the user see the walk advancing.
-func fetchAllDetections(ctx context.Context, client iruClient, stderr io.Writer, useCache bool, ttl time.Duration) ([]iru.Detection, error) {
+// fetchAllCached returns every record of a resource: from the on-disk cache
+// when fresh (and useCache is set), otherwise by walking the API with a
+// per-page progress line on stderr. The cache funcs are best-effort - a path
+// or save failure degrades to a live walk rather than failing the command.
+func fetchAllCached[T any](
+	stderr io.Writer,
+	useCache bool,
+	ttl time.Duration,
+	noun string,
+	cachePathFn func() (string, error),
+	loadFn func(string, time.Duration) ([]T, bool, error),
+	saveFn func(string, []T) error,
+	stream func(cb func(page []T) error) error,
+) ([]T, error) {
 	if ttl <= 0 {
 		ttl = cache.DefaultTTL
 	}
-	cachePath, err := cache.DefaultPath()
+	cachePath, err := cachePathFn()
 	if err != nil {
 		// Non-fatal: just proceed without cache.
 		cachePath = ""
 	}
 
 	if useCache && cachePath != "" {
-		if cached, hit, err := cache.Load(cachePath, ttl); err == nil && hit {
-			_, _ = fmt.Fprintf(stderr, "using cached detections (%d records); pass --no-cache for fresh data\n", len(cached))
+		if cached, hit, err := loadFn(cachePath, ttl); err == nil && hit {
+			_, _ = fmt.Fprintf(stderr, "using cached %s (%d records); pass --no-cache for fresh data\n", noun, len(cached))
 			return cached, nil
 		}
 	}
 
-	var all []iru.Detection
+	var all []T
 	pages := 0
-	err = client.ListDetectionsStream(ctx, iru.DetectionFilters{}, func(page []iru.Detection) error {
+	err = stream(func(page []T) error {
 		all = append(all, page...)
 		pages++
-		_, _ = fmt.Fprintf(stderr, "\rfetching detections: %d pages, %d records...", pages, len(all))
+		_, _ = fmt.Fprintf(stderr, "\rfetching %s: %d pages, %d records...", noun, pages, len(all))
 		return nil
 	})
 	// Clear the progress line with a newline so subsequent output is on its own line.
@@ -48,51 +58,30 @@ func fetchAllDetections(ctx context.Context, client iruClient, stderr io.Writer,
 
 	if useCache && cachePath != "" {
 		// Cache save is best-effort; warn but don't fail the command.
-		if saveErr := cache.Save(cachePath, all); saveErr != nil {
+		if saveErr := saveFn(cachePath, all); saveErr != nil {
 			_, _ = fmt.Fprintf(stderr, "warning: could not write cache at %s: %v\n", cachePath, saveErr)
 		}
 	}
 	return all, nil
 }
 
+// fetchAllDetections returns every detection in the tenant, from cache when
+// fresh or by walking the API. The progress indicator on stderr lets the user
+// see the walk advancing.
+func fetchAllDetections(ctx context.Context, client iruClient, stderr io.Writer, useCache bool, ttl time.Duration) ([]iru.Detection, error) {
+	return fetchAllCached(stderr, useCache, ttl, "detections",
+		cache.DefaultPath, cache.Load, cache.Save,
+		func(cb func(page []iru.Detection) error) error {
+			return client.ListDetectionsStream(ctx, iru.DetectionFilters{}, cb)
+		})
+}
+
 // fetchAllVulnerabilities returns every vulnerability rollup in the tenant,
-// either from cache (when fresh and useCache is true) or by walking the API
-// with a per-page progress line on stderr.
+// from cache when fresh or by walking the API.
 func fetchAllVulnerabilities(ctx context.Context, client iruClient, stderr io.Writer, useCache bool, ttl time.Duration) ([]iru.Vulnerability, error) {
-	if ttl <= 0 {
-		ttl = cache.DefaultTTL
-	}
-	cachePath, err := cache.DefaultVulnPath()
-	if err != nil {
-		cachePath = ""
-	}
-
-	if useCache && cachePath != "" {
-		if cached, hit, err := cache.LoadVulnerabilities(cachePath, ttl); err == nil && hit {
-			_, _ = fmt.Fprintf(stderr, "using cached vulnerabilities (%d records); pass --no-cache for fresh data\n", len(cached))
-			return cached, nil
-		}
-	}
-
-	var all []iru.Vulnerability
-	pages := 0
-	err = client.ListVulnerabilitiesStream(ctx, iru.VulnerabilityFilters{}, func(page []iru.Vulnerability) error {
-		all = append(all, page...)
-		pages++
-		_, _ = fmt.Fprintf(stderr, "\rfetching vulnerabilities: %d pages, %d records...", pages, len(all))
-		return nil
-	})
-	if pages > 0 {
-		_, _ = fmt.Fprintln(stderr)
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	if useCache && cachePath != "" {
-		if saveErr := cache.SaveVulnerabilities(cachePath, all); saveErr != nil {
-			_, _ = fmt.Fprintf(stderr, "warning: could not write cache at %s: %v\n", cachePath, saveErr)
-		}
-	}
-	return all, nil
+	return fetchAllCached(stderr, useCache, ttl, "vulnerabilities",
+		cache.DefaultVulnPath, cache.LoadVulnerabilities, cache.SaveVulnerabilities,
+		func(cb func(page []iru.Vulnerability) error) error {
+			return client.ListVulnerabilitiesStream(ctx, iru.VulnerabilityFilters{}, cb)
+		})
 }
