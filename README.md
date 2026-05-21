@@ -788,9 +788,9 @@ that change should land alongside a golden-file test that locks it down.
 
 ### Other future work
 
-- Multi-profile support: the `--profile` flag is already declared but only
-  `default` is honoured. The config file format already keys by profile name,
-  so extending this is mainly a `--profile` plumbing change.
+- Multi-profile support: the config file format already keys by profile
+  name, but only `default` is honoured today. Extending this would add a
+  profile selector plus the plumbing to read it.
 - Env-var fallback for the token (`JELLYFISH_API_TOKEN`) for CI environments
   with no Keychain.
 - Write operations (acknowledge, suppress, kick off remediation).

@@ -66,7 +66,6 @@ func newRootCmd() *cobra.Command {
 	root.PersistentFlags().StringP("output", "o", "table", "Output format: table, json, yaml, csv")
 	root.PersistentFlags().BoolP("verbose", "v", false, "Verbose logging to stderr")
 	root.PersistentFlags().String("config", "", "Override config file path (default ~/.config/jellyfish/config.yml)")
-	root.PersistentFlags().String("profile", "default", "Profile name (reserved; only 'default' is honoured in v1)")
 
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newConfigureCmd())
