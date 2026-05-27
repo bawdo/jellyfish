@@ -559,3 +559,14 @@ func TestResolveSelectedUserTTYInvalidExhausted(t *testing.T) {
 		t.Fatalf("expected aborted: invalid selection, got %v", err)
 	}
 }
+
+func TestResolveSelectedUserEmailNotFound(t *testing.T) {
+	client := &fakeClient{usersByEmail: map[string][]iru.User{}}
+	_, ok, err := resolveSelectedUser(context.Background(), client, io.Discard, "missing@x", strings.NewReader(""), func() bool { return true })
+	if !errors.Is(err, iru.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+	if ok {
+		t.Fatal("expected ok=false")
+	}
+}
