@@ -128,9 +128,9 @@ jellyfish user show 1f5b...e4           # by user ID
 jellyfish user show keith@example.com -o json
 ```
 
-Email lookup walks `/users?email=` so every matching record is returned; bucketing detections per device triggers the detection walk (see Detection cache).
+Email lookup returns every user whose address matches, not just the first; bucketing detections per device triggers the detection walk (see Detection cache).
 
-If two or more Iru users share the email address you passed, `user show` lists them and asks which to display when stdin is a terminal. In non-interactive runs (CI, pipes) the command errors with the full list and a re-run hint - pass the user ID instead of the email to disambiguate.
+If two or more Iru users share the email address you passed, `user show` lists them and asks which to display when stdin is a terminal. In non-interactive runs (CI, pipes) the command exits non-zero with every matching user's ID and a `jellyfish user show <id>` re-run hint.
 
 ### Output formats
 
