@@ -75,7 +75,7 @@ func TestUserShowUserNotFound(t *testing.T) {
 func TestUserShowCSVSortsBySeverity(t *testing.T) {
 	client := &fakeClient{
 		users:   []iru.User{{ID: "u-1", Name: "Alice", Email: "alice@example.com"}},
-		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", SerialNumber: "SN1"}},
+		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", SerialNumber: "SN1", User: iru.User{ID: "u-1"}}},
 		detections: []iru.Detection{
 			{DeviceID: "d-1", CVEID: "CVE-low", Severity: "Low", CVSSScore: 3.0},
 			{DeviceID: "d-1", CVEID: "CVE-crit", Severity: "Critical", CVSSScore: 9.5},
@@ -107,8 +107,8 @@ func TestUserShowCSVColumnOrder(t *testing.T) {
 	client := &fakeClient{
 		users: []iru.User{{ID: "u-1", Name: "Alice", Email: "alice@example.com"}},
 		devices: []iru.Device{
-			{DeviceID: "d-1", DeviceName: "Alice MBP", SerialNumber: "SN1"},
-			{DeviceID: "d-2", DeviceName: "Alice iPad", SerialNumber: "SN2"},
+			{DeviceID: "d-1", DeviceName: "Alice MBP", SerialNumber: "SN1", User: iru.User{ID: "u-1"}},
+			{DeviceID: "d-2", DeviceName: "Alice iPad", SerialNumber: "SN2", User: iru.User{ID: "u-1"}},
 		},
 		detections: []iru.Detection{
 			{
@@ -139,7 +139,7 @@ func TestUserShowCSVColumnOrder(t *testing.T) {
 func TestUserShowTextSortsDetectionsBySeverity(t *testing.T) {
 	client := &fakeClient{
 		users:   []iru.User{{ID: "u-1", Name: "Alice", Email: "alice@example.com"}},
-		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", SerialNumber: "SN1"}},
+		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", SerialNumber: "SN1", User: iru.User{ID: "u-1"}}},
 		detections: []iru.Detection{
 			{DeviceID: "d-1", CVEID: "CVE-low", Severity: "Low", CVSSScore: 3.0},
 			{DeviceID: "d-1", CVEID: "CVE-crit", Severity: "Critical", CVSSScore: 9.5},
@@ -170,7 +170,7 @@ func TestUserShowTextSortsDetectionsBySeverity(t *testing.T) {
 func TestUserShowEmailWritesEml(t *testing.T) {
 	client := &fakeClient{
 		users:   []iru.User{{ID: "u-1", Name: "Alice", Email: "alice@example.com"}},
-		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "Alice MBP", SerialNumber: "SN1"}},
+		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "Alice MBP", SerialNumber: "SN1", User: iru.User{ID: "u-1"}}},
 		detections: []iru.Detection{
 			{DeviceID: "d-1", CVEID: "CVE-A", Severity: "Critical", CVSSScore: 9.5, Name: "x", Version: "1.0"},
 		},
@@ -201,7 +201,7 @@ func TestUserShowEmailWritesEml(t *testing.T) {
 func TestUserShowEmailErrorsWithoutFrom(t *testing.T) {
 	client := &fakeClient{
 		users:   []iru.User{{ID: "u-1", Name: "Alice", Email: "alice@example.com"}},
-		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "Alice MBP", SerialNumber: "SN1"}},
+		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "Alice MBP", SerialNumber: "SN1", User: iru.User{ID: "u-1"}}},
 	}
 	err := runUserShow(context.Background(), client, &bytes.Buffer{}, io.Discard, userShowOpts{
 		Identifier: "u-1",
@@ -217,7 +217,7 @@ func TestUserShowEmailErrorsWithoutFrom(t *testing.T) {
 func TestUserShowSendEmailDefaultsToUserEmail(t *testing.T) {
 	client := &fakeClient{
 		users:   []iru.User{{ID: "u-1", Name: "Alice", Email: "alice@example.com"}},
-		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", SerialNumber: "SN1"}},
+		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", SerialNumber: "SN1", User: iru.User{ID: "u-1"}}},
 		detections: []iru.Detection{
 			{DeviceID: "d-1", CVEID: "CVE-A", Severity: "Critical", CVSSScore: 9.5, Name: "x", Version: "1.0"},
 		},
@@ -258,7 +258,7 @@ func TestUserShowSendEmailDefaultsToUserEmail(t *testing.T) {
 func TestUserShowSendEmailExplicitToOverridesUser(t *testing.T) {
 	client := &fakeClient{
 		users:   []iru.User{{ID: "u-1", Name: "Alice", Email: "alice@example.com"}},
-		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", SerialNumber: "SN1"}},
+		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", SerialNumber: "SN1", User: iru.User{ID: "u-1"}}},
 		detections: []iru.Detection{
 			{DeviceID: "d-1", CVEID: "CVE-A", Severity: "Critical", CVSSScore: 9.5, Name: "x", Version: "1.0"},
 		},
@@ -285,7 +285,7 @@ func TestUserShowSendEmailExplicitToOverridesUser(t *testing.T) {
 func TestUserShowSendEmailPropagatesSenderError(t *testing.T) {
 	client := &fakeClient{
 		users:   []iru.User{{ID: "u-1", Name: "Alice", Email: "alice@example.com"}},
-		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", SerialNumber: "SN1"}},
+		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", SerialNumber: "SN1", User: iru.User{ID: "u-1"}}},
 	}
 	sender := &fakeGmailSender{err: gmail.ErrUnauthorized}
 	opts := userShowOpts{
@@ -340,7 +340,7 @@ func TestUserShowEmailIncludesMessageFromFile(t *testing.T) {
 
 	client := &fakeClient{
 		users:   []iru.User{{ID: "u-1", Name: "Alice", Email: "alice@example.com"}},
-		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "Alice MBP", SerialNumber: "SN1"}},
+		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "Alice MBP", SerialNumber: "SN1", User: iru.User{ID: "u-1"}}},
 		detections: []iru.Detection{
 			{DeviceID: "d-1", CVEID: "CVE-A", Severity: "Critical", CVSSScore: 9.5, Name: "x", Version: "1.0"},
 		},
@@ -382,7 +382,7 @@ func TestUserShowMessageRejectsNonEmailOutput(t *testing.T) {
 func TestUserShowSendEmailSetsReportHeader(t *testing.T) {
 	client := &fakeClient{
 		users:   []iru.User{{ID: "u-1", Name: "Alice", Email: "alice@example.com"}},
-		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", SerialNumber: "SN1"}},
+		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", SerialNumber: "SN1", User: iru.User{ID: "u-1"}}},
 		detections: []iru.Detection{
 			{DeviceID: "d-1", CVEID: "CVE-A", Severity: "Critical", CVSSScore: 9.5, Name: "x", Version: "1.0"},
 		},

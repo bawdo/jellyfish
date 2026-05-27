@@ -362,7 +362,7 @@ func TestRunUsersSendEmailSkipNoDevices(t *testing.T) {
 func TestRunUsersSendEmailSkipNoVulns(t *testing.T) {
 	client := &fakeClient{
 		users:   []iru.User{{ID: "u-1", Email: "alice@example.com"}},
-		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "MBP"}},
+		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", User: iru.User{ID: "u-1"}}},
 		// no detections for d-1
 	}
 	sender := &fakeGmailSender{}
@@ -380,7 +380,7 @@ func TestRunUsersSendEmailSkipNoVulns(t *testing.T) {
 func TestRunUsersSendEmailGmailAuthError(t *testing.T) {
 	client := &fakeClient{
 		users:      []iru.User{{ID: "u-1", Email: "alice@example.com"}},
-		devices:    []iru.Device{{DeviceID: "d-1", DeviceName: "MBP"}},
+		devices:    []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", User: iru.User{ID: "u-1"}}},
 		detections: []iru.Detection{{DeviceID: "d-1", CVEID: "CVE-A", Severity: "Critical", CVSSScore: 9.5}},
 	}
 	sender := &fakeGmailSender{err: gmail.ErrUnauthorized}
@@ -401,7 +401,7 @@ func TestRunUsersSendEmailExitCodePrecedence(t *testing.T) {
 	// (exit 4). Expected wrapped sentinel: gmail.ErrRateLimited (4 beats 3).
 	client := &fakeClient{
 		users:      []iru.User{{ID: "u-1", Email: "alice@example.com"}},
-		devices:    []iru.Device{{DeviceID: "d-1", DeviceName: "MBP"}},
+		devices:    []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", User: iru.User{ID: "u-1"}}},
 		detections: []iru.Detection{{DeviceID: "d-1", CVEID: "CVE-A", Severity: "Critical", CVSSScore: 9.5}},
 	}
 	sender := &fakeGmailSender{err: gmail.ErrRateLimited}
@@ -431,17 +431,22 @@ func (r *recordingSender) Send(_ context.Context, raw []byte) (string, error) {
 }
 
 func TestRunUsersSendEmailRedirectsAllToOverride(t *testing.T) {
-	// fakeClient.ListDevices ignores the UserID filter and returns the same
-	// slice for every call, so both alice and bob see the same device + CVE
-	// list. That is fine for this test - we only care that both sends land
-	// at the override To address.
+	// Each user has their own device so ListDevices (which now filters by
+	// UserID) returns a non-empty slice for both alice and bob. We only care
+	// that both sends land at the override To address.
 	client := &fakeClient{
 		users: []iru.User{
 			{ID: "u-1", Email: "alice@example.com"},
 			{ID: "u-2", Email: "bob@example.com"},
 		},
-		devices:    []iru.Device{{DeviceID: "d-1", DeviceName: "MBP"}},
-		detections: []iru.Detection{{DeviceID: "d-1", CVEID: "CVE-A", Severity: "Critical", CVSSScore: 9.5}},
+		devices: []iru.Device{
+			{DeviceID: "d-1", DeviceName: "MBP", User: iru.User{ID: "u-1"}},
+			{DeviceID: "d-2", DeviceName: "iMac", User: iru.User{ID: "u-2"}},
+		},
+		detections: []iru.Detection{
+			{DeviceID: "d-1", CVEID: "CVE-A", Severity: "Critical", CVSSScore: 9.5},
+			{DeviceID: "d-2", CVEID: "CVE-A", Severity: "Critical", CVSSScore: 9.5},
+		},
 	}
 
 	rec := &recordingSender{}
@@ -473,7 +478,7 @@ func TestRunUsersSendEmailRedirectsAllToOverride(t *testing.T) {
 func TestRunUsersSendEmailDryRun(t *testing.T) {
 	client := &fakeClient{
 		users:      []iru.User{{ID: "u-1", Email: "alice@example.com"}},
-		devices:    []iru.Device{{DeviceID: "d-1", DeviceName: "MBP"}},
+		devices:    []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", User: iru.User{ID: "u-1"}}},
 		detections: []iru.Detection{{DeviceID: "d-1", CVEID: "CVE-A", Severity: "Critical", CVSSScore: 9.5}},
 	}
 	senderCalled := false
@@ -557,7 +562,7 @@ func TestBulkCountersExitError(t *testing.T) {
 func TestRunUsersSendEmailAbortsOnPromptNo(t *testing.T) {
 	client := &fakeClient{
 		users:      []iru.User{{ID: "u-1", Email: "alice@example.com"}},
-		devices:    []iru.Device{{DeviceID: "d-1", DeviceName: "MBP"}},
+		devices:    []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", User: iru.User{ID: "u-1"}}},
 		detections: []iru.Detection{{DeviceID: "d-1", CVEID: "CVE-A", Severity: "Critical", CVSSScore: 9.5}},
 	}
 	sender := &fakeGmailSender{}
@@ -626,7 +631,7 @@ func TestBulkTemplateDisplayRedirect(t *testing.T) {
 func TestRunUsersSendEmailSetsReportHeader(t *testing.T) {
 	client := &fakeClient{
 		users:      []iru.User{{ID: "u-1", Email: "alice@example.com"}},
-		devices:    []iru.Device{{DeviceID: "d-1", DeviceName: "MBP"}},
+		devices:    []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", User: iru.User{ID: "u-1"}}},
 		detections: []iru.Detection{{DeviceID: "d-1", CVEID: "CVE-A", Severity: "Critical", CVSSScore: 9.5}},
 	}
 	sender := &fakeGmailSender{returnID: "msg-1"}
@@ -641,5 +646,96 @@ func TestRunUsersSendEmailSetsReportHeader(t *testing.T) {
 	}
 	if !bytes.Contains(sender.sent, []byte("X-Jellyfish-Report: users-send\r\n")) {
 		t.Fatalf("expected X-Jellyfish-Report: users-send; got:\n%s", sender.sent)
+	}
+}
+
+// fakeSender counts Send calls without caring about the message contents.
+type fakeSender struct {
+	calls int
+}
+
+func (f *fakeSender) Send(_ context.Context, _ []byte) (string, error) {
+	f.calls++
+	return "msg-fake", nil
+}
+
+func TestUsersSendEmailExpandsMultiMatch(t *testing.T) {
+	client := &fakeClient{
+		usersByEmail: map[string][]iru.User{
+			"keith@x": {
+				{ID: "u-1", Name: "Keith A", Email: "keith@x"},
+				{ID: "u-2", Name: "Keith B", Email: "keith@x"},
+			},
+		},
+		devices: []iru.Device{
+			{DeviceID: "d-1", DeviceName: "MBP-A", SerialNumber: "SN-A", User: iru.User{ID: "u-1"}},
+			{DeviceID: "d-2", DeviceName: "MBP-B", SerialNumber: "SN-B", User: iru.User{ID: "u-2"}},
+		},
+		detections: []iru.Detection{
+			{DeviceID: "d-1", CVEID: "CVE-A", Severity: "High", CVSSScore: 7.0},
+			{DeviceID: "d-2", CVEID: "CVE-B", Severity: "Critical", CVSSScore: 9.0},
+		},
+	}
+	fake := &fakeSender{}
+	stderr := &bytes.Buffer{}
+	opts := usersSendEmailOpts{
+		Emails:        "keith@x",
+		EmailFlags:    emailFlagValues{From: "ops@example.com"},
+		Yes:           true,
+		NoCache:       true,
+		Profile:       config.Profile{Email: config.EmailConfig{GmailConfigured: true, From: "ops@example.com"}},
+		KeychainGet:   func() ([]byte, error) { return []byte(`{}`), nil },
+		NewSender:     func(_ context.Context, _ []byte, _ string) (gmail.Sender, error) { return fake, nil },
+		ConfirmReader: strings.NewReader(""),
+		MessageReader: strings.NewReader(""),
+	}
+	if err := runUsersSendEmail(context.Background(), client, stderr, opts); err != nil {
+		t.Fatal(err)
+	}
+	if fake.calls != 2 {
+		t.Fatalf("expected 2 sends, got %d", fake.calls)
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "user=u-1") || !strings.Contains(out, "user=u-2") {
+		t.Fatalf("expected user=<id> segments for both users, got: %s", out)
+	}
+}
+
+func TestUsersSendEmailMultiMatchOneSkipped(t *testing.T) {
+	client := &fakeClient{
+		usersByEmail: map[string][]iru.User{
+			"keith@x": {
+				{ID: "u-1", Email: "keith@x"},
+				{ID: "u-2", Email: "keith@x"},
+			},
+		},
+		devices: []iru.Device{
+			{DeviceID: "d-1", User: iru.User{ID: "u-1"}},
+		},
+		detections: []iru.Detection{
+			{DeviceID: "d-1", CVEID: "CVE-A", Severity: "High", CVSSScore: 7.0},
+		},
+	}
+	fake := &fakeSender{}
+	stderr := &bytes.Buffer{}
+	opts := usersSendEmailOpts{
+		Emails:        "keith@x",
+		EmailFlags:    emailFlagValues{From: "ops@example.com"},
+		Yes:           true,
+		NoCache:       true,
+		Profile:       config.Profile{Email: config.EmailConfig{GmailConfigured: true, From: "ops@example.com"}},
+		KeychainGet:   func() ([]byte, error) { return []byte(`{}`), nil },
+		NewSender:     func(_ context.Context, _ []byte, _ string) (gmail.Sender, error) { return fake, nil },
+		ConfirmReader: strings.NewReader(""),
+		MessageReader: strings.NewReader(""),
+	}
+	if err := runUsersSendEmail(context.Background(), client, stderr, opts); err != nil {
+		t.Fatal(err)
+	}
+	if fake.calls != 1 {
+		t.Fatalf("expected 1 send (only u-1 has devices), got %d", fake.calls)
+	}
+	if !strings.Contains(stderr.String(), "skip input=keith@x user=u-2 reason=no-devices") {
+		t.Fatalf("expected skip line for u-2: %s", stderr.String())
 	}
 }

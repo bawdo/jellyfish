@@ -194,58 +194,71 @@ func runUsersSendEmail(ctx context.Context, client iruClient, stderr io.Writer, 
 
 	var counters bulkCounters
 	for _, inputEmail := range recipients {
-		bundle, rerr := resolveBundleForUser(ctx, client, inputEmail, allDetections)
-		if rerr != nil {
-			if errors.Is(rerr, iru.ErrNotFound) {
+		users, lerr := client.FindUsersByEmail(ctx, inputEmail)
+		if lerr != nil {
+			if errors.Is(lerr, iru.ErrNotFound) {
 				_, _ = fmt.Fprintf(stderr, "error input=%s reason=user-not-found\n", inputEmail)
 			} else {
-				_, _ = fmt.Fprintf(stderr, "error input=%s lookup: %v\n", inputEmail, rerr)
+				_, _ = fmt.Fprintf(stderr, "error input=%s lookup: %v\n", inputEmail, lerr)
 			}
-			counters.recordError(rerr)
+			counters.recordError(lerr)
 			continue
 		}
-		if len(bundle.Devices) == 0 {
-			_, _ = fmt.Fprintf(stderr, "skip input=%s reason=no-devices\n", inputEmail)
-			counters.skipped++
-			continue
-		}
-		hasDetections := false
-		for _, d := range bundle.Devices {
-			if len(d.Detections) > 0 {
-				hasDetections = true
-				break
+		multi := len(users) > 1
+		for _, u := range users {
+			tagUser := ""
+			if multi {
+				tagUser = " user=" + u.ID
 			}
-		}
-		if !hasDetections {
-			_, _ = fmt.Fprintf(stderr, "skip input=%s reason=no-vulnerabilities\n", inputEmail)
-			counters.skipped++
-			continue
-		}
+			bundle, berr := buildBundleForUser(ctx, client, u, allDetections)
+			if berr != nil {
+				_, _ = fmt.Fprintf(stderr, "error input=%s%s lookup: %v\n", inputEmail, tagUser, berr)
+				counters.recordError(berr)
+				continue
+			}
+			if len(bundle.Devices) == 0 {
+				_, _ = fmt.Fprintf(stderr, "skip input=%s%s reason=no-devices\n", inputEmail, tagUser)
+				counters.skipped++
+				continue
+			}
+			hasDetections := false
+			for _, d := range bundle.Devices {
+				if len(d.Detections) > 0 {
+					hasDetections = true
+					break
+				}
+			}
+			if !hasDetections {
+				_, _ = fmt.Fprintf(stderr, "skip input=%s%s reason=no-vulnerabilities\n", inputEmail, tagUser)
+				counters.skipped++
+				continue
+			}
 
-		userOpts := baseEmailOpts
-		if userOpts.To == "" {
-			userOpts.To = bundle.User.Email
-		}
-		if userOpts.To == "" {
-			_, _ = fmt.Fprintf(stderr, "error input=%s reason=no-recipient\n", inputEmail)
-			counters.recordError(fmt.Errorf("no recipient address for %s: %w", inputEmail, iru.ErrNotFound))
-			continue
-		}
+			userOpts := baseEmailOpts
+			if userOpts.To == "" {
+				userOpts.To = bundle.User.Email
+			}
+			if userOpts.To == "" {
+				_, _ = fmt.Fprintf(stderr, "error input=%s%s reason=no-recipient\n", inputEmail, tagUser)
+				counters.recordError(fmt.Errorf("no recipient address for %s: %w", inputEmail, iru.ErrNotFound))
+				continue
+			}
 
-		if opts.DryRun {
-			_, _ = fmt.Fprintf(stderr, "would-send input=%s to=%s\n", inputEmail, userOpts.To)
-			counters.wouldSend++
-			continue
-		}
+			if opts.DryRun {
+				_, _ = fmt.Fprintf(stderr, "would-send input=%s%s to=%s\n", inputEmail, tagUser, userOpts.To)
+				counters.wouldSend++
+				continue
+			}
 
-		id, serr := sendUserBundle(ctx, sender, userOpts, stderr, bundle)
-		if serr != nil {
-			_, _ = fmt.Fprintf(stderr, "error input=%s gmail: %v\n", inputEmail, serr)
-			counters.recordError(serr)
-			continue
+			id, serr := sendUserBundle(ctx, sender, userOpts, stderr, bundle)
+			if serr != nil {
+				_, _ = fmt.Fprintf(stderr, "error input=%s%s gmail: %v\n", inputEmail, tagUser, serr)
+				counters.recordError(serr)
+				continue
+			}
+			_, _ = fmt.Fprintf(stderr, "sent input=%s%s to=%s gmail-id=%s\n", inputEmail, tagUser, userOpts.To, id)
+			counters.sent++
 		}
-		_, _ = fmt.Fprintf(stderr, "sent input=%s to=%s gmail-id=%s\n", inputEmail, userOpts.To, id)
-		counters.sent++
 	}
 
 	if opts.DryRun {

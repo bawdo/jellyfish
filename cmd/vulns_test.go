@@ -38,8 +38,17 @@ func (f *fakeClient) ListDetectionsStream(_ context.Context, _ iru.DetectionFilt
 	}
 	return cb(f.detections)
 }
-func (f *fakeClient) ListDevices(_ context.Context, _ iru.DeviceFilters) ([]iru.Device, error) {
-	return f.devices, nil
+func (f *fakeClient) ListDevices(_ context.Context, filt iru.DeviceFilters) ([]iru.Device, error) {
+	if filt.UserID == "" {
+		return f.devices, nil
+	}
+	var out []iru.Device
+	for _, d := range f.devices {
+		if d.User.ID == filt.UserID {
+			out = append(out, d)
+		}
+	}
+	return out, nil
 }
 func (f *fakeClient) ListDevicesStream(_ context.Context, _ iru.DeviceFilters, cb func(page []iru.Device) error) error {
 	if len(f.devices) == 0 {
