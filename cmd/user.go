@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/bawdo/jellyfish/internal/config"
 	"github.com/bawdo/jellyfish/internal/email"
@@ -35,6 +36,8 @@ type userShowOpts struct {
 	ExplicitOutput string
 	KeychainGet    func() ([]byte, error)
 	NewSender      gmailNewSender
+	PromptReader   io.Reader
+	stdinIsTTY     func() bool
 }
 
 // UserBundle is the composite shape `user show` returns.
@@ -118,7 +121,23 @@ func runUserShow(ctx context.Context, client iruClient, w, stderr io.Writer, opt
 	if err != nil {
 		return err
 	}
-	bundle, err := resolveBundleForUser(ctx, client, opts.Identifier, all)
+	prompt := opts.PromptReader
+	if prompt == nil {
+		prompt = os.Stdin
+	}
+	isTTY := opts.stdinIsTTY
+	if isTTY == nil {
+		isTTY = func() bool { return term.IsTerminal(int(os.Stdin.Fd())) }
+	}
+	user, ok, err := resolveSelectedUser(ctx, client, stderr, opts.Identifier, prompt, isTTY)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		_, _ = fmt.Fprintln(stderr, "aborted: no user shown")
+		return nil
+	}
+	bundle, err := buildBundleForUser(ctx, client, user, all)
 	if err != nil {
 		return err
 	}

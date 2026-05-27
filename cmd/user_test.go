@@ -570,3 +570,81 @@ func TestResolveSelectedUserEmailNotFound(t *testing.T) {
 		t.Fatal("expected ok=false")
 	}
 }
+
+func TestRunUserShowTTYDisambiguates(t *testing.T) {
+	client := &fakeClient{
+		usersByEmail: map[string][]iru.User{
+			"k@x": {
+				{ID: "u-1", Name: "Keith A", Email: "k@x", Active: true},
+				{ID: "u-2", Name: "Keith B", Email: "k@x", Active: true},
+			},
+		},
+		devices: []iru.Device{
+			{DeviceID: "d-2", DeviceName: "MBP-Keith-B", SerialNumber: "SN2", User: iru.User{ID: "u-2"}},
+		},
+	}
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := runUserShow(context.Background(), client, stdout, stderr, userShowOpts{
+		Identifier:   "k@x",
+		Output:       "json",
+		NoCache:      true,
+		PromptReader: strings.NewReader("2\n"),
+		stdinIsTTY:   func() bool { return true },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), `"id": "u-2"`) {
+		t.Fatalf("expected u-2 in stdout: %s", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "Multiple users match k@x") {
+		t.Fatalf("expected prompt on stderr: %s", stderr.String())
+	}
+}
+
+func TestRunUserShowNonTTYMultiMatchErrors(t *testing.T) {
+	client := &fakeClient{
+		usersByEmail: map[string][]iru.User{
+			"k@x": {
+				{ID: "u-1", Name: "Keith A", Email: "k@x", Active: true},
+				{ID: "u-2", Name: "Keith B", Email: "k@x", Archived: true},
+			},
+		},
+	}
+	err := runUserShow(context.Background(), client, &bytes.Buffer{}, &bytes.Buffer{}, userShowOpts{
+		Identifier:   "k@x",
+		Output:       "json",
+		NoCache:      true,
+		PromptReader: strings.NewReader(""),
+		stdinIsTTY:   func() bool { return false },
+	})
+	if err == nil || !strings.Contains(err.Error(), "multiple users match") {
+		t.Fatalf("expected multiple-users error, got %v", err)
+	}
+}
+
+func TestRunUserShowTTYAbortReturnsNil(t *testing.T) {
+	client := &fakeClient{
+		usersByEmail: map[string][]iru.User{
+			"k@x": {
+				{ID: "u-1", Email: "k@x", Active: true},
+				{ID: "u-2", Email: "k@x", Active: true},
+			},
+		},
+	}
+	stderr := &bytes.Buffer{}
+	err := runUserShow(context.Background(), client, &bytes.Buffer{}, stderr, userShowOpts{
+		Identifier:   "k@x",
+		Output:       "json",
+		NoCache:      true,
+		PromptReader: strings.NewReader("q\n"),
+		stdinIsTTY:   func() bool { return true },
+	})
+	if err != nil {
+		t.Fatalf("expected nil error on abort, got %v", err)
+	}
+	if !strings.Contains(stderr.String(), "aborted: no user shown") {
+		t.Fatalf("expected aborted line on stderr: %s", stderr.String())
+	}
+}
