@@ -318,14 +318,22 @@ func renderUserBundleCSV(w io.Writer, b UserBundle) error {
 // resolveBundleForUser fetches a user (by identifier - email or ID) plus
 // their devices and buckets the supplied pre-fetched detection list by
 // device ID. Returns iru.ErrNotFound when the user cannot be resolved.
-// Used by both the single-user `user show` pipeline (with allDetections
-// fetched per-call) and the bulk `users send-email` pipeline (where the
-// same detection list is reused across many users).
+// Used by the bulk `users send-email` pipeline (where the same detection
+// list is reused across many users). `user show` uses buildBundleForUser
+// directly after resolveSelectedUser hands it a chosen user.
 func resolveBundleForUser(ctx context.Context, client iruClient, identifier string, allDetections []iru.Detection) (UserBundle, error) {
 	user, err := resolveUser(ctx, client, identifier)
 	if err != nil {
 		return UserBundle{}, err
 	}
+	return buildBundleForUser(ctx, client, user, allDetections)
+}
+
+// buildBundleForUser fetches the supplied user's devices and buckets the
+// pre-fetched detection list by device ID. It does not look up the user -
+// the caller is responsible for resolution (and for any disambiguation in
+// the multi-match-by-email case).
+func buildBundleForUser(ctx context.Context, client iruClient, user iru.User, allDetections []iru.Detection) (UserBundle, error) {
 	devices, err := client.ListDevices(ctx, iru.DeviceFilters{UserID: user.ID})
 	if err != nil {
 		return UserBundle{}, err

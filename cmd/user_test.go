@@ -404,3 +404,37 @@ func TestUserShowSendEmailSetsReportHeader(t *testing.T) {
 		t.Fatalf("expected X-Jellyfish-Report: user-show; got:\n%s", sender.sent)
 	}
 }
+
+func TestBuildBundleForUserBucketsDetections(t *testing.T) {
+	client := &fakeClient{
+		devices: []iru.Device{
+			{DeviceID: "d-1", DeviceName: "MBP", SerialNumber: "SN1", User: iru.User{ID: "u-1"}},
+			{DeviceID: "d-2", DeviceName: "iPad", SerialNumber: "SN2", User: iru.User{ID: "u-1"}},
+		},
+	}
+	user := iru.User{ID: "u-1", Email: "k@x"}
+	all := []iru.Detection{
+		{DeviceID: "d-1", CVEID: "CVE-A"},
+		{DeviceID: "d-2", CVEID: "CVE-B"},
+		{DeviceID: "d-stranger", CVEID: "CVE-IGNORED"},
+	}
+	b, err := buildBundleForUser(context.Background(), client, user, all)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.User.ID != "u-1" {
+		t.Fatalf("unexpected user %+v", b.User)
+	}
+	if len(b.Devices) != 2 {
+		t.Fatalf("expected 2 devices, got %d", len(b.Devices))
+	}
+	gotByDev := map[string]string{}
+	for _, d := range b.Devices {
+		for _, det := range d.Detections {
+			gotByDev[d.Device.DeviceID] = det.CVEID
+		}
+	}
+	if gotByDev["d-1"] != "CVE-A" || gotByDev["d-2"] != "CVE-B" {
+		t.Fatalf("bucketing wrong: %+v", gotByDev)
+	}
+}
