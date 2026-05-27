@@ -32,21 +32,40 @@ func (c *Client) ListUsersPage(ctx context.Context, limit int, cursor string) ([
 	return p.Results, p.nextCursor(), nil
 }
 
-// FindUserByEmail returns the user with the given email address. The filter
-// is server-side via Iru's `?email=` query param, which returns at most one
-// exact match. Returns ErrNotFound if no user matches.
-func (c *Client) FindUserByEmail(ctx context.Context, email string) (User, error) {
-	q := url.Values{}
-	q.Set("email", email)
-	q.Set("limit", "1")
-	var p paginated[User]
-	if err := c.do(ctx, http.MethodGet, "/users", q, &p); err != nil {
-		return User{}, err
+// FindUsersByEmail returns every user with the given email address. Iru's
+// `?email=` filter is an exact server-side match but the same address can
+// legitimately belong to more than one user record (e.g. when a single human
+// is represented by multiple Iru accounts). The walk is paginated via
+// WalkCursor so all matches are returned. Returns ErrNotFound when no
+// records match.
+func (c *Client) FindUsersByEmail(ctx context.Context, email string) ([]User, error) {
+	var out []User
+	err := WalkCursor[User](ctx, DefaultLimit,
+		func(ctx context.Context, limit int, cursor string) ([]User, string, error) {
+			q := url.Values{}
+			q.Set("email", email)
+			q.Set("limit", strconv.Itoa(limit))
+			if cursor != "" {
+				q.Set("cursor", cursor)
+			}
+			var p paginated[User]
+			if err := c.do(ctx, http.MethodGet, "/users", q, &p); err != nil {
+				return nil, "", err
+			}
+			return p.Results, p.nextCursor(), nil
+		},
+		func(page []User) error {
+			out = append(out, page...)
+			return nil
+		},
+	)
+	if err != nil {
+		return nil, err
 	}
-	if len(p.Results) == 0 {
-		return User{}, ErrNotFound
+	if len(out) == 0 {
+		return nil, ErrNotFound
 	}
-	return p.Results[0], nil
+	return out, nil
 }
 
 // ListUsersStream walks every user via repeated ListUsersPage calls. The

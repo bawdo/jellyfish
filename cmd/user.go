@@ -128,7 +128,14 @@ func runUserShow(ctx context.Context, client iruClient, w, stderr io.Writer, opt
 
 func resolveUser(ctx context.Context, client iruClient, id string) (iru.User, error) {
 	if strings.Contains(id, "@") {
-		return client.FindUserByEmail(ctx, id)
+		matches, err := client.FindUsersByEmail(ctx, id)
+		if err != nil {
+			return iru.User{}, err
+		}
+		if len(matches) == 0 {
+			return iru.User{}, iru.ErrNotFound
+		}
+		return matches[0], nil
 	}
 	return client.GetUser(ctx, id)
 }

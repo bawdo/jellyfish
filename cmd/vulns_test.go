@@ -21,6 +21,7 @@ type fakeClient struct {
 	detections      []iru.Detection
 	devices         []iru.Device
 	users           []iru.User
+	usersByEmail    map[string][]iru.User
 	bySerial        func(string) (iru.Device, error)
 	vulnerabilities []iru.Vulnerability
 }
@@ -63,13 +64,23 @@ func (f *fakeClient) GetUser(_ context.Context, id string) (iru.User, error) {
 	}
 	return iru.User{}, iru.ErrNotFound
 }
-func (f *fakeClient) FindUserByEmail(_ context.Context, e string) (iru.User, error) {
+func (f *fakeClient) FindUsersByEmail(_ context.Context, e string) ([]iru.User, error) {
+	if f.usersByEmail != nil {
+		if v, ok := f.usersByEmail[strings.ToLower(e)]; ok {
+			return v, nil
+		}
+		return nil, iru.ErrNotFound
+	}
+	var out []iru.User
 	for _, u := range f.users {
 		if strings.EqualFold(u.Email, e) {
-			return u, nil
+			out = append(out, u)
 		}
 	}
-	return iru.User{}, iru.ErrNotFound
+	if len(out) == 0 {
+		return nil, iru.ErrNotFound
+	}
+	return out, nil
 }
 func (f *fakeClient) ListUsersStream(_ context.Context, cb func(page []iru.User) error) error {
 	if len(f.users) == 0 {
