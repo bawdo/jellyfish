@@ -204,6 +204,11 @@ func runUsersSendEmail(ctx context.Context, client iruClient, stderr io.Writer, 
 			counters.recordError(lerr)
 			continue
 		}
+		if len(users) == 0 {
+			_, _ = fmt.Fprintf(stderr, "error input=%s reason=user-not-found\n", inputEmail)
+			counters.recordError(iru.ErrNotFound)
+			continue
+		}
 		multi := len(users) > 1
 		for _, u := range users {
 			tagUser := ""

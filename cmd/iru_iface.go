@@ -14,6 +14,8 @@ type iruClient interface {
 	ListDevicesStream(ctx context.Context, f iru.DeviceFilters, cb func(page []iru.Device) error) error
 	GetDeviceBySerial(ctx context.Context, serial string) (iru.Device, error)
 	GetUser(ctx context.Context, id string) (iru.User, error)
+	// FindUsersByEmail returns every user whose email matches exactly.
+	// Returns ErrNotFound (never a nil slice + nil error) when there are no matches.
 	FindUsersByEmail(ctx context.Context, email string) ([]iru.User, error)
 	ListUsersStream(ctx context.Context, cb func(page []iru.User) error) error
 	ListDetections(ctx context.Context, f iru.DetectionFilters) ([]iru.Detection, error)
