@@ -185,7 +185,7 @@ func TestConfirmSend(t *testing.T) {
 	}{
 		{name: "yes flag short-circuits", yes: true, count: 5, wantOK: true},
 		{name: "dry run short-circuits", dryRun: true, count: 5, wantOK: true, wantOut: "DRY RUN"},
-		{name: "answer y", input: "y\n", count: 3, wantOK: true, wantOut: "3 users"},
+		{name: "answer y", input: "y\n", count: 3, wantOK: true, wantOut: "3 input address(es)"},
 		{name: "answer Y", input: "Y\n", count: 3, wantOK: true},
 		{name: "answer yes", input: "yes\n", count: 3, wantOK: true},
 		{name: "answer n", input: "n\n", count: 3, wantOK: false},

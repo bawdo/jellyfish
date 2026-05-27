@@ -487,7 +487,7 @@ func confirmSend(stderr io.Writer, in io.Reader, count int, dryRun, yes bool) (b
 	if yes {
 		return true, nil
 	}
-	_, _ = fmt.Fprintf(stderr, "About to send vulnerability reports to %d users. Continue? [y/N] ", count)
+	_, _ = fmt.Fprintf(stderr, "About to send vulnerability reports to %d input address(es). Continue? [y/N] ", count)
 	br := bufio.NewReader(in)
 	line, err := br.ReadString('\n')
 	if err != nil && err != io.EOF {
