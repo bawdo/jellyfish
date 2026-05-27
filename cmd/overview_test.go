@@ -929,6 +929,8 @@ func TestAssembleOverviewKeepsDuplicateEmailUsers(t *testing.T) {
 			{DeviceID: "d-2", CVEID: "CVE-B", Severity: "Critical", CVSSScore: 9.0},
 		},
 	}
+	// noCache=true bypasses the shared on-disk detection cache so this test does
+	// not pick up stale data left behind by TestAssembleOverviewAcceptsCustomTTL.
 	view, err := assembleOverview(context.Background(), client, io.Discard, true, nil, 0)
 	if err != nil {
 		t.Fatal(err)
