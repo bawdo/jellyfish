@@ -438,3 +438,124 @@ func TestBuildBundleForUserBucketsDetections(t *testing.T) {
 		t.Fatalf("bucketing wrong: %+v", gotByDev)
 	}
 }
+
+func TestResolveSelectedUserSingleMatchReturnsUser(t *testing.T) {
+	client := &fakeClient{usersByEmail: map[string][]iru.User{
+		"k@x": {{ID: "u-1", Name: "Keith", Email: "k@x", Active: true}},
+	}}
+	prompt := strings.NewReader("")
+	u, ok, err := resolveSelectedUser(context.Background(), client, io.Discard, "k@x", prompt, func() bool { return true })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || u.ID != "u-1" {
+		t.Fatalf("got ok=%v user=%+v", ok, u)
+	}
+}
+
+func TestResolveSelectedUserByIDDelegatesToGetUser(t *testing.T) {
+	client := &fakeClient{users: []iru.User{{ID: "u-9", Email: "x@y"}}}
+	u, ok, err := resolveSelectedUser(context.Background(), client, io.Discard, "u-9", strings.NewReader(""), func() bool { return true })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || u.ID != "u-9" {
+		t.Fatalf("got ok=%v user=%+v", ok, u)
+	}
+}
+
+func TestResolveSelectedUserNonTTYMultiMatchErrors(t *testing.T) {
+	client := &fakeClient{usersByEmail: map[string][]iru.User{
+		"k@x": {
+			{ID: "u-1", Name: "Keith A", Email: "k@x", Active: true},
+			{ID: "u-2", Name: "Keith B", Email: "k@x", Archived: true},
+		},
+	}}
+	stderr := &bytes.Buffer{}
+	_, ok, err := resolveSelectedUser(context.Background(), client, stderr, "k@x", strings.NewReader(""), func() bool { return false })
+	if err == nil {
+		t.Fatal("expected error on non-TTY multi-match")
+	}
+	if ok {
+		t.Fatal("expected ok=false on error")
+	}
+	msg := err.Error()
+	for _, want := range []string{"multiple users match k@x", "u-1", "u-2", "Keith A", "Keith B", "active", "archived", "jellyfish user show <id>"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("error missing %q: %s", want, msg)
+		}
+	}
+}
+
+func TestResolveSelectedUserTTYPromptSelectsMatch(t *testing.T) {
+	client := &fakeClient{usersByEmail: map[string][]iru.User{
+		"k@x": {
+			{ID: "u-1", Name: "Keith A", Email: "k@x", Active: true},
+			{ID: "u-2", Name: "Keith B", Email: "k@x", Archived: true},
+		},
+	}}
+	stderr := &bytes.Buffer{}
+	u, ok, err := resolveSelectedUser(context.Background(), client, stderr, "k@x", strings.NewReader("2\n"), func() bool { return true })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || u.ID != "u-2" {
+		t.Fatalf("got ok=%v user=%+v", ok, u)
+	}
+	for _, want := range []string{"Multiple users match k@x", "[1] u-1", "[2] u-2", "Keith A", "active", "Keith B", "archived"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("prompt missing %q: %s", want, stderr.String())
+		}
+	}
+}
+
+func TestResolveSelectedUserTTYPromptInvalidThenValid(t *testing.T) {
+	client := &fakeClient{usersByEmail: map[string][]iru.User{
+		"k@x": {
+			{ID: "u-1", Email: "k@x", Active: true},
+			{ID: "u-2", Email: "k@x", Active: true},
+		},
+	}}
+	u, ok, err := resolveSelectedUser(context.Background(), client, &bytes.Buffer{}, "k@x", strings.NewReader("foo\n2\n"), func() bool { return true })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || u.ID != "u-2" {
+		t.Fatalf("got ok=%v user=%+v", ok, u)
+	}
+}
+
+func TestResolveSelectedUserTTYAbort(t *testing.T) {
+	client := &fakeClient{usersByEmail: map[string][]iru.User{
+		"k@x": {
+			{ID: "u-1", Email: "k@x", Active: true},
+			{ID: "u-2", Email: "k@x", Active: true},
+		},
+	}}
+	_, ok, err := resolveSelectedUser(context.Background(), client, &bytes.Buffer{}, "k@x", strings.NewReader("q\n"), func() bool { return true })
+	if err != nil {
+		t.Fatalf("expected nil error on abort, got %v", err)
+	}
+	if ok {
+		t.Fatal("expected ok=false on q")
+	}
+}
+
+func TestResolveSelectedUserTTYInvalidExhausted(t *testing.T) {
+	client := &fakeClient{usersByEmail: map[string][]iru.User{
+		"k@x": {
+			{ID: "u-1", Email: "k@x", Active: true},
+			{ID: "u-2", Email: "k@x", Active: true},
+		},
+	}}
+	_, ok, err := resolveSelectedUser(context.Background(), client, &bytes.Buffer{}, "k@x", strings.NewReader("a\nb\nc\n"), func() bool { return true })
+	if err == nil {
+		t.Fatal("expected error after exhausting attempts")
+	}
+	if ok {
+		t.Fatal("expected ok=false")
+	}
+	if !strings.Contains(err.Error(), "aborted: invalid selection") {
+		t.Fatalf("expected aborted: invalid selection, got %v", err)
+	}
+}

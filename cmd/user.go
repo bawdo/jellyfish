@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -126,18 +128,95 @@ func runUserShow(ctx context.Context, client iruClient, w, stderr io.Writer, opt
 	return renderUserBundle(w, stderr, opts, bundle)
 }
 
-func resolveUser(ctx context.Context, client iruClient, id string) (iru.User, error) {
-	if strings.Contains(id, "@") {
-		matches, err := client.FindUsersByEmail(ctx, id)
-		if err != nil {
-			return iru.User{}, err
-		}
-		if len(matches) == 0 {
-			return iru.User{}, iru.ErrNotFound
-		}
-		return matches[0], nil
+// userStatusLabel returns the human-readable status for a standalone /users
+// record. Precedence: Archived > !Active > Active. IsArchived is only set
+// on device-nested records and is not consulted here.
+func userStatusLabel(u iru.User) string {
+	switch {
+	case u.Archived:
+		return "archived"
+	case !u.Active:
+		return "inactive"
+	default:
+		return "active"
 	}
-	return client.GetUser(ctx, id)
+}
+
+// userOneLine returns "<id> - <Name> (<status>[, dept: <dept>])" for use in
+// the disambiguation prompt and non-TTY error.
+func userOneLine(u iru.User) string {
+	name := u.Name
+	if name == "" {
+		name = u.Email
+	}
+	suffix := userStatusLabel(u)
+	if u.Department != "" {
+		suffix += ", dept: " + u.Department
+	}
+	return fmt.Sprintf("%s - %s (%s)", u.ID, name, suffix)
+}
+
+// resolveSelectedUser resolves the identifier (user-id or email) to a single
+// User, prompting for disambiguation when the email lookup returns more than
+// one record. Returns (user, true, nil) on a successful resolution,
+// (zero, false, nil) on a clean user abort (q/empty/EOF on the TTY prompt),
+// or (zero, false, err) for genuine errors (lookup failure, non-TTY
+// multi-match, or exhausted prompt attempts).
+func resolveSelectedUser(ctx context.Context, client iruClient, stderr io.Writer, id string, prompt io.Reader, isTTY func() bool) (iru.User, bool, error) {
+	if !strings.Contains(id, "@") {
+		u, err := client.GetUser(ctx, id)
+		if err != nil {
+			return iru.User{}, false, err
+		}
+		return u, true, nil
+	}
+	matches, err := client.FindUsersByEmail(ctx, id)
+	if err != nil {
+		return iru.User{}, false, err
+	}
+	if len(matches) == 1 {
+		return matches[0], true, nil
+	}
+	if !isTTY() {
+		lines := make([]string, len(matches))
+		for i, u := range matches {
+			lines[i] = userOneLine(u)
+		}
+		return iru.User{}, false, fmt.Errorf("multiple users match %s: %s. Re-run with: jellyfish user show <id>", id, strings.Join(lines, "; "))
+	}
+	return promptForUser(stderr, prompt, id, matches)
+}
+
+// promptForUser writes the numbered menu to stderr and reads selections from
+// prompt. Up to 3 invalid inputs are tolerated before aborting with an error.
+// q / empty / EOF returns a clean abort (no error).
+func promptForUser(stderr io.Writer, prompt io.Reader, id string, matches []iru.User) (iru.User, bool, error) {
+	_, _ = fmt.Fprintf(stderr, "Multiple users match %s:\n", id)
+	for i, u := range matches {
+		_, _ = fmt.Fprintf(stderr, "  [%d] %s\n", i+1, userOneLine(u))
+	}
+	br := bufio.NewReader(prompt)
+	const maxAttempts = 3
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		_, _ = fmt.Fprintf(stderr, "Select [1-%d] or q to abort: ", len(matches))
+		line, err := br.ReadString('\n')
+		if err != nil && err != io.EOF {
+			return iru.User{}, false, err
+		}
+		answer := strings.TrimSpace(line)
+		if answer == "" || answer == "q" || answer == "Q" {
+			return iru.User{}, false, nil
+		}
+		n, perr := strconv.Atoi(answer)
+		if perr == nil && n >= 1 && n <= len(matches) {
+			return matches[n-1], true, nil
+		}
+		if err == io.EOF {
+			return iru.User{}, false, nil
+		}
+		_, _ = fmt.Fprintf(stderr, "invalid selection: %q\n", answer)
+	}
+	return iru.User{}, false, errors.New("aborted: invalid selection")
 }
 
 func renderUserBundle(w io.Writer, stderr io.Writer, opts userShowOpts, b UserBundle) error {
@@ -323,9 +402,22 @@ func renderUserBundleCSV(w io.Writer, b UserBundle) error {
 // lands, `user show` will call buildBundleForUser directly with a
 // pre-selected user instead of going through this helper.
 func resolveBundleForUser(ctx context.Context, client iruClient, identifier string, allDetections []iru.Detection) (UserBundle, error) {
-	user, err := resolveUser(ctx, client, identifier)
-	if err != nil {
-		return UserBundle{}, err
+	var user iru.User
+	if strings.Contains(identifier, "@") {
+		matches, lerr := client.FindUsersByEmail(ctx, identifier)
+		if lerr != nil {
+			return UserBundle{}, lerr
+		}
+		if len(matches) == 0 {
+			return UserBundle{}, iru.ErrNotFound
+		}
+		user = matches[0]
+	} else {
+		u, gerr := client.GetUser(ctx, identifier)
+		if gerr != nil {
+			return UserBundle{}, gerr
+		}
+		user = u
 	}
 	return buildBundleForUser(ctx, client, user, allDetections)
 }
