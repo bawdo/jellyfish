@@ -914,3 +914,70 @@ func TestAssembleOverviewAcceptsCustomTTL(t *testing.T) {
 		t.Fatalf("Users len: got %d want 1", len(view.Users))
 	}
 }
+
+func TestAssembleOverviewKeepsDuplicateEmailUsers(t *testing.T) {
+	sharedEmail := "keith@example.com"
+	client := &fakeClient{
+		devices: []iru.Device{
+			{DeviceID: "d-1", DeviceName: "MBP-A", SerialNumber: "SN-A",
+				User: iru.User{ID: "u-1", Name: "Keith A", Email: sharedEmail, Active: true}},
+			{DeviceID: "d-2", DeviceName: "MBP-B", SerialNumber: "SN-B",
+				User: iru.User{ID: "u-2", Name: "Keith B", Email: sharedEmail, Active: true}},
+		},
+		detections: []iru.Detection{
+			{DeviceID: "d-1", CVEID: "CVE-A", Severity: "High", CVSSScore: 7.0},
+			{DeviceID: "d-2", CVEID: "CVE-B", Severity: "Critical", CVSSScore: 9.0},
+		},
+	}
+	// noCache=true bypasses the shared on-disk detection cache so this test does
+	// not pick up stale data left behind by TestAssembleOverviewAcceptsCustomTTL.
+	view, err := assembleOverview(context.Background(), client, io.Discard, true, nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(view.Users) != 2 {
+		t.Fatalf("expected 2 roster entries, got %d", len(view.Users))
+	}
+	got := map[string]bool{view.Users[0].UserID: true, view.Users[1].UserID: true}
+	if !got["u-1"] || !got["u-2"] {
+		t.Fatalf("expected both u-1 and u-2 in roster, got %+v", view.Users)
+	}
+	if view.Users[0].SecScore == view.Users[1].SecScore {
+		t.Fatalf("expected distinct sec_scores (each user has their own detections)")
+	}
+}
+
+func TestRunOverviewPerUserSendsBothDuplicates(t *testing.T) {
+	sharedEmail := "keith@example.com"
+	client := &fakeClient{
+		devices: []iru.Device{
+			{DeviceID: "d-1", SerialNumber: "SN-A",
+				User: iru.User{ID: "u-1", Name: "Keith A", Email: sharedEmail, Active: true}},
+			{DeviceID: "d-2", SerialNumber: "SN-B",
+				User: iru.User{ID: "u-2", Name: "Keith B", Email: sharedEmail, Active: true}},
+		},
+		detections: []iru.Detection{
+			{DeviceID: "d-1", CVEID: "CVE-A", Severity: "High", CVSSScore: 7.0},
+			{DeviceID: "d-2", CVEID: "CVE-B", Severity: "Critical", CVSSScore: 9.0},
+		},
+	}
+	fake := &fakeSender{}
+	stderr := &bytes.Buffer{}
+	opts := overviewOpts{
+		PerUser:       true,
+		EmailFlags:    emailFlagValues{Send: true, From: "ops@example.com"},
+		Yes:           true,
+		NoCache:       true,
+		Profile:       config.Profile{Email: config.EmailConfig{GmailConfigured: true, From: "ops@example.com"}},
+		KeychainGet:   func() ([]byte, error) { return []byte(`{}`), nil },
+		NewSender:     func(_ context.Context, _ []byte, _ string) (gmail.Sender, error) { return fake, nil },
+		ConfirmReader: strings.NewReader(""),
+		MessageReader: strings.NewReader(""),
+	}
+	if err := runOverview(context.Background(), client, io.Discard, stderr, opts); err != nil {
+		t.Fatal(err)
+	}
+	if fake.calls != 2 {
+		t.Fatalf("expected 2 personalised sends, got %d", fake.calls)
+	}
+}

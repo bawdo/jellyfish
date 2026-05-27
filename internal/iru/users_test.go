@@ -29,7 +29,7 @@ func TestGetUserByID(t *testing.T) {
 	}
 }
 
-func TestFindUserByEmailUsesServerFilter(t *testing.T) {
+func TestFindUsersByEmailUsesServerFilter(t *testing.T) {
 	var gotQuery string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotQuery = r.URL.RawQuery
@@ -38,28 +38,77 @@ func TestFindUserByEmailUsesServerFilter(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	c := NewClient(srv.URL, "tkn")
-	u, err := c.FindUserByEmail(context.Background(), "keith@example.com")
+	users, err := c.FindUsersByEmail(context.Background(), "keith@example.com")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if u.ID != "u-match" {
-		t.Fatalf("got %+v", u)
+	if len(users) != 1 || users[0].ID != "u-match" {
+		t.Fatalf("got %+v", users)
 	}
 	if !strings.Contains(gotQuery, "email=keith%40example.com") {
 		t.Fatalf("expected email filter in query, got %q", gotQuery)
 	}
+	if strings.Contains(gotQuery, "limit=1") {
+		t.Fatalf("expected no limit=1 in query (helper should walk all matches), got %q", gotQuery)
+	}
 }
 
-func TestFindUserByEmailNotFound(t *testing.T) {
+func TestFindUsersByEmailNotFound(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"next": null, "previous": null, "results": []}`))
 	}))
 	t.Cleanup(srv.Close)
 
 	c := NewClient(srv.URL, "tkn")
-	_, err := c.FindUserByEmail(context.Background(), "nobody@x")
+	_, err := c.FindUsersByEmail(context.Background(), "nobody@x")
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestFindUsersByEmailReturnsAllMatches(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"next": null, "previous": null, "results": [
+			{"id": "u-1", "name": "Keith A", "email": "keith@example.com"},
+			{"id": "u-2", "name": "Keith B", "email": "keith@example.com"}
+		]}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	c := NewClient(srv.URL, "tkn")
+	users, err := c.FindUsersByEmail(context.Background(), "keith@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(users) != 2 {
+		t.Fatalf("expected 2 users, got %d: %+v", len(users), users)
+	}
+	if users[0].ID != "u-1" || users[1].ID != "u-2" {
+		t.Fatalf("expected [u-1, u-2] in order, got %+v", users)
+	}
+}
+
+func TestFindUsersByEmailWalksPages(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cursor := r.URL.Query().Get("cursor")
+		switch cursor {
+		case "":
+			_, _ = w.Write([]byte(`{"next": "https://example.iru?cursor=page2", "previous": null, "results": [{"id": "u-1", "email": "k@x"}]}`))
+		case "page2":
+			_, _ = w.Write([]byte(`{"next": null, "previous": null, "results": [{"id": "u-2", "email": "k@x"}]}`))
+		default:
+			t.Errorf("unexpected cursor: %q", cursor)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	c := NewClient(srv.URL, "tkn")
+	users, err := c.FindUsersByEmail(context.Background(), "k@x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(users) != 2 || users[0].ID != "u-1" || users[1].ID != "u-2" {
+		t.Fatalf("got %+v", users)
 	}
 }
 

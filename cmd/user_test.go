@@ -75,7 +75,7 @@ func TestUserShowUserNotFound(t *testing.T) {
 func TestUserShowCSVSortsBySeverity(t *testing.T) {
 	client := &fakeClient{
 		users:   []iru.User{{ID: "u-1", Name: "Alice", Email: "alice@example.com"}},
-		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", SerialNumber: "SN1"}},
+		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", SerialNumber: "SN1", User: iru.User{ID: "u-1"}}},
 		detections: []iru.Detection{
 			{DeviceID: "d-1", CVEID: "CVE-low", Severity: "Low", CVSSScore: 3.0},
 			{DeviceID: "d-1", CVEID: "CVE-crit", Severity: "Critical", CVSSScore: 9.5},
@@ -107,8 +107,8 @@ func TestUserShowCSVColumnOrder(t *testing.T) {
 	client := &fakeClient{
 		users: []iru.User{{ID: "u-1", Name: "Alice", Email: "alice@example.com"}},
 		devices: []iru.Device{
-			{DeviceID: "d-1", DeviceName: "Alice MBP", SerialNumber: "SN1"},
-			{DeviceID: "d-2", DeviceName: "Alice iPad", SerialNumber: "SN2"},
+			{DeviceID: "d-1", DeviceName: "Alice MBP", SerialNumber: "SN1", User: iru.User{ID: "u-1"}},
+			{DeviceID: "d-2", DeviceName: "Alice iPad", SerialNumber: "SN2", User: iru.User{ID: "u-1"}},
 		},
 		detections: []iru.Detection{
 			{
@@ -139,7 +139,7 @@ func TestUserShowCSVColumnOrder(t *testing.T) {
 func TestUserShowTextSortsDetectionsBySeverity(t *testing.T) {
 	client := &fakeClient{
 		users:   []iru.User{{ID: "u-1", Name: "Alice", Email: "alice@example.com"}},
-		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", SerialNumber: "SN1"}},
+		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", SerialNumber: "SN1", User: iru.User{ID: "u-1"}}},
 		detections: []iru.Detection{
 			{DeviceID: "d-1", CVEID: "CVE-low", Severity: "Low", CVSSScore: 3.0},
 			{DeviceID: "d-1", CVEID: "CVE-crit", Severity: "Critical", CVSSScore: 9.5},
@@ -170,7 +170,7 @@ func TestUserShowTextSortsDetectionsBySeverity(t *testing.T) {
 func TestUserShowEmailWritesEml(t *testing.T) {
 	client := &fakeClient{
 		users:   []iru.User{{ID: "u-1", Name: "Alice", Email: "alice@example.com"}},
-		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "Alice MBP", SerialNumber: "SN1"}},
+		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "Alice MBP", SerialNumber: "SN1", User: iru.User{ID: "u-1"}}},
 		detections: []iru.Detection{
 			{DeviceID: "d-1", CVEID: "CVE-A", Severity: "Critical", CVSSScore: 9.5, Name: "x", Version: "1.0"},
 		},
@@ -201,7 +201,7 @@ func TestUserShowEmailWritesEml(t *testing.T) {
 func TestUserShowEmailErrorsWithoutFrom(t *testing.T) {
 	client := &fakeClient{
 		users:   []iru.User{{ID: "u-1", Name: "Alice", Email: "alice@example.com"}},
-		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "Alice MBP", SerialNumber: "SN1"}},
+		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "Alice MBP", SerialNumber: "SN1", User: iru.User{ID: "u-1"}}},
 	}
 	err := runUserShow(context.Background(), client, &bytes.Buffer{}, io.Discard, userShowOpts{
 		Identifier: "u-1",
@@ -217,7 +217,7 @@ func TestUserShowEmailErrorsWithoutFrom(t *testing.T) {
 func TestUserShowSendEmailDefaultsToUserEmail(t *testing.T) {
 	client := &fakeClient{
 		users:   []iru.User{{ID: "u-1", Name: "Alice", Email: "alice@example.com"}},
-		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", SerialNumber: "SN1"}},
+		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", SerialNumber: "SN1", User: iru.User{ID: "u-1"}}},
 		detections: []iru.Detection{
 			{DeviceID: "d-1", CVEID: "CVE-A", Severity: "Critical", CVSSScore: 9.5, Name: "x", Version: "1.0"},
 		},
@@ -258,7 +258,7 @@ func TestUserShowSendEmailDefaultsToUserEmail(t *testing.T) {
 func TestUserShowSendEmailExplicitToOverridesUser(t *testing.T) {
 	client := &fakeClient{
 		users:   []iru.User{{ID: "u-1", Name: "Alice", Email: "alice@example.com"}},
-		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", SerialNumber: "SN1"}},
+		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", SerialNumber: "SN1", User: iru.User{ID: "u-1"}}},
 		detections: []iru.Detection{
 			{DeviceID: "d-1", CVEID: "CVE-A", Severity: "Critical", CVSSScore: 9.5, Name: "x", Version: "1.0"},
 		},
@@ -285,7 +285,7 @@ func TestUserShowSendEmailExplicitToOverridesUser(t *testing.T) {
 func TestUserShowSendEmailPropagatesSenderError(t *testing.T) {
 	client := &fakeClient{
 		users:   []iru.User{{ID: "u-1", Name: "Alice", Email: "alice@example.com"}},
-		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", SerialNumber: "SN1"}},
+		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", SerialNumber: "SN1", User: iru.User{ID: "u-1"}}},
 	}
 	sender := &fakeGmailSender{err: gmail.ErrUnauthorized}
 	opts := userShowOpts{
@@ -340,7 +340,7 @@ func TestUserShowEmailIncludesMessageFromFile(t *testing.T) {
 
 	client := &fakeClient{
 		users:   []iru.User{{ID: "u-1", Name: "Alice", Email: "alice@example.com"}},
-		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "Alice MBP", SerialNumber: "SN1"}},
+		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "Alice MBP", SerialNumber: "SN1", User: iru.User{ID: "u-1"}}},
 		detections: []iru.Detection{
 			{DeviceID: "d-1", CVEID: "CVE-A", Severity: "Critical", CVSSScore: 9.5, Name: "x", Version: "1.0"},
 		},
@@ -382,7 +382,7 @@ func TestUserShowMessageRejectsNonEmailOutput(t *testing.T) {
 func TestUserShowSendEmailSetsReportHeader(t *testing.T) {
 	client := &fakeClient{
 		users:   []iru.User{{ID: "u-1", Name: "Alice", Email: "alice@example.com"}},
-		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", SerialNumber: "SN1"}},
+		devices: []iru.Device{{DeviceID: "d-1", DeviceName: "MBP", SerialNumber: "SN1", User: iru.User{ID: "u-1"}}},
 		detections: []iru.Detection{
 			{DeviceID: "d-1", CVEID: "CVE-A", Severity: "Critical", CVSSScore: 9.5, Name: "x", Version: "1.0"},
 		},
@@ -402,5 +402,249 @@ func TestUserShowSendEmailSetsReportHeader(t *testing.T) {
 	}
 	if !bytes.Contains(sender.sent, []byte("X-Jellyfish-Report: user-show\r\n")) {
 		t.Fatalf("expected X-Jellyfish-Report: user-show; got:\n%s", sender.sent)
+	}
+}
+
+func TestBuildBundleForUserBucketsDetections(t *testing.T) {
+	client := &fakeClient{
+		devices: []iru.Device{
+			{DeviceID: "d-1", DeviceName: "MBP", SerialNumber: "SN1", User: iru.User{ID: "u-1"}},
+			{DeviceID: "d-2", DeviceName: "iPad", SerialNumber: "SN2", User: iru.User{ID: "u-1"}},
+		},
+	}
+	user := iru.User{ID: "u-1", Email: "k@x"}
+	all := []iru.Detection{
+		{DeviceID: "d-1", CVEID: "CVE-A"},
+		{DeviceID: "d-2", CVEID: "CVE-B"},
+		{DeviceID: "d-stranger", CVEID: "CVE-IGNORED"},
+	}
+	b, err := buildBundleForUser(context.Background(), client, user, all)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.User.ID != "u-1" {
+		t.Fatalf("unexpected user %+v", b.User)
+	}
+	if len(b.Devices) != 2 {
+		t.Fatalf("expected 2 devices, got %d", len(b.Devices))
+	}
+	gotByDev := map[string]string{}
+	for _, d := range b.Devices {
+		for _, det := range d.Detections {
+			gotByDev[d.Device.DeviceID] = det.CVEID
+		}
+	}
+	if gotByDev["d-1"] != "CVE-A" || gotByDev["d-2"] != "CVE-B" {
+		t.Fatalf("bucketing wrong: %+v", gotByDev)
+	}
+}
+
+func TestResolveSelectedUserSingleMatchReturnsUser(t *testing.T) {
+	client := &fakeClient{usersByEmail: map[string][]iru.User{
+		"k@x": {{ID: "u-1", Name: "Keith", Email: "k@x", Active: true}},
+	}}
+	prompt := strings.NewReader("")
+	u, ok, err := resolveSelectedUser(context.Background(), client, io.Discard, "k@x", prompt, func() bool { return true })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || u.ID != "u-1" {
+		t.Fatalf("got ok=%v user=%+v", ok, u)
+	}
+}
+
+func TestResolveSelectedUserByIDDelegatesToGetUser(t *testing.T) {
+	client := &fakeClient{users: []iru.User{{ID: "u-9", Email: "x@y"}}}
+	u, ok, err := resolveSelectedUser(context.Background(), client, io.Discard, "u-9", strings.NewReader(""), func() bool { return true })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || u.ID != "u-9" {
+		t.Fatalf("got ok=%v user=%+v", ok, u)
+	}
+}
+
+func TestResolveSelectedUserNonTTYMultiMatchErrors(t *testing.T) {
+	client := &fakeClient{usersByEmail: map[string][]iru.User{
+		"k@x": {
+			{ID: "u-1", Name: "Keith A", Email: "k@x", Active: true},
+			{ID: "u-2", Name: "Keith B", Email: "k@x", Archived: true},
+		},
+	}}
+	stderr := &bytes.Buffer{}
+	_, ok, err := resolveSelectedUser(context.Background(), client, stderr, "k@x", strings.NewReader(""), func() bool { return false })
+	if err == nil {
+		t.Fatal("expected error on non-TTY multi-match")
+	}
+	if ok {
+		t.Fatal("expected ok=false on error")
+	}
+	msg := err.Error()
+	for _, want := range []string{"multiple users match k@x", "u-1", "u-2", "Keith A", "Keith B", "active", "archived", "jellyfish user show <id>"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("error missing %q: %s", want, msg)
+		}
+	}
+}
+
+func TestResolveSelectedUserTTYPromptSelectsMatch(t *testing.T) {
+	client := &fakeClient{usersByEmail: map[string][]iru.User{
+		"k@x": {
+			{ID: "u-1", Name: "Keith A", Email: "k@x", Active: true},
+			{ID: "u-2", Name: "Keith B", Email: "k@x", Archived: true},
+		},
+	}}
+	stderr := &bytes.Buffer{}
+	u, ok, err := resolveSelectedUser(context.Background(), client, stderr, "k@x", strings.NewReader("2\n"), func() bool { return true })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || u.ID != "u-2" {
+		t.Fatalf("got ok=%v user=%+v", ok, u)
+	}
+	for _, want := range []string{"Multiple users match k@x", "[1] u-1", "[2] u-2", "Keith A", "active", "Keith B", "archived"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("prompt missing %q: %s", want, stderr.String())
+		}
+	}
+}
+
+func TestResolveSelectedUserTTYPromptInvalidThenValid(t *testing.T) {
+	client := &fakeClient{usersByEmail: map[string][]iru.User{
+		"k@x": {
+			{ID: "u-1", Email: "k@x", Active: true},
+			{ID: "u-2", Email: "k@x", Active: true},
+		},
+	}}
+	u, ok, err := resolveSelectedUser(context.Background(), client, &bytes.Buffer{}, "k@x", strings.NewReader("foo\n2\n"), func() bool { return true })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || u.ID != "u-2" {
+		t.Fatalf("got ok=%v user=%+v", ok, u)
+	}
+}
+
+func TestResolveSelectedUserTTYAbort(t *testing.T) {
+	client := &fakeClient{usersByEmail: map[string][]iru.User{
+		"k@x": {
+			{ID: "u-1", Email: "k@x", Active: true},
+			{ID: "u-2", Email: "k@x", Active: true},
+		},
+	}}
+	_, ok, err := resolveSelectedUser(context.Background(), client, &bytes.Buffer{}, "k@x", strings.NewReader("q\n"), func() bool { return true })
+	if err != nil {
+		t.Fatalf("expected nil error on abort, got %v", err)
+	}
+	if ok {
+		t.Fatal("expected ok=false on q")
+	}
+}
+
+func TestResolveSelectedUserTTYInvalidExhausted(t *testing.T) {
+	client := &fakeClient{usersByEmail: map[string][]iru.User{
+		"k@x": {
+			{ID: "u-1", Email: "k@x", Active: true},
+			{ID: "u-2", Email: "k@x", Active: true},
+		},
+	}}
+	_, ok, err := resolveSelectedUser(context.Background(), client, &bytes.Buffer{}, "k@x", strings.NewReader("a\nb\nc\n"), func() bool { return true })
+	if err == nil {
+		t.Fatal("expected error after exhausting attempts")
+	}
+	if ok {
+		t.Fatal("expected ok=false")
+	}
+	if !strings.Contains(err.Error(), "aborted: invalid selection") {
+		t.Fatalf("expected aborted: invalid selection, got %v", err)
+	}
+}
+
+func TestResolveSelectedUserEmailNotFound(t *testing.T) {
+	client := &fakeClient{usersByEmail: map[string][]iru.User{}}
+	_, ok, err := resolveSelectedUser(context.Background(), client, io.Discard, "missing@x", strings.NewReader(""), func() bool { return true })
+	if !errors.Is(err, iru.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+	if ok {
+		t.Fatal("expected ok=false")
+	}
+}
+
+func TestRunUserShowTTYDisambiguates(t *testing.T) {
+	client := &fakeClient{
+		usersByEmail: map[string][]iru.User{
+			"k@x": {
+				{ID: "u-1", Name: "Keith A", Email: "k@x", Active: true},
+				{ID: "u-2", Name: "Keith B", Email: "k@x", Active: true},
+			},
+		},
+		devices: []iru.Device{
+			{DeviceID: "d-2", DeviceName: "MBP-Keith-B", SerialNumber: "SN2", User: iru.User{ID: "u-2"}},
+		},
+	}
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	err := runUserShow(context.Background(), client, stdout, stderr, userShowOpts{
+		Identifier:   "k@x",
+		Output:       "json",
+		NoCache:      true,
+		PromptReader: strings.NewReader("2\n"),
+		stdinIsTTY:   func() bool { return true },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), `"id": "u-2"`) {
+		t.Fatalf("expected u-2 in stdout: %s", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "Multiple users match k@x") {
+		t.Fatalf("expected prompt on stderr: %s", stderr.String())
+	}
+}
+
+func TestRunUserShowNonTTYMultiMatchErrors(t *testing.T) {
+	client := &fakeClient{
+		usersByEmail: map[string][]iru.User{
+			"k@x": {
+				{ID: "u-1", Name: "Keith A", Email: "k@x", Active: true},
+				{ID: "u-2", Name: "Keith B", Email: "k@x", Archived: true},
+			},
+		},
+	}
+	err := runUserShow(context.Background(), client, &bytes.Buffer{}, &bytes.Buffer{}, userShowOpts{
+		Identifier:   "k@x",
+		Output:       "json",
+		NoCache:      true,
+		PromptReader: strings.NewReader(""),
+		stdinIsTTY:   func() bool { return false },
+	})
+	if err == nil || !strings.Contains(err.Error(), "multiple users match") {
+		t.Fatalf("expected multiple-users error, got %v", err)
+	}
+}
+
+func TestRunUserShowTTYAbortReturnsNil(t *testing.T) {
+	client := &fakeClient{
+		usersByEmail: map[string][]iru.User{
+			"k@x": {
+				{ID: "u-1", Email: "k@x", Active: true},
+				{ID: "u-2", Email: "k@x", Active: true},
+			},
+		},
+	}
+	stderr := &bytes.Buffer{}
+	err := runUserShow(context.Background(), client, &bytes.Buffer{}, stderr, userShowOpts{
+		Identifier:   "k@x",
+		Output:       "json",
+		NoCache:      true,
+		PromptReader: strings.NewReader("q\n"),
+		stdinIsTTY:   func() bool { return true },
+	})
+	if err != nil {
+		t.Fatalf("expected nil error on abort, got %v", err)
+	}
+	if !strings.Contains(stderr.String(), "aborted: no user shown") {
+		t.Fatalf("expected aborted line on stderr: %s", stderr.String())
 	}
 }

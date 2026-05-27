@@ -128,7 +128,9 @@ jellyfish user show 1f5b...e4           # by user ID
 jellyfish user show keith@example.com -o json
 ```
 
-Email lookup is a single request; bucketing detections per device triggers the detection walk (see Detection cache).
+Email lookup returns every user whose address matches, not just the first; bucketing detections per device triggers the detection walk (see Detection cache).
+
+If two or more Iru users share the email address you passed, `user show` lists them and asks which to display when stdin is a terminal. In non-interactive runs (CI, pipes) the command exits non-zero with every matching user's ID and a `jellyfish user show <id>` re-run hint.
 
 ### Output formats
 
@@ -219,6 +221,8 @@ summary: sent=1 skipped=1 errors=1
 
 `reason=` values: `no-devices`, `no-vulnerabilities`, `user-not-found`, `no-recipient`. Dry-run lines use `would-send`. Unlike `user show`, this command ignores `email.default_to` - set `--email-to` explicitly to redirect.
 
+When one input email matches more than one Iru user, each user is processed independently and the stderr lines gain a `user=<id>` segment (e.g. `sent input=keith@example.com user=u-abc to=keith@example.com gmail-id=...`). The summary counters reflect user-level outcomes, not input rows.
+
 ### Org-wide overview via `overview`
 
 Computes a `sec_score` per user (the sum of CVSS scores across their active detections) and rolls those into org totals, averages, a Best-5 and Most-Dangerous-5 leaderboard, and a ranked roster. The roster is sorted by `sec_score` ascending, so rank 1 is the most secure user. Users with no devices are excluded.
@@ -232,6 +236,8 @@ jellyfish overview --emails alice@example.com,bob@example.com   # roster subset
 ```
 
 `--per-user` requires `--send-email` and sends each user a copy with a "Your standing" callout and a highlighted roster row. `--send-email` without `--per-user` requires `--email-to`. `--csv` / `--emails` narrow the roster - and the totals, leaderboards, and fanout - to a named subset.
+
+The roster is keyed by Iru user ID, so when two users share an email both appear in the ranking, and `--per-user` sends each of them their own copy.
 
 Roster rows are coloured by tier:
 
