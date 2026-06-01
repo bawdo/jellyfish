@@ -126,7 +126,7 @@ ne;font-weight:400;">- SN1 - macOS 14.4</span>
 <tr>
   <th align=3D"left" style=3D"font:700 10px/1 -apple-system,system-ui,sans-=
 serif;color:#64748b;letter-spacing:.08em;text-transform:uppercase;padding:1=
-2px 8px 8px 24px;border-bottom:1px solid #e2e8f0;">CVE</th>
+2px 8px 8px 12px;border-bottom:1px solid #e2e8f0;">CVE</th>
   <th align=3D"left" style=3D"font:700 10px/1 -apple-system,system-ui,sans-=
 serif;color:#64748b;letter-spacing:.08em;text-transform:uppercase;padding:1=
 2px 8px 8px;border-bottom:1px solid #e2e8f0;">Sev</th>
@@ -142,24 +142,14 @@ e</th>
 <tbody>
 
 <tr>
-  <td valign=3D"middle" style=3D"padding:0;border-bottom:1px solid #f1f5f9;=
-">
-    <table role=3D"presentation" cellpadding=3D"0" cellspacing=3D"0" style=
-=3D"border-collapse:collapse;">
-      <tr>
-        <td bgcolor=3D"#dc2626" width=3D"3" style=3D"width:3px;background:#=
-dc2626;">&nbsp;</td>
-        <td style=3D"padding:12px 8px 12px 21px;font:600 12px/1 'SF Mono','=
-Menlo','Consolas',monospace;">
-          <a href=3D"https://nvd.nist.gov/vuln/detail/CVE-2024-3094" style=
-=3D"color:#0f172a;text-decoration:none;border-bottom:1px dotted #94a3b8;pad=
-ding-bottom:1px;">CVE-2024-3094</a>
-          <a href=3D"https://www.cve.org/CVERecord?id=3DCVE-2024-3094" styl=
-e=3D"font-size:10px;color:#94a3b8;text-decoration:none;margin-left:4px;">(M=
-)</a>
-        </td>
-      </tr>
-    </table>
+  <td valign=3D"middle" style=3D"border-left:3px solid #dc2626;border-botto=
+m:1px solid #f1f5f9;padding:12px 8px 12px 9px;font:600 12px/1 'SF Mono','Me=
+nlo','Consolas',monospace;white-space:nowrap;">
+    <a href=3D"https://nvd.nist.gov/vuln/detail/CVE-2024-3094" style=3D"col=
+or:#0f172a;text-decoration:none;border-bottom:1px dotted #94a3b8;padding-bo=
+ttom:1px;">CVE-2024-3094</a>
+    <a href=3D"https://www.cve.org/CVERecord?id=3DCVE-2024-3094" style=3D"f=
+ont-size:10px;color:#94a3b8;text-decoration:none;margin-left:4px;">(M)</a>
   </td>
   <td valign=3D"middle" style=3D"padding:12px 8px;border-bottom:1px solid #=
 f1f5f9;">
@@ -182,24 +172,14 @@ k-all;">/usr/local/Cellar/xz/5.6.1/lib/liblzma.5.dylib</div></td>
 </tr>
 
 <tr>
-  <td valign=3D"middle" style=3D"padding:0;border-bottom:1px solid #f1f5f9;=
-">
-    <table role=3D"presentation" cellpadding=3D"0" cellspacing=3D"0" style=
-=3D"border-collapse:collapse;">
-      <tr>
-        <td bgcolor=3D"#dc2626" width=3D"3" style=3D"width:3px;background:#=
-dc2626;">&nbsp;</td>
-        <td style=3D"padding:12px 8px 12px 21px;font:600 12px/1 'SF Mono','=
-Menlo','Consolas',monospace;">
-          <a href=3D"https://nvd.nist.gov/vuln/detail/CVE-2024-6387" style=
-=3D"color:#0f172a;text-decoration:none;border-bottom:1px dotted #94a3b8;pad=
-ding-bottom:1px;">CVE-2024-6387</a>
-          <a href=3D"https://www.cve.org/CVERecord?id=3DCVE-2024-6387" styl=
-e=3D"font-size:10px;color:#94a3b8;text-decoration:none;margin-left:4px;">(M=
-)</a>
-        </td>
-      </tr>
-    </table>
+  <td valign=3D"middle" style=3D"border-left:3px solid #dc2626;border-botto=
+m:1px solid #f1f5f9;padding:12px 8px 12px 9px;font:600 12px/1 'SF Mono','Me=
+nlo','Consolas',monospace;white-space:nowrap;">
+    <a href=3D"https://nvd.nist.gov/vuln/detail/CVE-2024-6387" style=3D"col=
+or:#0f172a;text-decoration:none;border-bottom:1px dotted #94a3b8;padding-bo=
+ttom:1px;">CVE-2024-6387</a>
+    <a href=3D"https://www.cve.org/CVERecord?id=3DCVE-2024-6387" style=3D"f=
+ont-size:10px;color:#94a3b8;text-decoration:none;margin-left:4px;">(M)</a>
   </td>
   <td valign=3D"middle" style=3D"padding:12px 8px;border-bottom:1px solid #=
 f1f5f9;">
