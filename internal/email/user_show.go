@@ -56,8 +56,8 @@ type userShowRow struct {
 	CVSSStr       string
 	Package       string
 	Path          string
-	NVDLink       string
-	MITRELink     string
+	PrimaryLink   string
+	SecondaryLink string
 }
 
 func buildUserShowView(b UserBundleInput, opts Options) userShowView {
@@ -93,8 +93,8 @@ func buildUserShowView(b UserBundleInput, opts Options) userShowView {
 				CVSSStr:       fmt.Sprintf("%.1f", det.CVSSScore),
 				Package:       pkg,
 				Path:          det.Path,
-				NVDLink:       buildCVELink(opts.CVELinkPrimary, det.CVEID),
-				MITRELink:     buildCVELink(opts.CVELinkSecondary, det.CVEID),
+				PrimaryLink:   buildCVELink(opts.CVELinkPrimary, det.CVEID),
+				SecondaryLink: buildCVELink(opts.CVELinkSecondary, det.CVEID),
 			})
 		}
 		view.Devices[i] = userShowDeviceView{Device: dev.Device, Rows: rows}

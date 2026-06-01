@@ -20,8 +20,11 @@ var ErrRender = errors.New("email render failed")
 // Built-in defaults applied when an Options field is empty after the cmd
 // layer's flag + config resolution.
 const (
-	DefaultCVELinkPrimary   = "https://nvd.nist.gov/vuln/detail/{cve}"
-	DefaultCVELinkSecondary = "https://www.cve.org/CVERecord?id={cve}"
+	// Primary is the prominent link on the CVE-ID text; secondary is the
+	// small marker beside it. cve.org (the CVE Program record) is primary;
+	// NVD (NIST) is secondary.
+	DefaultCVELinkPrimary   = "https://www.cve.org/CVERecord?id={cve}"
+	DefaultCVELinkSecondary = "https://nvd.nist.gov/vuln/detail/{cve}"
 	DefaultHeaderBG         = "#2b3a55"
 )
 

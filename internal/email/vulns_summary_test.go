@@ -48,11 +48,11 @@ func TestBuildVulnSummaryView(t *testing.T) {
 	if len(view.Rows) != 5 {
 		t.Fatalf("Rows: got %d want 5", len(view.Rows))
 	}
-	if view.Rows[0].NVDLink != "https://nvd.nist.gov/vuln/detail/CVE-2024-3094" {
-		t.Errorf("NVDLink: got %q", view.Rows[0].NVDLink)
+	if view.Rows[0].PrimaryLink != "https://www.cve.org/CVERecord?id=CVE-2024-3094" {
+		t.Errorf("PrimaryLink: got %q", view.Rows[0].PrimaryLink)
 	}
-	if view.Rows[0].MITRELink != "https://www.cve.org/CVERecord?id=CVE-2024-3094" {
-		t.Errorf("MITRELink: got %q", view.Rows[0].MITRELink)
+	if view.Rows[0].SecondaryLink != "https://nvd.nist.gov/vuln/detail/CVE-2024-3094" {
+		t.Errorf("SecondaryLink: got %q", view.Rows[0].SecondaryLink)
 	}
 }
 
@@ -88,7 +88,8 @@ func TestRenderVulnSummaryText(t *testing.T) {
 		"3 KEV-listed",
 		"CVE-2024-3094",
 		"openssh-server",
-		"https://nvd.nist.gov/vuln/detail/CVE-2024-3094",
+		"CVE record links:",
+		"https://www.cve.org/CVERecord?id=CVE-2024-3094",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("plain text missing %q\nfull output:\n%s", want, got)

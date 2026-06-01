@@ -15,8 +15,8 @@ CVE              SEVERITY  CVSS  KEV  DEVICES  STATUS      SOFTWARE
 {{range .Rows -}}
 {{printf "%-16s %-9s %-5s %-4s %-8d %-11s %s" .CVEID .Severity .CVSSStr (cond .IsKEV "KEV" "-") .Devices .Status .Software}}
 {{end}}
-NVD links:
-{{range .Rows}}{{.CVEID}}: {{.NVDLink}}
+CVE record links:
+{{range .Rows}}{{.CVEID}}: {{.PrimaryLink}}
 {{end -}}
 {{end}}
 

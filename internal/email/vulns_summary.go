@@ -41,8 +41,8 @@ type vulnSummaryRow struct {
 	Devices       int
 	Software      string
 	Status        string
-	NVDLink       string
-	MITRELink     string
+	PrimaryLink   string
+	SecondaryLink string
 }
 
 func buildVulnSummaryView(vs []iru.Vulnerability, opts Options) vulnSummaryView {
@@ -80,8 +80,8 @@ func buildVulnSummaryView(vs []iru.Vulnerability, opts Options) vulnSummaryView 
 			Devices:       v.DeviceCount,
 			Software:      strings.Join(v.Software, ", "),
 			Status:        v.Status,
-			NVDLink:       buildCVELink(opts.CVELinkPrimary, v.CVEID),
-			MITRELink:     buildCVELink(opts.CVELinkSecondary, v.CVEID),
+			PrimaryLink:   buildCVELink(opts.CVELinkPrimary, v.CVEID),
+			SecondaryLink: buildCVELink(opts.CVELinkSecondary, v.CVEID),
 		})
 	}
 	view.DeviceCount = maxDevices

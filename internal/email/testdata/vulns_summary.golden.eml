@@ -24,12 +24,12 @@ CVE-2024-6387    Critical  8.1   -    11       Active      openssh-server
 CVE-2024-1086    High      7.8   KEV  17       Active      linux-image
 CVE-2024-21626   High      7.2   -    3        Active      runc
 
-NVD links:
-CVE-2024-3094: https://nvd.nist.gov/vuln/detail/CVE-2024-3094
-CVE-2023-50164: https://nvd.nist.gov/vuln/detail/CVE-2023-50164
-CVE-2024-6387: https://nvd.nist.gov/vuln/detail/CVE-2024-6387
-CVE-2024-1086: https://nvd.nist.gov/vuln/detail/CVE-2024-1086
-CVE-2024-21626: https://nvd.nist.gov/vuln/detail/CVE-2024-21626
+CVE record links:
+CVE-2024-3094: https://www.cve.org/CVERecord?id=3DCVE-2024-3094
+CVE-2023-50164: https://www.cve.org/CVERecord?id=3DCVE-2023-50164
+CVE-2024-6387: https://www.cve.org/CVERecord?id=3DCVE-2024-6387
+CVE-2024-1086: https://www.cve.org/CVERecord?id=3DCVE-2024-1086
+CVE-2024-21626: https://www.cve.org/CVERecord?id=3DCVE-2024-21626
 
 
 KEV =3D CISA Known Exploited Vulnerabilities catalogue.
@@ -159,12 +159,12 @@ re</th>
 dc2626;">&nbsp;</td>
         <td style=3D"padding:12px 8px 12px 21px;font:600 12px/1 'SF Mono','=
 Menlo','Consolas',monospace;">
-          <a href=3D"https://nvd.nist.gov/vuln/detail/CVE-2024-3094" style=
-=3D"color:#0f172a;text-decoration:none;border-bottom:1px dotted #94a3b8;pad=
-ding-bottom:1px;">CVE-2024-3094</a>
           <a href=3D"https://www.cve.org/CVERecord?id=3DCVE-2024-3094" styl=
-e=3D"font-size:10px;color:#94a3b8;text-decoration:none;margin-left:4px;">(M=
-)</a>
+e=3D"color:#0f172a;text-decoration:none;border-bottom:1px dotted #94a3b8;pa=
+dding-bottom:1px;">CVE-2024-3094</a>
+          <a href=3D"https://nvd.nist.gov/vuln/detail/CVE-2024-3094" style=
+=3D"font-size:10px;color:#94a3b8;text-decoration:none;margin-left:4px;">(N)=
+</a>
         </td>
       </tr>
     </table>
@@ -211,12 +211,12 @@ ns-serif;color:#334155;">xz-utils</td>
 dc2626;">&nbsp;</td>
         <td style=3D"padding:12px 8px 12px 21px;font:600 12px/1 'SF Mono','=
 Menlo','Consolas',monospace;">
-          <a href=3D"https://nvd.nist.gov/vuln/detail/CVE-2023-50164" style=
-=3D"color:#0f172a;text-decoration:none;border-bottom:1px dotted #94a3b8;pad=
-ding-bottom:1px;">CVE-2023-50164</a>
           <a href=3D"https://www.cve.org/CVERecord?id=3DCVE-2023-50164" sty=
-le=3D"font-size:10px;color:#94a3b8;text-decoration:none;margin-left:4px;">(=
-M)</a>
+le=3D"color:#0f172a;text-decoration:none;border-bottom:1px dotted #94a3b8;p=
+adding-bottom:1px;">CVE-2023-50164</a>
+          <a href=3D"https://nvd.nist.gov/vuln/detail/CVE-2023-50164" style=
+=3D"font-size:10px;color:#94a3b8;text-decoration:none;margin-left:4px;">(N)=
+</a>
         </td>
       </tr>
     </table>
@@ -263,12 +263,12 @@ ns-serif;color:#334155;">struts2-core</td>
 dc2626;">&nbsp;</td>
         <td style=3D"padding:12px 8px 12px 21px;font:600 12px/1 'SF Mono','=
 Menlo','Consolas',monospace;">
-          <a href=3D"https://nvd.nist.gov/vuln/detail/CVE-2024-6387" style=
-=3D"color:#0f172a;text-decoration:none;border-bottom:1px dotted #94a3b8;pad=
-ding-bottom:1px;">CVE-2024-6387</a>
           <a href=3D"https://www.cve.org/CVERecord?id=3DCVE-2024-6387" styl=
-e=3D"font-size:10px;color:#94a3b8;text-decoration:none;margin-left:4px;">(M=
-)</a>
+e=3D"color:#0f172a;text-decoration:none;border-bottom:1px dotted #94a3b8;pa=
+dding-bottom:1px;">CVE-2024-6387</a>
+          <a href=3D"https://nvd.nist.gov/vuln/detail/CVE-2024-6387" style=
+=3D"font-size:10px;color:#94a3b8;text-decoration:none;margin-left:4px;">(N)=
+</a>
         </td>
       </tr>
     </table>
@@ -308,12 +308,12 @@ ns-serif;color:#334155;">openssh-server</td>
 ea580c;">&nbsp;</td>
         <td style=3D"padding:12px 8px 12px 21px;font:600 12px/1 'SF Mono','=
 Menlo','Consolas',monospace;">
-          <a href=3D"https://nvd.nist.gov/vuln/detail/CVE-2024-1086" style=
-=3D"color:#0f172a;text-decoration:none;border-bottom:1px dotted #94a3b8;pad=
-ding-bottom:1px;">CVE-2024-1086</a>
           <a href=3D"https://www.cve.org/CVERecord?id=3DCVE-2024-1086" styl=
-e=3D"font-size:10px;color:#94a3b8;text-decoration:none;margin-left:4px;">(M=
-)</a>
+e=3D"color:#0f172a;text-decoration:none;border-bottom:1px dotted #94a3b8;pa=
+dding-bottom:1px;">CVE-2024-1086</a>
+          <a href=3D"https://nvd.nist.gov/vuln/detail/CVE-2024-1086" style=
+=3D"font-size:10px;color:#94a3b8;text-decoration:none;margin-left:4px;">(N)=
+</a>
         </td>
       </tr>
     </table>
@@ -359,12 +359,12 @@ ns-serif;color:#334155;">linux-image</td>
 ea580c;">&nbsp;</td>
         <td style=3D"padding:12px 8px 12px 21px;font:600 12px/1 'SF Mono','=
 Menlo','Consolas',monospace;">
-          <a href=3D"https://nvd.nist.gov/vuln/detail/CVE-2024-21626" style=
-=3D"color:#0f172a;text-decoration:none;border-bottom:1px dotted #94a3b8;pad=
-ding-bottom:1px;">CVE-2024-21626</a>
           <a href=3D"https://www.cve.org/CVERecord?id=3DCVE-2024-21626" sty=
-le=3D"font-size:10px;color:#94a3b8;text-decoration:none;margin-left:4px;">(=
-M)</a>
+le=3D"color:#0f172a;text-decoration:none;border-bottom:1px dotted #94a3b8;p=
+adding-bottom:1px;">CVE-2024-21626</a>
+          <a href=3D"https://nvd.nist.gov/vuln/detail/CVE-2024-21626" style=
+=3D"font-size:10px;color:#94a3b8;text-decoration:none;margin-left:4px;">(N)=
+</a>
         </td>
       </tr>
     </table>

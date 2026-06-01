@@ -145,11 +145,11 @@ e</th>
   <td valign=3D"middle" style=3D"border-left:3px solid #dc2626;border-botto=
 m:1px solid #f1f5f9;padding:12px 8px 12px 9px;font:600 12px/1 'SF Mono','Me=
 nlo','Consolas',monospace;white-space:nowrap;">
-    <a href=3D"https://nvd.nist.gov/vuln/detail/CVE-2024-3094" style=3D"col=
-or:#0f172a;text-decoration:none;border-bottom:1px dotted #94a3b8;padding-bo=
-ttom:1px;">CVE-2024-3094</a>
-    <a href=3D"https://www.cve.org/CVERecord?id=3DCVE-2024-3094" style=3D"f=
-ont-size:10px;color:#94a3b8;text-decoration:none;margin-left:4px;">(M)</a>
+    <a href=3D"https://www.cve.org/CVERecord?id=3DCVE-2024-3094" style=3D"c=
+olor:#0f172a;text-decoration:none;border-bottom:1px dotted #94a3b8;padding-=
+bottom:1px;">CVE-2024-3094</a>
+    <a href=3D"https://nvd.nist.gov/vuln/detail/CVE-2024-3094" style=3D"fon=
+t-size:10px;color:#94a3b8;text-decoration:none;margin-left:4px;">(N)</a>
   </td>
   <td valign=3D"middle" style=3D"padding:12px 8px;border-bottom:1px solid #=
 f1f5f9;">
@@ -176,11 +176,11 @@ word-break:break-all;">/usr/local/Cellar/xz/5<wbr>.6<wbr>.1/lib/liblzma<wbr=
   <td valign=3D"middle" style=3D"border-left:3px solid #dc2626;border-botto=
 m:1px solid #f1f5f9;padding:12px 8px 12px 9px;font:600 12px/1 'SF Mono','Me=
 nlo','Consolas',monospace;white-space:nowrap;">
-    <a href=3D"https://nvd.nist.gov/vuln/detail/CVE-2024-6387" style=3D"col=
-or:#0f172a;text-decoration:none;border-bottom:1px dotted #94a3b8;padding-bo=
-ttom:1px;">CVE-2024-6387</a>
-    <a href=3D"https://www.cve.org/CVERecord?id=3DCVE-2024-6387" style=3D"f=
-ont-size:10px;color:#94a3b8;text-decoration:none;margin-left:4px;">(M)</a>
+    <a href=3D"https://www.cve.org/CVERecord?id=3DCVE-2024-6387" style=3D"c=
+olor:#0f172a;text-decoration:none;border-bottom:1px dotted #94a3b8;padding-=
+bottom:1px;">CVE-2024-6387</a>
+    <a href=3D"https://nvd.nist.gov/vuln/detail/CVE-2024-6387" style=3D"fon=
+t-size:10px;color:#94a3b8;text-decoration:none;margin-left:4px;">(N)</a>
   </td>
   <td valign=3D"middle" style=3D"padding:12px 8px;border-bottom:1px solid #=
 f1f5f9;">
