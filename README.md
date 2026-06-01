@@ -138,7 +138,7 @@ If two or more Iru users share the email address you passed, `user show` lists t
 
 ```
 user_id, user_email, user_name, device_id, device_name, serial_number,
-cve_id, package_name, package_version, severity, cvss_score,
+cve_id, package_name, package_version, package_path, severity, cvss_score,
 detection_datetime
 ```
 

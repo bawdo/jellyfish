@@ -364,6 +364,7 @@ func renderUserBundleCSV(w io.Writer, b UserBundle) error {
 		userID, userEmail, userName        string
 		deviceID, deviceName, serial       string
 		cveID, packageName, packageVersion string
+		packagePath                        string
 		severity                           string
 		cvssScore                          float64
 		detectionDatetime                  string
@@ -382,7 +383,8 @@ func renderUserBundleCSV(w io.Writer, b UserBundle) error {
 				userID: b.User.ID, userEmail: b.User.Email, userName: b.User.Name,
 				deviceID: d.Device.DeviceID, deviceName: d.Device.DeviceName, serial: d.Device.SerialNumber,
 				cveID: det.CVEID, packageName: det.Name, packageVersion: det.Version,
-				severity: det.Severity, cvssScore: det.CVSSScore,
+				packagePath: det.Path,
+				severity:    det.Severity, cvssScore: det.CVSSScore,
 				detectionDatetime: det.DetectionDatetime,
 			})
 		}
@@ -404,6 +406,7 @@ func renderUserBundleCSV(w io.Writer, b UserBundle) error {
 		{Header: "cve_id", Extract: func(v any) string { return v.(row).cveID }},
 		{Header: "package_name", Extract: func(v any) string { return v.(row).packageName }},
 		{Header: "package_version", Extract: func(v any) string { return v.(row).packageVersion }},
+		{Header: "package_path", Extract: func(v any) string { return v.(row).packagePath }},
 		{Header: "severity", Extract: func(v any) string { return v.(row).severity }},
 		{Header: "cvss_score", Extract: func(v any) string {
 			return strconv.FormatFloat(v.(row).cvssScore, 'f', 1, 64)

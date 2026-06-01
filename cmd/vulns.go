@@ -162,6 +162,7 @@ func detectionColumns() []output.Column {
 		}},
 		{Header: "PACKAGE", Extract: func(v any) string { return v.(iru.Detection).Name }},
 		{Header: "VERSION", Extract: func(v any) string { return v.(iru.Detection).Version }},
+		{Header: "PATH", Extract: func(v any) string { return v.(iru.Detection).Path }},
 		{Header: "DEVICE", Extract: func(v any) string { return v.(iru.Detection).DeviceName }},
 		{Header: "SERIAL", Extract: func(v any) string { return v.(iru.Detection).DeviceSerialNumber }},
 	}
