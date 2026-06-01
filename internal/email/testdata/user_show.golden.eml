@@ -166,9 +166,10 @@ ttom:1px solid #f1f5f9;font:600 13px/1 'SF Mono','Menlo','Consolas',monospa=
 ce;color:#0f172a;">10.0</td>
   <td valign=3D"middle" style=3D"padding:12px 8px 12px 8px;padding-right:24=
 px;border-bottom:1px solid #f1f5f9;font:12px/1.4 -apple-system,system-ui,sa=
-ns-serif;color:#334155;">xz-utils@5.6.1<div style=3D"margin-top:3px;font:11=
-px/1.4 'SF Mono','Menlo','Consolas',monospace;color:#94a3b8;word-break:brea=
-k-all;">/usr/local/Cellar/xz/5.6.1/lib/liblzma.5.dylib</div></td>
+ns-serif;color:#334155;">xz-utils<wbr>@5<wbr>.6<wbr>.1<div style=3D"margin-=
+top:3px;font:11px/1.4 'SF Mono','Menlo','Consolas',monospace;color:#94a3b8;=
+word-break:break-all;">/usr/local/Cellar/xz/5<wbr>.6<wbr>.1/lib/liblzma<wbr=
+>.5<wbr>.dylib</div></td>
 </tr>
 
 <tr>
@@ -196,7 +197,7 @@ ttom:1px solid #f1f5f9;font:600 13px/1 'SF Mono','Menlo','Consolas',monospa=
 ce;color:#0f172a;">8.1</td>
   <td valign=3D"middle" style=3D"padding:12px 8px 12px 8px;padding-right:24=
 px;border-bottom:1px solid #f1f5f9;font:12px/1.4 -apple-system,system-ui,sa=
-ns-serif;color:#334155;">openssh-server@9.6</td>
+ns-serif;color:#334155;">openssh-server<wbr>@9<wbr>.6</td>
 </tr>
 
 </tbody>

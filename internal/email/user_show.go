@@ -3,6 +3,7 @@ package email
 import (
 	"embed"
 	"fmt"
+	"html"
 	htmltmpl "html/template"
 	"io"
 	"sort"
@@ -124,12 +125,29 @@ func renderUserShowText(v userShowView) (string, error) {
 	return sb.String(), nil
 }
 
+// breakAutoLinks escapes s for HTML and inserts a zero-width <wbr> break
+// opportunity before each "." and "@". Mail clients (Gmail in particular)
+// auto-linkify any rendered text matching a URL or email shape, so a file
+// path like ".../Adobe After Effects 2024.app" (".app" is a live gTLD) or a
+// package string like "Adobe InDesign 2024@19.5.5.168" gets turned into a
+// bogus clickable link. Splitting the run with an element boundary stops the
+// client matching it. <wbr> is invisible and contributes no characters to
+// copy-paste, so the path/package still copies intact.
+func breakAutoLinks(s string) htmltmpl.HTML {
+	escaped := html.EscapeString(s)
+	escaped = strings.ReplaceAll(escaped, ".", "<wbr>.")
+	escaped = strings.ReplaceAll(escaped, "@", "<wbr>@")
+	// #nosec G203 - escaped is html.EscapeString output; only literal <wbr> tags are added
+	return htmltmpl.HTML(escaped)
+}
+
 func renderUserShowHTML(v userShowView) (string, error) {
 	tmpl, err := htmltmpl.New("user_show.html.tmpl").Funcs(htmltmpl.FuncMap{
-		"sevRowBG":  sevRowBG,
-		"sevPillBG": sevPillBG,
-		"sevPillFG": sevPillFG,
-		"safeCSS":   safeCSS,
+		"sevRowBG":       sevRowBG,
+		"sevPillBG":      sevPillBG,
+		"sevPillFG":      sevPillFG,
+		"safeCSS":        safeCSS,
+		"breakAutoLinks": breakAutoLinks,
 	}).ParseFS(userShowFS,
 		"templates/_header.html.tmpl",
 		"templates/_message.html.tmpl",

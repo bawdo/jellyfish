@@ -120,7 +120,10 @@ func TestRenderUserShowHTML(t *testing.T) {
 		"Alice MBP",
 		"Alice iPad",
 		`>CVE-2024-3094<`,
-		">/usr/local/Cellar/xz/5.6.1/lib/liblzma.5.dylib</div>",
+		// Package and path carry zero-width <wbr> breaks before "." and "@"
+		// so Gmail does not auto-linkify them (".app" gTLD / name@version).
+		"xz-utils<wbr>@5<wbr>.6<wbr>.1",
+		">/usr/local/Cellar/xz/5<wbr>.6<wbr>.1/lib/liblzma<wbr>.5<wbr>.dylib</div>",
 		"(no detections)",
 	} {
 		if !strings.Contains(got, want) {
