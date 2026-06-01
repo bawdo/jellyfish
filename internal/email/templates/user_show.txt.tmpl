@@ -17,6 +17,9 @@ Generated {{.GeneratedAtStr}}{{if .Tenant}} for tenant {{.Tenant}}{{end}}.
   CVE              SEVERITY  CVSS  PACKAGE
 {{range .Rows -}}
   {{printf "%-16s %-9s %-5s %s" .CVEID .Severity .CVSSStr .Package}}
+{{if .Path -}}
+  {{printf "%-33s%s" "" .Path}}
+{{end -}}
 {{end -}}
 {{- end -}}
 {{end}}

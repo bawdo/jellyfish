@@ -18,7 +18,7 @@ func sampleUserBundle() UserBundleInput {
 			{
 				Device: iru.Device{DeviceID: "d-1", DeviceName: "Alice MBP", SerialNumber: "SN1", OSVersion: "14.4"},
 				Detections: []iru.Detection{
-					{CVEID: "CVE-2024-3094", Severity: "Critical", CVSSScore: 10.0, Name: "xz-utils", Version: "5.6.1"},
+					{CVEID: "CVE-2024-3094", Severity: "Critical", CVSSScore: 10.0, Name: "xz-utils", Version: "5.6.1", Path: "/usr/local/Cellar/xz/5.6.1/lib/liblzma.5.dylib"},
 					{CVEID: "CVE-2024-6387", Severity: "Critical", CVSSScore: 8.1, Name: "openssh-server", Version: "9.6"},
 				},
 			},
@@ -96,6 +96,7 @@ func TestRenderUserShowText(t *testing.T) {
 		"2 Critical",
 		"Alice MBP",
 		"CVE-2024-3094",
+		"/usr/local/Cellar/xz/5.6.1/lib/liblzma.5.dylib",
 		"Alice iPad",
 		"(no detections)",
 	} {
@@ -119,6 +120,7 @@ func TestRenderUserShowHTML(t *testing.T) {
 		"Alice MBP",
 		"Alice iPad",
 		`>CVE-2024-3094<`,
+		">/usr/local/Cellar/xz/5.6.1/lib/liblzma.5.dylib</div>",
 		"(no detections)",
 	} {
 		if !strings.Contains(got, want) {

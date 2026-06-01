@@ -54,6 +54,7 @@ type userShowRow struct {
 	SeverityClass string
 	CVSSStr       string
 	Package       string
+	Path          string
 	NVDLink       string
 	MITRELink     string
 }
@@ -90,6 +91,7 @@ func buildUserShowView(b UserBundleInput, opts Options) userShowView {
 				SeverityClass: severityClass(det.Severity),
 				CVSSStr:       fmt.Sprintf("%.1f", det.CVSSScore),
 				Package:       pkg,
+				Path:          det.Path,
 				NVDLink:       buildCVELink(opts.CVELinkPrimary, det.CVEID),
 				MITRELink:     buildCVELink(opts.CVELinkSecondary, det.CVEID),
 			})
