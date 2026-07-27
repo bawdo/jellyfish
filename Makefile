@@ -7,22 +7,29 @@ LDFLAGS := -X github.com/bawdo/jellyfish/internal/version.Version=$(VERSION) \
            -X github.com/bawdo/jellyfish/internal/version.Tag=$(TAG) \
            -X github.com/bawdo/jellyfish/internal/version.Dirty=$(DIRTY)
 
-build:
+.DEFAULT_GOAL := build
+
+help: ## List the available targets
+	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) \
+		| sort \
+		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
+
+build: ## Build ./bin/jellyfish with version ldflags
 	go build -ldflags "$(LDFLAGS)" -o bin/jellyfish .
 
-install:
+install: ## Install the binary into GOBIN with version ldflags
 	go install -ldflags "$(LDFLAGS)" .
 
-test:
+test: ## Run the full test suite
 	go test ./...
 
-lint:
+lint: ## Run golangci-lint
 	golangci-lint run
 
-pre-ci:
+pre-ci: ## Run the full local CI validation suite
 	./scripts/pre-ci-check.sh
 
-pre-ci-fix:
+pre-ci-fix: ## Run pre-ci, auto-formatting with gofmt first
 	./scripts/pre-ci-check.sh --fix gofmt
 
-.PHONY: build install test lint pre-ci pre-ci-fix
+.PHONY: help build install test lint pre-ci pre-ci-fix
