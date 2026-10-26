@@ -258,10 +258,10 @@ check_coverage() {
         echo -e "${GREEN}✓ Coverage report generated${NC}"
         echo -e "  Total coverage: ${BLUE}${COVERAGE}%${NC}"
 
-        if (( $(echo "$COVERAGE >= 80" | bc -l) )); then
-            echo -e "  ${GREEN}✓ Meets coverage target (80%)${NC}"
+        if (( $(echo "$COVERAGE >= 90" | bc -l) )); then
+            echo -e "  ${GREEN}✓ Meets coverage target (90%)${NC}"
         else
-            echo -e "  ${YELLOW}⚠ Below coverage target (80%)${NC}"
+            echo -e "  ${YELLOW}⚠ Below coverage target (90%)${NC}"
         fi
     else
         record_result "Coverage Generation" "FAIL" "Coverage generation failed"
