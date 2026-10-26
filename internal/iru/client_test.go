@@ -159,3 +159,47 @@ func TestRawExcerptBoundary(t *testing.T) {
 		t.Errorf("rawExcerpt(%d bytes) = %q, want %q", len(over), got, want)
 	}
 }
+
+func TestNewClientDoesNotMutateCallerHTTPClient(t *testing.T) {
+	hc := &http.Client{}
+	c := NewClient(testBaseURL, testToken, WithHTTPClient(hc), WithTimeout(7*time.Second))
+
+	if hc.Transport != nil {
+		t.Errorf("caller's Transport was set to %T, want nil", hc.Transport)
+	}
+	if hc.CheckRedirect != nil {
+		t.Error("caller's CheckRedirect was set, want nil")
+	}
+	if hc.Timeout != 0 {
+		t.Errorf("caller's Timeout = %v, want 0", hc.Timeout)
+	}
+	if c.httpClient == hc {
+		t.Fatal("Client shares the caller's *http.Client, want a copy")
+	}
+	// The copy still gets the auth and retry stack and the timeout.
+	if _, ok := c.httpClient.Transport.(*authTransport); !ok {
+		t.Errorf("copy Transport = %T, want *authTransport", c.httpClient.Transport)
+	}
+	if c.httpClient.CheckRedirect == nil {
+		t.Error("copy has no CheckRedirect, want the redirect guard")
+	}
+	if c.httpClient.Timeout != 7*time.Second {
+		t.Errorf("copy Timeout = %v, want 7s", c.httpClient.Timeout)
+	}
+}
+
+func TestNewClientKeepsCallerTransportAndCheckRedirect(t *testing.T) {
+	rt := bodyTransport{body: "{}"}
+	called := false
+	cr := func(*http.Request, []*http.Request) error { called = true; return nil }
+	hc := &http.Client{Transport: rt, CheckRedirect: cr}
+	c := NewClient(testBaseURL, testToken, WithHTTPClient(hc))
+
+	if _, ok := c.httpClient.Transport.(bodyTransport); !ok {
+		t.Errorf("Transport = %T, want the caller's bodyTransport", c.httpClient.Transport)
+	}
+	_ = c.httpClient.CheckRedirect(nil, nil)
+	if !called {
+		t.Error("caller's CheckRedirect was replaced")
+	}
+}

@@ -39,9 +39,11 @@ func withBaseTransport(rt http.RoundTripper) Option {
 	return func(cfg *clientConfig) { cfg.baseTransport = rt }
 }
 
-// WithHTTPClient supplies a custom *http.Client. NewClient attaches the auth
-// transport when the supplied client has none, and still applies WithTimeout
-// (if also given) regardless of the order the two options are passed in.
+// WithHTTPClient supplies a custom *http.Client. NewClient works on a shallow
+// copy, so the supplied client is left untouched. The copy gets the auth and
+// retry transport when the supplied client has no Transport, keeps the
+// caller's CheckRedirect if one is set, and still takes WithTimeout (if also
+// given) regardless of the order the two options are passed in.
 func WithHTTPClient(h *http.Client) Option {
 	return func(cfg *clientConfig) { cfg.httpClient = h }
 }
@@ -64,8 +66,13 @@ func NewClient(baseURL, token string, opts ...Option) *Client {
 		o(&cfg)
 	}
 
-	httpClient := cfg.httpClient
-	if httpClient == nil {
+	var httpClient *http.Client
+	if cfg.httpClient != nil {
+		// Work on a shallow copy so the caller's *http.Client is never
+		// mutated (it may be shared with other code).
+		hc := *cfg.httpClient
+		httpClient = &hc
+	} else {
 		httpClient = &http.Client{Timeout: 30 * time.Second}
 	}
 	base := cfg.baseTransport
@@ -73,24 +80,29 @@ func NewClient(baseURL, token string, opts ...Option) *Client {
 		base = http.DefaultTransport
 	}
 	// The token and the request URL (query strings included) must only reach
-	// the host derived from baseURL.
-	var apiHost string
+	// the origin (scheme and host) derived from baseURL.
+	var apiScheme, apiHost string
 	if u, err := url.Parse(baseURL); err == nil {
-		apiHost = u.Host
+		apiScheme, apiHost = u.Scheme, u.Host
 	}
 	// Preserve the auth transport when callers swap in their own http.Client.
 	if httpClient.Transport == nil {
 		httpClient.Transport = &authTransport{
-			token: token,
-			host:  apiHost,
-			base:  &retryTransport{base: base},
+			token:  token,
+			scheme: apiScheme,
+			host:   apiHost,
+			base:   &retryTransport{base: base},
 		}
 	}
-	// Refuse cross-host redirects unless the caller supplied their own policy.
+	// Refuse redirects off the API origin (another host, or a downgrade from
+	// https to http) unless the caller supplied their own policy.
 	if httpClient.CheckRedirect == nil {
 		httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 			if !sameHost(req.URL.Host, apiHost) {
 				return fmt.Errorf("iru: refusing redirect to foreign host %q", req.URL.Host)
+			}
+			if !sameOrigin(req.URL, apiScheme, apiHost) {
+				return fmt.Errorf("iru: refusing redirect to scheme %q, want %q", req.URL.Scheme, apiScheme)
 			}
 			// Keep Go's default cap.
 			if len(via) >= 10 {

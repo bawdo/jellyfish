@@ -16,14 +16,15 @@ type recordingTransport struct {
 }
 
 type seenRequest struct {
-	host, path, auth string
+	scheme, host, path, auth string
 }
 
 func (f *recordingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	f.seen = append(f.seen, seenRequest{
-		host: r.URL.Host,
-		path: r.URL.Path,
-		auth: r.Header.Get("Authorization"),
+		scheme: r.URL.Scheme,
+		host:   r.URL.Host,
+		path:   r.URL.Path,
+		auth:   r.Header.Get("Authorization"),
 	})
 	return f.respond(r), nil
 }
@@ -122,5 +123,73 @@ func TestSameHostRedirectKeepsToken(t *testing.T) {
 		if s.auth != "Bearer "+testToken {
 			t.Fatalf("request %d (%s%s) Authorization = %q, want bearer token", i, s.host, s.path, s.auth)
 		}
+	}
+}
+
+// downgradeToHTTP sends every https request to the same host over plain http.
+func downgradeToHTTP(r *http.Request) *http.Response {
+	if r.URL.Scheme == "https" {
+		return fakeResponse(r, http.StatusFound, "http://"+testAPIHost+"/api/v1/devices")
+	}
+	return fakeResponse(r, http.StatusOK, "")
+}
+
+func TestSchemeDowngradeRedirectIsRefused(t *testing.T) {
+	fake := &recordingTransport{respond: downgradeToHTTP}
+	c := NewClient(testBaseURL, testToken, withBaseTransport(fake))
+
+	err := c.do(context.Background(), http.MethodGet, "/devices", nil, nil)
+	if err == nil {
+		t.Fatal("expected an error refusing the https to http redirect, got nil")
+	}
+	for _, s := range fake.seen {
+		if s.scheme != "https" {
+			t.Fatalf("redirect was followed to %s://%s (Authorization %q)", s.scheme, s.host, s.auth)
+		}
+	}
+}
+
+func TestAuthTransportSkipsSchemeDowngrade(t *testing.T) {
+	// Defence in depth: even if a caller-supplied CheckRedirect follows a
+	// same-host https to http redirect, the token must not go in plaintext.
+	fake := &recordingTransport{respond: downgradeToHTTP}
+	hc := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return nil }}
+	c := NewClient(testBaseURL, testToken, WithHTTPClient(hc), withBaseTransport(fake))
+
+	if err := c.do(context.Background(), http.MethodGet, "/devices", nil, nil); err != nil {
+		t.Fatalf("do: %v", err)
+	}
+	if len(fake.seen) != 2 || fake.seen[1].scheme != "http" {
+		t.Fatalf("requests = %+v, want the caller's CheckRedirect to follow to http", fake.seen)
+	}
+	if got := fake.seen[0].auth; got != "Bearer "+testToken {
+		t.Fatalf("https request Authorization = %q, want bearer token", got)
+	}
+	if got := fake.seen[1].auth; got != "" {
+		t.Fatalf("plain http request received Authorization %q, want none", got)
+	}
+}
+
+func TestAuthTransportSchemeMatchIsCaseInsensitive(t *testing.T) {
+	var got string
+	at := &authTransport{
+		token:  testToken,
+		scheme: "https",
+		host:   testAPIHost,
+		base: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+			got = r.Header.Get("Authorization")
+			return fakeResponse(r, http.StatusOK, ""), nil
+		}),
+	}
+	req, err := http.NewRequest(http.MethodGet, "https://"+testAPIHost+"/api/v1/x", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.URL.Scheme = "HTTPS"
+	if _, err := at.RoundTrip(req); err != nil {
+		t.Fatal(err)
+	}
+	if got != "Bearer "+testToken {
+		t.Fatalf("Authorization = %q, want bearer token for upper-case scheme", got)
 	}
 }
