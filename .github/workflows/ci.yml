@@ -17,8 +17,11 @@ on:
         required: false
   workflow_dispatch:
 
+# A literal prefix, not github.workflow: when this file runs as a reusable
+# workflow that context names the caller, which would put caller and callee
+# in the same group and deadlock the run.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
