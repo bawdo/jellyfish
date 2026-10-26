@@ -2,10 +2,12 @@ name: Release
 
 # Runs on every push to main. The CI jobs run first (reused from ci.yml).
 # A release is then cut only when the newest "## [X.Y.Z] - date" heading in
-# CHANGELOG.md names a version that has no vX.Y.Z tag yet. The tag is created
-# at the pushed commit, the darwin binaries are attached with a checksums
-# file, and the checksums are attested with build provenance so anyone can
-# run: gh attestation verify checksums.txt --repo bawdo/jellyfish
+# CHANGELOG.md names a version with no published release. If vX.Y.Z is not
+# tagged, the pushed commit is tagged and built. If the tag already exists
+# (made by hand), its commit is built instead and a stale draft of the same
+# name is replaced. The darwin binaries are attached with a checksums file,
+# and the checksums are attested with build provenance so anyone can run:
+# gh attestation verify checksums.txt --repo bawdo/jellyfish
 
 permissions:
   contents: read
@@ -41,16 +43,74 @@ jobs:
 
       - name: Decide whether a release is due
         id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           version=$(./scripts/changelog-version.sh version)
+          tag="v$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
-            echo "v$version is already tagged; nothing to release"
-            echo "due=false" >> "$GITHUB_OUTPUT"
+
+          # Build from the tag's commit when the tag was made by hand,
+          # otherwise from the pushed commit, which the release will tag.
+          if git rev-parse -q --verify "refs/tags/$tag^{commit}" >/dev/null; then
+            commit=$(git rev-parse "refs/tags/$tag^{commit}")
+            echo "$tag exists at $commit"
           else
-            echo "v$version is not tagged; releasing from $GITHUB_SHA"
-            echo "due=true" >> "$GITHUB_OUTPUT"
+            commit=$GITHUB_SHA
+            echo "$tag is not tagged; it will be created at $commit"
           fi
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
+          # A published release ends it. A draft is stale (it has no attested
+          # assets) and is replaced.
+          draft=$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || echo missing)
+          case "$draft" in
+            false)
+              echo "$tag already has a published release; nothing to release"
+              echo "due=false" >> "$GITHUB_OUTPUT" ;;
+            true)
+              echo "$tag has a draft release; replacing it"
+              gh release delete "$tag" --yes
+              echo "due=true" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "$tag has no release; releasing"
+              echo "due=true" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Write release notes
+        # Before the checkout below, so the notes and the previous-tag lookup
+        # come from main, where the changelog script and section both exist.
+        if: steps.plan.outputs.due == 'true'
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          set -euo pipefail
+          # The highest tag below this version, whether or not this version is
+          # tagged yet. Sorted on the numbers, so v1.x orders after v0.x.
+          previous=$( { git tag -l 'v[0-9]*' | sed 's/^v//'; echo "$VERSION"; } \
+            | sort -u -t. -k1,1n -k2,2n -k3,3n \
+            | grep -B1 -x "$VERSION" | sed -n '1p' | grep -v -x "$VERSION" \
+            | sed 's/^/v/' || true)
+          {
+            ./scripts/changelog-version.sh notes "$VERSION"
+            echo
+            echo "Verify a download with:"
+            echo
+            echo '```'
+            echo "gh attestation verify checksums.txt --repo $GITHUB_REPOSITORY"
+            echo "shasum -a 256 -c checksums.txt"
+            echo '```'
+            if [ -n "$previous" ]; then
+              echo
+              echo "**Full Changelog**: https://github.com/$GITHUB_REPOSITORY/compare/$previous...v$VERSION"
+            fi
+          } > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
+
+      - name: Check out the commit to release
+        if: steps.plan.outputs.due == 'true'
+        run: git checkout -q --detach "${{ steps.plan.outputs.commit }}"
 
       - name: Set up Go
         if: steps.plan.outputs.due == 'true'
@@ -64,12 +124,13 @@ jobs:
         if: steps.plan.outputs.due == 'true'
         env:
           VERSION: ${{ steps.plan.outputs.version }}
+          COMMIT: ${{ steps.plan.outputs.commit }}
         run: |
           set -euo pipefail
           tag="v$VERSION"
           ldflags="-s -w \
             -X github.com/bawdo/jellyfish/internal/version.Version=$tag \
-            -X github.com/bawdo/jellyfish/internal/version.Commit=$GITHUB_SHA \
+            -X github.com/bawdo/jellyfish/internal/version.Commit=$COMMIT \
             -X github.com/bawdo/jellyfish/internal/version.Tag=$tag \
             -X github.com/bawdo/jellyfish/internal/version.Dirty=false"
           mkdir -p dist
@@ -102,41 +163,20 @@ jobs:
         with:
           subject-checksums: dist/checksums.txt
 
-      - name: Write release notes
-        if: steps.plan.outputs.due == 'true'
-        env:
-          VERSION: ${{ steps.plan.outputs.version }}
-        run: |
-          set -euo pipefail
-          previous=$(git tag -l 'v[0-9]*' | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)
-          {
-            ./scripts/changelog-version.sh notes "$VERSION"
-            echo
-            echo "Verify a download with:"
-            echo
-            echo '```'
-            echo "gh attestation verify checksums.txt --repo $GITHUB_REPOSITORY"
-            echo "shasum -a 256 -c checksums.txt"
-            echo '```'
-            if [ -n "$previous" ]; then
-              echo
-              echo "**Full Changelog**: https://github.com/$GITHUB_REPOSITORY/compare/$previous...v$VERSION"
-            fi
-          } > "$RUNNER_TEMP/notes.md"
-          cat "$RUNNER_TEMP/notes.md"
-
       - name: Create the release
         if: steps.plan.outputs.due == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.plan.outputs.version }}
+          COMMIT: ${{ steps.plan.outputs.commit }}
         run: |
           set -euo pipefail
           # Created as a draft, assets uploaded, then published, so an
-          # immutable release never exists without its assets.
+          # immutable release never exists without its assets. --target is
+          # ignored when the tag already exists.
           gh release create "v$VERSION" \
             --draft \
-            --target "$GITHUB_SHA" \
+            --target "$COMMIT" \
             --title "v$VERSION" \
             --notes-file "$RUNNER_TEMP/notes.md" \
             dist/*.tar.gz dist/checksums.txt

@@ -27,14 +27,15 @@ Commits are signed and written in the past tense with a subject of about
 
 Releases are cut by `.github/workflows/release.yml` when a merge to `main`
 moves the newest `## [X.Y.Z] - YYYY-MM-DD` heading in `CHANGELOG.md` to a
-version that has no `vX.Y.Z` tag yet. To release:
+version with no published release. To release:
 
 1. Rename `[Unreleased]` to the new version and date, and add the
    `[X.Y.Z]: compare` link at the bottom.
 2. Start a fresh `[Unreleased]` section above it.
-3. Merge. The workflow runs CI, tags the merge commit, builds the darwin
-   binaries, attests the checksums and publishes the release with that
-   changelog section as the notes.
+3. Merge. The workflow runs CI, tags the merge commit (or, if you tagged
+   `vX.Y.Z` by hand, uses that commit), builds the darwin binaries, attests
+   the checksums and publishes the release with that changelog section as
+   the notes. A draft release of the same name is replaced.
 
 A pull request whose changelog version is behind the latest tag, or has a
 malformed date or no link reference, fails the `Changelog` check.

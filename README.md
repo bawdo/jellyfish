@@ -310,7 +310,7 @@ make build    # ./bin/jellyfish with version ldflags
 
 ### Releasing
 
-A release is cut automatically when a merge to `main` moves the newest `## [X.Y.Z] - YYYY-MM-DD` heading in `CHANGELOG.md` to a version with no `vX.Y.Z` tag. The workflow (`.github/workflows/release.yml`) runs CI, tags the merge commit, builds and attests the darwin binaries, and publishes the release with that changelog section as the notes. See [CONTRIBUTING.md](CONTRIBUTING.md) for the steps.
+A release is cut automatically when a merge to `main` moves the newest `## [X.Y.Z] - YYYY-MM-DD` heading in `CHANGELOG.md` to a version with no published release. The workflow (`.github/workflows/release.yml`) runs CI, tags the merge commit (or uses an existing hand-made tag), builds and attests the darwin binaries, and publishes the release with that changelog section as the notes. See [CONTRIBUTING.md](CONTRIBUTING.md) for the steps.
 
 Real-Keychain integration tests:
 
