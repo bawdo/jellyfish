@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -74,6 +77,9 @@ func classifyError(err error) int {
 	case errors.Is(err, email.ErrRender):
 		return 1
 	}
+	if isNetworkError(err) {
+		return 4
+	}
 	var apiErr *iru.APIError
 	if errors.As(err, &apiErr) {
 		if apiErr.Status >= 500 {
@@ -81,6 +87,43 @@ func classifyError(err error) int {
 		}
 	}
 	return 1
+}
+
+// isNetworkError reports whether err is a genuine transport failure: DNS
+// failure, connection refused or reset, a timeout, or the server hanging up
+// mid-request. It matches the concrete net error types rather than any
+// net.Error, because *url.Error is itself a net.Error and wraps failures
+// that are not the network's fault: our own CheckRedirect refusal (foreign
+// host or scheme downgrade) and malformed URLs. A cancelled context is the
+// user interrupting, not an upstream fault, so it stays a plain exit 1 even
+// when it surfaces wrapped in a *net.OpError.
+func isNetworkError(err error) bool {
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		return true
+	}
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return true
+	}
+	// A *url.Error's Timeout delegates to the error it wraps, so this is
+	// true only for a real timeout (http.Client.Timeout and the like).
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	// The server closing the connection before or during the response.
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) && (errors.Is(urlErr.Err, io.EOF) || errors.Is(urlErr.Err, io.ErrUnexpectedEOF)) {
+		return true
+	}
+	return false
 }
 
 func newRootCmd() *cobra.Command {

@@ -56,7 +56,7 @@ jellyfish configure
 
 Prompts for the tenant subdomain (the bit before `.api.kandji.io` - the hostname is still `kandji.io` even though the product was renamed Iru), region (`us` or `eu`), and API token. Re-running is safe: each prompt shows the current value, and Enter keeps it.
 
-A new token is checked against Iru before anything is written. If Iru rejects it, or the check can't complete, the existing Keychain token and config are left untouched and the command exits non-zero: 2 if Iru rejects the token, 4 for an Iru 5xx or rate limit, and 1 if Iru can't be reached at all (DNS or connection failure). If you change subdomain or region but press Enter to keep the existing token, that stored token is checked against the new tenant the same way before the config is saved.
+A new token is checked against Iru before anything is written. If Iru rejects it, or the check can't complete, the existing Keychain token and config are left untouched and the command exits non-zero: 2 if Iru rejects the token, and 4 for an Iru 5xx, a rate limit, or a network failure (DNS, connection refused, timeout). If you change subdomain or region but press Enter to keep the existing token, that stored token is checked against the new tenant the same way before the config is saved.
 
 Subdomain and region are written to `~/.config/jellyfish/config.yml` (mode `0600`); the token goes to the macOS Keychain under service `jellyfish.secrets`, account `default`:
 
@@ -71,7 +71,7 @@ security delete-generic-password -s jellyfish.secrets -a default
 jellyfish configure email
 ```
 
-Prompts for `From`, default `To`, a Gmail service-account JSON path, header background colour, a logo PNG, and an optional `List-Id` domain. Non-secret values go to the `email:` block of `config.yml`; the Gmail JSON goes to the Keychain; the logo PNG (validated, under 512 KB) is copied into `~/.config/jellyfish/logos/`. Enter keeps a value; a literal `-` clears it.
+Prompts for `From`, default `To`, a Gmail service-account JSON path, header background colour, a logo PNG, and an optional `List-Id` domain. Non-secret values go to the `email:` block of `config.yml`; the Gmail JSON goes to the Keychain; the logo PNG (validated: a regular file under 512 KB and at most 2048×2048 pixels) is copied into `~/.config/jellyfish/logos/`. Enter keeps a value; a literal `-` clears it.
 
 `list_id_domain` sets the `List-Id` header on sent mail. Left unset, it falls back to `jellyfish.` plus the domain of `email.from` - so a `from` of `ops@example.com` yields `List-Id: <jellyfish.example.com>`. You can also edit `config.yml` directly.
 
@@ -165,7 +165,7 @@ Recipient, sender, and subject default from the `email:` block of `config.yml`; 
 | `--email-logo` | `email.logo_path` | empty (no logo) |
 | `--message` / `--message-file` | - | unset |
 
-The logo renders at 56px height (width scales to its aspect ratio); supply a PNG under 512 KB, ideally at 2x height for retina displays. `email.subject_template` is a Go template with `{{.Date}}` and `{{.Time}}`. CVE link targets (`cve_link_primary`, `cve_link_secondary`) are config-overridable; the `{cve}` token is substituted literally.
+The logo renders at 56px height (width scales to its aspect ratio); supply a PNG under 512 KB and no larger than 2048×2048 pixels, ideally at 2x height for retina displays. A configured logo that fails these checks is dropped with a warning and the email renders without it. `email.subject_template` is a Go template with `{{.Date}}` and `{{.Time}}`. CVE link targets (`cve_link_primary`, `cve_link_secondary`) are config-overridable; the `{cve}` token is substituted literally.
 
 #### Message section (`--message`, `--message-file`)
 
@@ -278,7 +278,7 @@ Stderr emits one line per recipient (`sent` / `would-send` / `skip` / `error`) a
 | 1 | User error (bad flags, missing config) |
 | 2 | Authentication or permissions failure |
 | 3 | User, device or detection not found |
-| 4 | Upstream error (5xx, network) |
+| 4 | Upstream or network error (5xx, rate limit, stalled pagination, DNS or connection failure, timeout) |
 
 ## Development
 
