@@ -273,6 +273,64 @@ func TestVulnsSummarySortKeys(t *testing.T) {
 	}
 }
 
+// Rows that tie on the sort metric come out in CVE order, whatever order the
+// walk returned them in, so repeated runs render identically.
+func TestVulnsSummarySortBreaksTiesByCVE(t *testing.T) {
+	vs := []iru.Vulnerability{
+		{CVEID: "CVE-D", Severity: "High", CVSSScore: 7.0, KEVScore: 1.0, DeviceCount: 2},
+		{CVEID: "CVE-C", Severity: "High", CVSSScore: 7.0, KEVScore: 1.0, DeviceCount: 2},
+		{CVEID: "CVE-B", Severity: "High", CVSSScore: 7.0, KEVScore: 1.0, DeviceCount: 2},
+		{CVEID: "CVE-A", Severity: "High", CVSSScore: 7.0, KEVScore: 1.0, DeviceCount: 2},
+	}
+	for _, key := range []string{"severity", "cvss", "kev", "devices", "cve"} {
+		t.Run(key, func(t *testing.T) {
+			client := &fakeClient{vulnerabilities: append([]iru.Vulnerability(nil), vs...)}
+			var out bytes.Buffer
+			err := runVulnsSummary(context.Background(), client, &out, io.Discard, vulnsSummaryOpts{Output: "csv", Sort: key, NoCache: true})
+			if err != nil {
+				t.Fatalf("run: %v", err)
+			}
+			if got := strings.Join(vulncovCVEOrder(t, out.String()), " "); got != "CVE-A CVE-B CVE-C CVE-D" {
+				t.Errorf("order: got %q, want CVE order on ties", got)
+			}
+		})
+	}
+}
+
+// An unknown --sort key is a user error caught before any config, Keychain
+// or API work, so a typo can't cost a full walk and then be ignored.
+func TestVulnsSummaryRejectsUnknownSort(t *testing.T) {
+	isolateCacheDir(t)
+	stubNewIruClient(t, &fakeClient{})
+	failIfKeychainRead(t)
+	_, _, err := execRootForTest(t, "vulns", "summary", "--sort", "sevrity", "--config", validConfigPath(t))
+	if err == nil {
+		t.Fatal("expected an error for an unknown --sort key")
+	}
+	want := `invalid --sort "sevrity": want one of severity, cvss, kev, devices, cve`
+	if err.Error() != want {
+		t.Errorf("error: got %q want %q", err.Error(), want)
+	}
+	if code := classifyError(err); code != 1 {
+		t.Errorf("exit: got %d want 1", code)
+	}
+}
+
+func TestVulnsSummarySortCompletion(t *testing.T) {
+	stdout, _, err := execRootForTest(t, "__complete", "vulns", "summary", "--sort", "")
+	if err != nil {
+		t.Fatalf("complete: %v", err)
+	}
+	for _, key := range []string{"severity", "cvss", "kev", "devices", "cve"} {
+		if !strings.Contains(stdout, key+"\n") {
+			t.Errorf("completion missing %q in %q", key, stdout)
+		}
+	}
+	if !strings.Contains(stdout, ":4") { // ShellCompDirectiveNoFileComp
+		t.Errorf("completion should disable file completion: %q", stdout)
+	}
+}
+
 func TestVulnsSummaryFiltersBySeverityCaseInsensitive(t *testing.T) {
 	client := &fakeClient{vulnerabilities: []iru.Vulnerability{
 		{CVEID: "CVE-A", Severity: "Critical", Status: "Active"},

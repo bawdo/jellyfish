@@ -203,6 +203,9 @@ Iru does not honour status or severity query params on this endpoint, so all
 filtering happens client-side after a full walk. Results are cached for 15
 minutes; pass --no-cache to force a fresh fetch.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := validateVulnSort(opts.Sort); err != nil {
+				return err
+			}
 			outFmt, _ := cmd.Flags().GetString("output")
 			opts.Output = outFmt
 			opts.EmailFlags = readEmailFlags(cmd)
@@ -233,6 +236,7 @@ minutes; pass --no-cache to force a fresh fetch.`,
 	c.Flags().StringVar(&opts.Status, "status", "", "Filter by status: active | remediated (default: all)")
 	c.Flags().StringVar(&opts.Severity, "severity", "", "Filter by severity: critical | high | medium | low | undefined (default: all)")
 	c.Flags().StringVar(&opts.Sort, "sort", "severity", "Sort by: severity (default) | cvss | kev | devices | cve")
+	_ = c.RegisterFlagCompletionFunc("sort", cobra.FixedCompletions(vulnSortKeys, cobra.ShellCompDirectiveNoFileComp))
 	c.Flags().IntVar(&opts.Limit, "limit", 0, "Cap the rendered rows after sort")
 	c.Flags().BoolVar(&opts.NoCache, "no-cache", false, "Skip the vulnerabilities cache; always fetch fresh")
 	addEmailFlags(c, emailFlagHelp{})
@@ -272,21 +276,54 @@ func runVulnsSummary(ctx context.Context, client iruClient, w, stderr io.Writer,
 	return renderVulns(w, stderr, opts, filtered)
 }
 
-func sortVulns(vs []iru.Vulnerability, key string) {
-	switch strings.ToLower(key) {
-	case "cvss":
-		sort.Slice(vs, func(i, j int) bool { return vs[i].CVSSScore > vs[j].CVSSScore })
-	case "kev":
-		sort.Slice(vs, func(i, j int) bool { return vs[i].KEVScore > vs[j].KEVScore })
-	case "devices":
-		sort.Slice(vs, func(i, j int) bool { return vs[i].DeviceCount > vs[j].DeviceCount })
-	case "cve":
-		sort.Slice(vs, func(i, j int) bool { return vs[i].CVEID < vs[j].CVEID })
-	case "severity", "":
-		sort.SliceStable(vs, func(i, j int) bool {
-			return lessBySeverityThenCVSS(vs[i].Severity, vs[i].CVSSScore, vs[j].Severity, vs[j].CVSSScore)
-		})
+// vulnSortKeys are the accepted --sort values for vulns summary, matched
+// case-insensitively.
+var vulnSortKeys = []string{"severity", "cvss", "kev", "devices", "cve"}
+
+// validateVulnSort rejects an unknown --sort key up front, before the
+// (possibly slow) walk, rather than silently leaving rows unsorted.
+func validateVulnSort(key string) error {
+	if key == "" {
+		return nil
 	}
+	for _, k := range vulnSortKeys {
+		if strings.EqualFold(key, k) {
+			return nil
+		}
+	}
+	return fmt.Errorf("invalid --sort %q: want one of %s", key, strings.Join(vulnSortKeys, ", "))
+}
+
+// sortVulns orders vs by key. Ties always fall back to CVE ID ascending, so
+// the rendered order does not depend on the order the walk returned.
+func sortVulns(vs []iru.Vulnerability, key string) {
+	key = strings.ToLower(key)
+	sort.SliceStable(vs, func(i, j int) bool {
+		a, b := vs[i], vs[j]
+		switch key {
+		case "cvss":
+			if a.CVSSScore != b.CVSSScore {
+				return a.CVSSScore > b.CVSSScore
+			}
+		case "kev":
+			if a.KEVScore != b.KEVScore {
+				return a.KEVScore > b.KEVScore
+			}
+		case "devices":
+			if a.DeviceCount != b.DeviceCount {
+				return a.DeviceCount > b.DeviceCount
+			}
+		case "cve":
+		default: // "severity" or empty
+			if lessBySeverityThenCVSS(a.Severity, a.CVSSScore, b.Severity, b.CVSSScore) {
+				return true
+			}
+			if lessBySeverityThenCVSS(b.Severity, b.CVSSScore, a.Severity, a.CVSSScore) {
+				return false
+			}
+		}
+		return a.CVEID < b.CVEID
+	})
 }
 
 func renderVulns(w io.Writer, stderr io.Writer, opts vulnsSummaryOpts, vs []iru.Vulnerability) error {

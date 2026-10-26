@@ -16,6 +16,14 @@ All notable changes to jellyfish are documented here. The format follows
   A symlinked `config.yml` keeps its link. Parent directories that already
   exist keep their mode.
 
+### Changed
+
+- `vulns summary --sort` rejects an unknown key with exit 1 before fetching
+  anything. It used to ignore the key and return rows unsorted. Shell
+  completion now offers the valid keys.
+- `vulns summary` puts rows that tie on the sort key in CVE ID order, so the
+  output is the same on every run.
+
 ## [0.2.0] - 2026-10-27
 
 ### Security
