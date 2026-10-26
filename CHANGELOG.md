@@ -4,7 +4,7 @@ All notable changes to jellyfish are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-10-27
 
 ### Security
 
@@ -26,6 +26,10 @@ All notable changes to jellyfish are documented here. The format follows
 - `--message` accepts an editor with arguments or quoting in `$VISUAL` or
   `$EDITOR` (for example `code -w`), using the same rules as git. A plain
   command name or path is still run directly.
+- Test coverage rose from about 81% to 97%. The coverage check in CI now
+  fails below 90%, or when a change drops coverage by more than 1%.
+- The gated real-Keychain tests can no longer read, overwrite or delete the
+  configured Iru token or Gmail credential.
 
 ## [0.2.0] - 2026-10-27
 
@@ -142,6 +146,7 @@ First release.
 - A `help` bareword alias for `--help`, and `jellyfish version` with commit
   and tag.
 
-[0.2.0]: https://github.com/bawdo/jellyfish/compare/v0.1.1...integration/code-review-fixes
+[0.3.0]: https://github.com/bawdo/jellyfish/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/bawdo/jellyfish/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/bawdo/jellyfish/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/bawdo/jellyfish/releases/tag/v0.1.0
