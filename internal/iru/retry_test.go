@@ -60,7 +60,10 @@ func TestWaitFitsDeadline(t *testing.T) {
 		want        bool
 	}{
 		{"no deadline always fits", time.Time{}, false, time.Hour, true},
-		{"ends before deadline fits", now.Add(time.Second), true, 500 * time.Millisecond, true},
+		{"leaves more than the margin fits", now.Add(2 * time.Second), true, 500 * time.Millisecond, true},
+		{"leaves exactly the margin fits", now.Add(2 * time.Second), true, 2*time.Second - retryMargin, true},
+		{"leaves just under the margin does not fit", now.Add(2 * time.Second), true, 2*time.Second - retryMargin + time.Nanosecond, false},
+		{"ends before deadline but inside the margin does not fit", now.Add(time.Second), true, 500 * time.Millisecond, false},
 		{"ends exactly at deadline does not fit", now.Add(time.Second), true, time.Second, false},
 		{"ends after deadline does not fit", now.Add(200 * time.Millisecond), true, 5 * time.Second, false},
 		{"deadline already passed does not fit", now.Add(-time.Second), true, 0, false},
@@ -144,8 +147,82 @@ func TestRetryTransportReturns429WhenWaitWouldPassDeadline(t *testing.T) {
 	if got := calls.Load(); got != 1 {
 		t.Fatalf("expected 1 attempt, got %d", got)
 	}
-	if elapsed := time.Since(start); elapsed > 100*time.Millisecond {
+	// Well under the 5s Retry-After, with room for a slow -race run.
+	if elapsed := time.Since(start); elapsed > time.Second {
 		t.Fatalf("expected an immediate return, took %v", elapsed)
+	}
+}
+
+func TestRetryTransportReturns429WhenWaitLeavesNoRoomForRetry(t *testing.T) {
+	// The 2s wait ends before the 2.5s deadline, but with less than
+	// retryMargin to spare, so the retry would likely time out. The 429
+	// comes back straight away instead.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second+500*time.Millisecond)
+	defer cancel()
+
+	var calls atomic.Int32
+	rt := &retryTransport{base: rateLimited(&calls, "2")}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://example.test/x", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	resp, err := roundTripWithin(t, rt, req, 4*time.Second)
+	assertRateLimitedResponse(t, resp, err)
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("expected 1 attempt, got %d", got)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("expected an immediate return, not the 2s wait, took %v", elapsed)
+	}
+}
+
+// endlessBody is an unbounded response body that counts the bytes read from
+// it and records whether it was closed.
+type endlessBody struct {
+	read   atomic.Int64
+	closed atomic.Bool
+}
+
+func (b *endlessBody) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = 'x'
+	}
+	b.read.Add(int64(len(p)))
+	return len(p), nil
+}
+
+func (b *endlessBody) Close() error {
+	b.closed.Store(true)
+	return nil
+}
+
+func TestRetryTransportBoundsErrorBody(t *testing.T) {
+	// A 429 with an endless body must not be buffered in full. Retry-After
+	// above the cap returns the response after the first attempt.
+	body := &endlessBody{}
+	rt := &retryTransport{base: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		h := http.Header{}
+		h.Set("Retry-After", "3600")
+		return &http.Response{StatusCode: http.StatusTooManyRequests, Header: h, Body: body, Request: r}, nil
+	})}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.test/x", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := roundTripWithin(t, rt, req, 2*time.Second)
+	if err != nil {
+		t.Fatalf("RoundTrip: %v", err)
+	}
+	if got := body.read.Load(); got > maxErrorBody {
+		t.Fatalf("read %d bytes of the upstream body, want at most %d", got, maxErrorBody)
+	}
+	if !body.closed.Load() {
+		t.Fatal("upstream body was not closed")
+	}
+	buf, _ := io.ReadAll(resp.Body)
+	if len(buf) != maxErrorBody {
+		t.Fatalf("buffered body = %d bytes, want %d", len(buf), maxErrorBody)
 	}
 }
 

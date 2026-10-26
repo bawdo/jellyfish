@@ -98,11 +98,10 @@ func NewClient(baseURL, token string, opts ...Option) *Client {
 	// https to http) unless the caller supplied their own policy.
 	if httpClient.CheckRedirect == nil {
 		httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-			if !sameHost(req.URL.Host, apiHost) {
-				return fmt.Errorf("iru: refusing redirect to foreign host %q", req.URL.Host)
-			}
 			if !sameOrigin(req.URL, apiScheme, apiHost) {
-				return fmt.Errorf("iru: refusing redirect to scheme %q, want %q", req.URL.Scheme, apiScheme)
+				// One check covers both a foreign host and a scheme change.
+				return fmt.Errorf("iru: refusing redirect off the API origin to %q, want %q",
+					req.URL.Scheme+"://"+req.URL.Host, apiScheme+"://"+apiHost)
 			}
 			// Keep Go's default cap.
 			if len(via) >= 10 {

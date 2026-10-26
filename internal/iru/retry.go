@@ -12,10 +12,15 @@ const maxAttempts = 3
 
 // maxRetryAfter is the longest server-supplied Retry-After the transport will
 // wait out. It sits well below the default 30s http.Client.Timeout so a
-// honoured wait still leaves room for the retry itself. A longer request is
-// not waited on at all: the 429/5xx goes straight back to the caller, which
+// honoured wait still leaves room for the retry itself. A longer Retry-After
+// is not waited on at all: the 429/5xx goes straight back to the caller, which
 // maps it to a clear rate-limit or upstream error instead of a timeout.
 const maxRetryAfter = 10 * time.Second
+
+// retryMargin is the time a retry needs left on the deadline once the wait is
+// over. A wait that ends with less than this to spare would most likely see
+// the retry itself time out, so the caller gets the 429/5xx instead.
+const retryMargin = time.Second
 
 // retryWait returns how long to wait before the next attempt, and false when
 // the server asked for longer than maxRetryAfter (the caller should stop
@@ -38,14 +43,15 @@ func retryWait(retryAfter string, backoff time.Duration) (time.Duration, bool) {
 	return time.Duration(secs) * time.Second, true
 }
 
-// waitFitsDeadline reports whether a wait starting at now ends before the
-// deadline. Without a deadline any wait fits. A wait that ends at or after
-// the deadline would only produce a context error, so it does not fit.
+// waitFitsDeadline reports whether a wait starting at now still leaves at
+// least retryMargin before the deadline for the retry to run. Without a
+// deadline any wait fits. A wait that leaves less would only produce a
+// context error, so it does not fit.
 func waitFitsDeadline(deadline time.Time, hasDeadline bool, now time.Time, wait time.Duration) bool {
 	if !hasDeadline {
 		return true
 	}
-	return now.Add(wait).Before(deadline)
+	return !now.Add(wait + retryMargin).After(deadline)
 }
 
 // retryTransport retries idempotent requests on 429 and 5xx with backoff.
@@ -74,9 +80,12 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			lastErr = err
 		} else {
 			// Buffer the body before closing so a later decodeAPIError on the
-			// returned lastResp still sees the upstream error text. Reading to
-			// EOF then closing also lets the transport reuse the connection.
-			buf, _ := io.ReadAll(resp.Body)
+			// returned lastResp still sees the upstream error text. The read is
+			// capped at maxErrorBody so a hostile or broken server can't make
+			// us buffer an unbounded body. A body that fits is read to EOF, so
+			// the transport can reuse the connection; a longer one is cut off
+			// and the connection dropped on close.
+			buf, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
 			_ = resp.Body.Close()
 			resp.Body = io.NopCloser(bytes.NewReader(buf))
 			lastResp = resp

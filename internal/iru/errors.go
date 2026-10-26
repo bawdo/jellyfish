@@ -46,9 +46,14 @@ func (e *APIError) Is(target error) bool {
 	return false
 }
 
-// decodeAPIError reads the response body and produces an APIError.
+// maxErrorBody caps how much of an error response body is read, here and in
+// retryTransport. Error bodies are short JSON; anything past 64 KiB is noise.
+const maxErrorBody = 64 << 10
+
+// decodeAPIError reads up to maxErrorBody of the response body and produces
+// an APIError.
 func decodeAPIError(resp *http.Response) error {
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
 	apiErr := &APIError{Status: resp.StatusCode}
 
 	// Iru typically returns {"detail":"..."} or {"errors":[...]} - try both.
