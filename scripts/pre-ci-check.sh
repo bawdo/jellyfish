@@ -301,7 +301,7 @@ check_vulnerability_scan() {
     if ! command -v govulncheck &> /dev/null; then
         record_result "Vulnerability Scan" "FAIL" "govulncheck not installed"
         echo -e "${RED}✗ govulncheck is not installed${NC}"
-        echo -e "${YELLOW}Install: go install golang.org/x/vuln/cmd/govulncheck@latest${NC}"
+        echo -e "${YELLOW}Install: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0${NC}"
         return 1
     fi
 
