@@ -193,3 +193,25 @@ func TestAuthTransportSchemeMatchIsCaseInsensitive(t *testing.T) {
 		t.Fatalf("Authorization = %q, want bearer token for upper-case scheme", got)
 	}
 }
+
+// A same-origin redirect loop is still cut off at Go's usual cap of ten
+// requests, with the token sent only to the API host.
+func TestSameHostRedirectLoopIsCapped(t *testing.T) {
+	fake := &recordingTransport{respond: func(r *http.Request) *http.Response {
+		return fakeResponse(r, http.StatusFound, testBaseURL+"/devices")
+	}}
+	c := NewClient(testBaseURL, testToken, withBaseTransport(fake))
+
+	err := c.do(context.Background(), http.MethodGet, "/devices", nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "stopped after 10 redirects") {
+		t.Fatalf("expected the redirect cap error, got %v", err)
+	}
+	if len(fake.seen) != 10 {
+		t.Fatalf("requests = %d, want 10", len(fake.seen))
+	}
+	for i, s := range fake.seen {
+		if s.host != testAPIHost || s.auth != "Bearer "+testToken {
+			t.Fatalf("request %d went to %s with Authorization %q", i, s.host, s.auth)
+		}
+	}
+}

@@ -69,3 +69,16 @@ func TestDeviceUnmarshalListMixed(t *testing.T) {
 		t.Errorf("[2] user: %+v", devices[2].User)
 	}
 }
+
+func TestDeviceUnmarshalRejectsMalformed(t *testing.T) {
+	for name, raw := range map[string]string{
+		"not an object":      `[1,2]`,
+		"user wrong type":    `{"device_id":"d-1","user":42}`,
+		"user field invalid": `{"device_id":"d-1","user":{"id":7}}`,
+	} {
+		var d Device
+		if err := json.Unmarshal([]byte(raw), &d); err == nil {
+			t.Errorf("%s: expected an error decoding %s, got %+v", name, raw, d)
+		}
+	}
+}
