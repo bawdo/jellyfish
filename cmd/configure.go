@@ -200,9 +200,13 @@ func runConfigure(ctx context.Context, o configureOpts) error {
 // subdomain or region but presses Enter to keep the existing token. Errors
 // wrap the underlying sentinel so classifyError maps them onto the same exit
 // codes as a rejected or unverifiable new token.
+//
+// A nil readToken is a wiring bug rather than a cue to fall back to the real
+// Keychain: production always sets configureOpts.ReadToken, and a fallback
+// would only let a test that forgot the seam touch the admin's Keychain.
 func verifyKeptToken(ctx context.Context, readToken func(string) (string, error), verify func(context.Context, string, string) error, baseURL string) error {
 	if readToken == nil {
-		readToken = keychain.Get
+		return errors.New("internal error: no Keychain reader configured to check the existing token; the config was left unchanged")
 	}
 	token, err := readToken("default")
 	if errors.Is(err, keychain.ErrNotFound) {

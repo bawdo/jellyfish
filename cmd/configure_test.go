@@ -1478,3 +1478,28 @@ func TestConfigureKeepTokenTenantChangeReadErrorLeavesConfig(t *testing.T) {
 		t.Errorf("config must not change; got %+v", got)
 	}
 }
+
+// A nil ReadToken must fail closed rather than fall back to the real Keychain,
+// so a test that forgets the seam can never read the admin's stored token.
+func TestConfigureKeepTokenTenantChangeNilReadTokenErrors(t *testing.T) {
+	tmp := t.TempDir()
+	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
+		Subdomain: "acme", Region: "us",
+	}})
+	err := runConfigure(context.Background(), configureOpts{
+		ConfigPath:    cfgPath,
+		Stdin:         strings.NewReader("newco\n\n"),
+		Stdout:        &bytes.Buffer{},
+		Stderr:        &bytes.Buffer{},
+		StoreToken:    func(_, _ string) error { t.Error("StoreToken called"); return nil },
+		ReadTokenLine: func(_ *bufio.Reader) (string, error) { return "", nil },
+		Verify:        func(context.Context, string, string) error { t.Error("Verify called"); return nil },
+	})
+	if err == nil || !strings.Contains(err.Error(), "no Keychain reader configured") {
+		t.Fatalf("expected a no-reader error; got %v", err)
+	}
+	loaded, _ := config.Load(cfgPath)
+	if got := loaded["default"]; got.Subdomain != "acme" {
+		t.Errorf("config must not change; got %+v", got)
+	}
+}

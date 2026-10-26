@@ -15,7 +15,7 @@ import (
 )
 
 // stubNewIruClient swaps the client constructor seam for the duration of a
-// test, recording the base URL and token buildClient hands it.
+// test, recording the base URL and token loadedConfig.client hands it.
 func stubNewIruClient(t *testing.T, c iruClient) (gotBaseURL, gotToken *string) {
 	t.Helper()
 	var base, tok string

@@ -27,8 +27,8 @@ func resolveConfigPath(cmd *cobra.Command) (string, error) {
 	return config.DefaultPath()
 }
 
-// keychainGet is the Keychain read used by buildClient. It is a variable so
-// tests can stub it without touching the real macOS Keychain.
+// keychainGet is the Keychain read used by loadedConfig.client. It is a
+// variable so tests can stub it without touching the real macOS Keychain.
 var keychainGet = keychain.Get
 
 // newIruClient constructs the concrete Iru client from an already validated
@@ -48,8 +48,8 @@ type loadedConfig struct {
 
 // loadConfig resolves the config path and reads it once. Only a failure to
 // resolve the path is returned here; load errors are kept on the result so
-// each consumer can apply its own policy (buildClient needs the file,
-// activeProfile tolerates its absence).
+// each consumer can apply its own policy (loadedConfig.client needs the
+// file, loadedConfig.profile tolerates its absence).
 func loadConfig(cmd *cobra.Command) (loadedConfig, error) {
 	cfgPath, err := resolveConfigPath(cmd)
 	if err != nil {
@@ -114,8 +114,8 @@ type runContext struct {
 }
 
 // loadRunContext reads config.yml once and builds the full runContext from
-// that single read. Errors match buildClient exactly, since the client is the
-// first thing resolved and needs a valid config.
+// that single read. Errors are those of loadedConfig.client, since the client
+// is the first thing resolved and needs a valid config.
 func loadRunContext(cmd *cobra.Command) (runContext, error) {
 	lc, err := loadConfig(cmd)
 	if err != nil {
