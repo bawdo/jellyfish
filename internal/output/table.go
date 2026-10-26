@@ -46,7 +46,7 @@ func (r *tableRenderer) Render(w io.Writer, v any) error {
 	err := eachRow(r.columns, v, func(cells []string) error {
 		row := make(table.Row, len(cells))
 		for i, c := range cells {
-			row[i] = sanitiseTerminalCell(c)
+			row[i] = SanitiseTerminal(c)
 		}
 		t.AppendRow(row)
 		return nil
@@ -59,19 +59,34 @@ func (r *tableRenderer) Render(w io.Writer, v any) error {
 	return nil
 }
 
-// sanitiseTerminalCell neutralises terminal escape injection: cells carry API
-// data that end users choose (device names, for example), and an embedded
-// ESC/CSI/OSC sequence would otherwise be interpreted by the admin's
-// terminal. Every C0 control (including tab and newline, which also break the
-// table layout), DEL and every C1 control is removed outright rather than
-// replaced, so the remaining text stays readable. Only the table renderer
-// uses this: CSV, JSON and YAML are data formats and must round-trip as is.
-func sanitiseTerminalCell(s string) string {
-	if !strings.ContainsFunc(s, isTerminalControl) {
+// SanitiseTerminal neutralises terminal escape injection in single-line text
+// such as a table cell: cells carry API data that end users choose (device
+// names, for example), and an embedded ESC/CSI/OSC sequence would otherwise
+// be interpreted by the admin's terminal. Every C0 control (including tab and
+// newline, which also break the table layout), DEL and every C1 control is
+// removed outright rather than replaced, so the remaining text stays
+// readable. The table renderer uses this: CSV, JSON and YAML are data formats
+// and must round-trip as is.
+func SanitiseTerminal(s string) string {
+	return stripControls(s, isTerminalControl)
+}
+
+// SanitiseTerminalText is SanitiseTerminal for multi-line text, such as an
+// error message bound for stderr: newline is kept so the message keeps its
+// line breaks, and every other C0 control (including carriage return, which
+// could overwrite what was already printed), DEL and C1 control is removed.
+func SanitiseTerminalText(s string) string {
+	return stripControls(s, func(r rune) bool {
+		return r != '\n' && isTerminalControl(r)
+	})
+}
+
+func stripControls(s string, drop func(rune) bool) string {
+	if !strings.ContainsFunc(s, drop) {
 		return s
 	}
 	return strings.Map(func(r rune) rune {
-		if isTerminalControl(r) {
+		if drop(r) {
 			return -1
 		}
 		return r

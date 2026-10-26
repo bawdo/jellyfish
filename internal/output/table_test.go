@@ -88,10 +88,10 @@ func TestTableRendererStripsControlCharacters(t *testing.T) {
 	}
 }
 
-func TestSanitiseTerminalCellLeavesPrintableTextAlone(t *testing.T) {
+func TestSanitiseTerminalLeavesPrintableTextAlone(t *testing.T) {
 	for _, s := range []string{"", "MacBook Pro", "Keith’s Mac – 2024", "日本語"} {
-		if got := sanitiseTerminalCell(s); got != s {
-			t.Fatalf("sanitiseTerminalCell(%q) = %q, want unchanged", s, got)
+		if got := SanitiseTerminal(s); got != s {
+			t.Fatalf("SanitiseTerminal(%q) = %q, want unchanged", s, got)
 		}
 	}
 }

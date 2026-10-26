@@ -3,6 +3,8 @@ package cmd
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"os/signal"
 	"syscall"
 
@@ -11,13 +13,39 @@ import (
 	"github.com/bawdo/jellyfish/internal/email"
 	"github.com/bawdo/jellyfish/internal/gmail"
 	"github.com/bawdo/jellyfish/internal/iru"
+	"github.com/bawdo/jellyfish/internal/output"
 )
 
 // Execute runs the CLI. The returned int is the process exit code.
 func Execute() int {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
-	err := newRootCmd().ExecuteContext(ctx)
+	return runRoot(ctx, newRootCmd(), os.Args[1:])
+}
+
+// runRoot executes root with args and prints any error to root's stderr
+// itself (root sets SilenceErrors), so the text can be sanitised first.
+// Errors often carry server-controlled text (an Iru APIError message is the
+// response detail or raw body, Gmail errors likewise), and an embedded
+// ESC/OSC sequence would otherwise be interpreted by the admin's terminal.
+// The output format matches what cobra prints: "Error: <msg>", plus the
+// "Run '<cmd> --help' for usage." hint for command-lookup failures.
+func runRoot(ctx context.Context, root *cobra.Command, args []string) int {
+	root.SetArgs(args)
+	cmd, err := root.ExecuteContextC(ctx)
+	if err != nil {
+		if cmd == nil {
+			cmd = root
+		}
+		w := root.ErrOrStderr()
+		_, _ = fmt.Fprintln(w, cmd.ErrPrefix(), output.SanitiseTerminalText(err.Error()))
+		// cobra adds the usage hint only when resolving the command itself
+		// failed (unknown command); Find is side-effect free, so re-run it
+		// to tell that case apart from a RunE or flag-parse error.
+		if _, _, findErr := root.Find(args); findErr != nil {
+			_, _ = fmt.Fprintf(w, "Run '%v --help' for usage.\n", cmd.CommandPath())
+		}
+	}
 	return classifyError(err)
 }
 
@@ -60,7 +88,7 @@ func newRootCmd() *cobra.Command {
 		Use:           "jellyfish",
 		Short:         "CLI for the Iru (Kandji) Endpoint Management API",
 		SilenceUsage:  true,
-		SilenceErrors: false,
+		SilenceErrors: true, // runRoot prints errors, sanitised
 	}
 
 	root.PersistentFlags().StringP("output", "o", "table", "Output format: table, json, yaml, csv")
