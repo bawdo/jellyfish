@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"path/filepath"
@@ -358,5 +359,26 @@ func TestOverviewCmdMissingConfigErrors(t *testing.T) {
 	_, _, err := execRootForTest(t, "overview", "--config", cfg)
 	if err == nil || !strings.Contains(err.Error(), "no credentials found") {
 		t.Fatalf("err: got %v, want no-credentials error", err)
+	}
+}
+
+// One run has one timestamp: the view's generated_at is the same instant the
+// email options are stamped with, not a second time.Now() read.
+func TestOverviewGeneratedAtUsesRunTimestamp(t *testing.T) {
+	now := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+	var stdout bytes.Buffer
+	err := runOverview(context.Background(), usercovOverviewClient(), &stdout, io.Discard,
+		overviewOpts{Output: "json", NoCache: true, EmailNow: now})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	var got struct {
+		GeneratedAt time.Time `json:"generated_at"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v\n%s", err, stdout.String())
+	}
+	if !got.GeneratedAt.Equal(now) {
+		t.Errorf("generated_at: got %v want %v", got.GeneratedAt, now)
 	}
 }

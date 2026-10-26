@@ -125,10 +125,9 @@ func loadRunContext(cmd *cobra.Command) (runContext, error) {
 	if err != nil {
 		return runContext{}, err
 	}
-	prof, err := lc.profile()
-	if err != nil {
-		return runContext{}, err
-	}
+	// client only succeeds when the config loaded and has a "default"
+	// profile, so it can be read directly.
+	prof := lc.file["default"]
 	return runContext{
 		Client:      client,
 		Profile:     prof,

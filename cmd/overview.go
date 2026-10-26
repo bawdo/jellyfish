@@ -395,6 +395,11 @@ func runOverview(ctx context.Context, client iruClient, stdout, stderr io.Writer
 	if err != nil {
 		return err
 	}
+	// Stamp the view with the run's timestamp, the same one the email
+	// options get, so generated_at and the email date always agree.
+	if !opts.EmailNow.IsZero() {
+		view.GeneratedAt = opts.EmailNow
+	}
 	if opts.EmailFlags.Send {
 		return runOverviewEmail(ctx, stderr, opts, view)
 	}
@@ -453,9 +458,6 @@ func renderOverviewEmailStdout(stdout, stderr io.Writer, opts overviewOpts, view
 	}
 	emailOpts.Tenant = opts.Profile.Subdomain
 	view.Tenant = opts.Profile.Subdomain
-	if view.GeneratedAt.IsZero() {
-		view.GeneratedAt = emailOpts.GeneratedAt
-	}
 	msgIn := opts.MessageReader
 	if msgIn == nil {
 		msgIn = os.Stdin
@@ -499,9 +501,6 @@ func runOverviewEmail(ctx context.Context, stderr io.Writer, opts overviewOpts, 
 	}
 	baseEmailOpts.Tenant = opts.Profile.Subdomain
 	view.Tenant = opts.Profile.Subdomain
-	if view.GeneratedAt.IsZero() {
-		view.GeneratedAt = baseEmailOpts.GeneratedAt
-	}
 
 	if opts.PerUser {
 		return runOverviewPerUser(ctx, stderr, opts, view, baseEmailOpts)

@@ -107,14 +107,7 @@ func buildUserShowView(b UserBundleInput, opts Options) userShowView {
 }
 
 func renderUserShowText(v userShowView) (string, error) {
-	tmpl, err := texttmpl.New("user_show.txt.tmpl").Funcs(texttmpl.FuncMap{
-		"cond": func(b bool, t, f string) string {
-			if b {
-				return t
-			}
-			return f
-		},
-	}).ParseFS(userShowFS, "templates/user_show.txt.tmpl")
+	tmpl, err := texttmpl.New("user_show.txt.tmpl").ParseFS(userShowFS, "templates/user_show.txt.tmpl")
 	if err != nil {
 		return "", err
 	}
