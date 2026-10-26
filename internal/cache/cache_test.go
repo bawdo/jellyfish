@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -228,5 +229,105 @@ func TestLoadVulnerabilitiesCorrupt(t *testing.T) {
 	}
 	if hit || out != nil {
 		t.Fatal("expected silent miss on corrupt cache")
+	}
+}
+
+// writeLegacy drops a pre-tenant cache file (as older binaries wrote it) in dir.
+func writeLegacy(t *testing.T, dir, name string) string {
+	t.Helper()
+	p := filepath.Join(dir, name)
+	if err := os.WriteFile(p, []byte(`{"version":1,"items":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestSaveRemovesLegacyDetectionsFile(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	path, err := DefaultPath("acme-us")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	legacyDet := writeLegacy(t, dir, "detections.json")
+	legacyVuln := writeLegacy(t, dir, "vulnerabilities.json")
+
+	if err := Save(path, []iru.Detection{{CVEID: "CVE-1"}}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if _, err := os.Stat(legacyDet); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("legacy detections.json should be removed, stat err = %v", err)
+	}
+	if _, err := os.Stat(legacyVuln); err != nil {
+		t.Errorf("a detections save must not touch vulnerabilities.json: %v", err)
+	}
+	if _, hit, _ := Load(path, time.Hour); !hit {
+		t.Error("per-tenant cache should still be written")
+	}
+}
+
+func TestSaveVulnerabilitiesRemovesLegacyVulnerabilitiesFile(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	path, err := DefaultVulnPath("acme-us")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	legacyDet := writeLegacy(t, dir, "detections.json")
+	legacyVuln := writeLegacy(t, dir, "vulnerabilities.json")
+
+	if err := SaveVulnerabilities(path, []iru.Vulnerability{{CVEID: "CVE-1"}}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if _, err := os.Stat(legacyVuln); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("legacy vulnerabilities.json should be removed, stat err = %v", err)
+	}
+	if _, err := os.Stat(legacyDet); err != nil {
+		t.Errorf("a vulnerabilities save must not touch detections.json: %v", err)
+	}
+}
+
+// No legacy file is the common case and must not be an error.
+func TestSaveWithoutLegacyFileSucceeds(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "jellyfish", "detections-acme-us.json")
+	if err := Save(path, []iru.Detection{{CVEID: "CVE-1"}}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+}
+
+// A failure to remove the legacy file (here: it is a non-empty directory) is
+// best-effort and must not fail the save.
+func TestSaveIgnoresLegacyRemovalFailure(t *testing.T) {
+	dir := t.TempDir()
+	blocker := filepath.Join(dir, "detections.json")
+	if err := os.MkdirAll(filepath.Join(blocker, "child"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "detections-acme-us.json")
+	if err := Save(path, []iru.Detection{{CVEID: "CVE-1"}}); err != nil {
+		t.Fatalf("save should ignore legacy removal failure: %v", err)
+	}
+	if _, hit, _ := Load(path, time.Hour); !hit {
+		t.Error("per-tenant cache should still be written")
+	}
+}
+
+// Saving to a path whose name is the legacy name itself must not delete the
+// file just written.
+func TestSaveToLegacyNamedPathKeepsFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "detections.json")
+	if err := Save(path, []iru.Detection{{CVEID: "CVE-1"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, hit, _ := Load(path, time.Hour); !hit {
+		t.Fatal("file written to the legacy name must survive its own save")
 	}
 }
