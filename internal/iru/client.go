@@ -3,6 +3,7 @@ package iru
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,6 +28,15 @@ type clientConfig struct {
 	httpClient *http.Client
 	userAgent  string
 	timeout    *time.Duration
+	// baseTransport is the innermost RoundTripper. Unexported so only tests
+	// can swap it; production always uses http.DefaultTransport.
+	baseTransport http.RoundTripper
+}
+
+// withBaseTransport replaces the innermost transport beneath the auth and
+// retry layers. It exists so tests can exercise the full stack in memory.
+func withBaseTransport(rt http.RoundTripper) Option {
+	return func(cfg *clientConfig) { cfg.baseTransport = rt }
 }
 
 // WithHTTPClient supplies a custom *http.Client. NewClient attaches the auth
@@ -58,11 +68,35 @@ func NewClient(baseURL, token string, opts ...Option) *Client {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 30 * time.Second}
 	}
+	base := cfg.baseTransport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	// The token and the request URL (query strings included) must only reach
+	// the host derived from baseURL.
+	var apiHost string
+	if u, err := url.Parse(baseURL); err == nil {
+		apiHost = u.Host
+	}
 	// Preserve the auth transport when callers swap in their own http.Client.
 	if httpClient.Transport == nil {
 		httpClient.Transport = &authTransport{
 			token: token,
-			base:  &retryTransport{base: http.DefaultTransport},
+			host:  apiHost,
+			base:  &retryTransport{base: base},
+		}
+	}
+	// Refuse cross-host redirects unless the caller supplied their own policy.
+	if httpClient.CheckRedirect == nil {
+		httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+			if !sameHost(req.URL.Host, apiHost) {
+				return fmt.Errorf("iru: refusing redirect to foreign host %q", req.URL.Host)
+			}
+			// Keep Go's default cap.
+			if len(via) >= 10 {
+				return errors.New("stopped after 10 redirects")
+			}
+			return nil
 		}
 	}
 	if cfg.timeout != nil {
