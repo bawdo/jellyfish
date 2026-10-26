@@ -36,17 +36,22 @@ func cfgcovReaderThenFail(prefix string) io.Reader {
 	return io.MultiReader(strings.NewReader(prefix), iotest.ErrReader(cfgcovErrRead))
 }
 
-// cfgcovReadOnlyConfig seeds a config file and drops its write bit, so Load
-// succeeds but the following Save fails with a permission error.
+// cfgcovReadOnlyConfig seeds a config file in a directory with its write bit
+// dropped, so Load succeeds but the following Save fails with a permission
+// error. The directory, not the file, is made read-only because Save replaces
+// the file by renaming a temp file into place.
 func cfgcovReadOnlyConfig(t *testing.T, f config.File) string {
 	t.Helper()
 	if os.Geteuid() == 0 {
 		t.Skip("root ignores file permissions, so the save cannot be made to fail")
 	}
-	path := seedConfigFile(t, t.TempDir(), f)
-	if err := os.Chmod(path, 0o400); err != nil {
-		t.Fatalf("chmod config: %v", err)
+	dir := t.TempDir()
+	path := seedConfigFile(t, dir, f)
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatalf("chmod config dir: %v", err)
 	}
+	// Restore write access so t.TempDir can remove it.
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
 	return path
 }
 
@@ -593,6 +598,45 @@ func TestConfigureCopyLogoToManagedDirFailures(t *testing.T) {
 				t.Fatalf("got %q, %v; want empty and an error containing %q", got, err, tc.wantInErr)
 			}
 		})
+	}
+}
+
+// Re-copying a logo over a same-named file left world-readable must tighten
+// it to 0600, not keep the old mode.
+func TestConfigureCopyLogoTightensExistingMode(t *testing.T) {
+	srcBytes, err := os.ReadFile("../internal/email/testdata/logo_small.png")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	dir := t.TempDir()
+	src := filepath.Join(dir, "logo.png")
+	if err := os.WriteFile(src, srcBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	logosDir := filepath.Join(dir, "logos")
+	if err := os.MkdirAll(logosDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(logosDir, "logo.png")
+	if err := os.WriteFile(stale, []byte("stale"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(stale, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := copyLogoToManagedDir(src, logosDir)
+	if err != nil || got != stale {
+		t.Fatalf("got %q, %v; want %q", got, err, stale)
+	}
+	info, err := os.Stat(stale)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Errorf("expected mode 0600, got %o", info.Mode().Perm())
+	}
+	if b := cfgcovReadFile(t, stale); !bytes.Equal(b, srcBytes) {
+		t.Error("logo bytes were not replaced")
 	}
 }
 

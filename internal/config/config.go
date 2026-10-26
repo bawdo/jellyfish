@@ -8,6 +8,8 @@ import (
 	"regexp"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/bawdo/jellyfish/internal/atomicfile"
 )
 
 // EmailConfig holds optional defaults for the -o email output. Every field
@@ -87,7 +89,10 @@ func Load(path string) (File, error) {
 	return f, nil
 }
 
-// Save writes the file with mode 0600, creating parent directories with 0700 if needed.
+// Save writes the file with mode 0600, creating parent directories with 0700 if
+// needed. The mode is enforced on an existing file too, and the replacement is
+// atomic. Existing parent directories keep their mode: an explicit --config
+// path may sit in a directory jellyfish does not own.
 func Save(path string, f File) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
@@ -96,7 +101,7 @@ func Save(path string, f File) error {
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
-	return os.WriteFile(path, data, 0o600)
+	return atomicfile.WriteFile(path, data, 0o600)
 }
 
 // BuildBaseURL derives the Iru API base URL from subdomain + region.

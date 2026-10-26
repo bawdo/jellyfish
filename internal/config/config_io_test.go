@@ -79,3 +79,25 @@ func TestDefaultPathWithoutHome(t *testing.T) {
 		t.Fatalf("expected an error without HOME, got %q", p)
 	}
 }
+
+// Save must tighten a pre-existing world-readable config, not just create
+// new ones 0600.
+func TestSaveTightensExistingFileMode(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yml")
+	if err := os.WriteFile(path, []byte("default: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Save(path, File{"default": Profile{Subdomain: "x", Region: "us"}}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Errorf("expected mode 0600 after save, got %o", info.Mode().Perm())
+	}
+}

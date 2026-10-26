@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/bawdo/jellyfish/internal/atomicfile"
 	"github.com/bawdo/jellyfish/internal/config"
 	"github.com/bawdo/jellyfish/internal/email"
 	"github.com/bawdo/jellyfish/internal/gmail"
@@ -547,7 +548,8 @@ func promptLogo(stdout, stderr io.Writer, r *bufio.Reader, current, logosDir str
 }
 
 // copyLogoToManagedDir validates src as a PNG <= MaxLogoBytes and copies it
-// to <logosDir>/<basename(src)> with mode 0o600. Returns the destination path.
+// to <logosDir>/<basename(src)> with mode 0o600, enforced even when replacing
+// an existing logo of the same name. Returns the destination path.
 func copyLogoToManagedDir(src, logosDir string) (string, error) {
 	// Write the bytes that passed validation rather than reading src again,
 	// so the copy can't differ from what was checked.
@@ -559,8 +561,7 @@ func copyLogoToManagedDir(src, logosDir string) (string, error) {
 		return "", fmt.Errorf("create logos dir %s: %w", logosDir, err)
 	}
 	dst := filepath.Join(logosDir, filepath.Base(src))
-	// #nosec G304 G703 - dst is constructed from operator-controlled logosDir
-	if err := os.WriteFile(dst, data, 0o600); err != nil {
+	if err := atomicfile.WriteFile(dst, data, 0o600); err != nil {
 		return "", fmt.Errorf("write %s: %w", dst, err)
 	}
 	return dst, nil

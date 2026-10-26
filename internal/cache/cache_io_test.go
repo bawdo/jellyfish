@@ -96,3 +96,25 @@ func TestNoUserCacheDir(t *testing.T) {
 		t.Error("explicit-path cache should still be written")
 	}
 }
+
+// A cache file left world-readable by an older binary is tightened to 0600
+// on the next save.
+func TestSaveTightensExistingFileMode(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "detections-acme-us.json")
+	if err := os.WriteFile(path, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Save(path, []iru.Detection{{CVEID: "CVE-1"}}); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != fileMode {
+		t.Errorf("expected mode %o after save, got %o", fileMode, info.Mode().Perm())
+	}
+}

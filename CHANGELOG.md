@@ -4,6 +4,18 @@ All notable changes to jellyfish are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- `config.yml`, the detection and vulnerability caches, and the managed
+  email logo are now always left at mode 0600. Before, the mode was only set
+  when the file was first created, so a file that already existed with wider
+  permissions kept them. Each write now goes to a temp file and is renamed
+  into place, so an interrupted save can't leave a partial file either.
+  A symlinked `config.yml` keeps its link. Parent directories that already
+  exist keep their mode.
+
 ## [0.2.0] - 2026-10-27
 
 ### Security
