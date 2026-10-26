@@ -29,6 +29,7 @@ type userShowOpts struct {
 	Output         string
 	NoCache        bool
 	CacheTTL       time.Duration
+	CacheTenant    string
 	EmailFlags     emailFlagValues
 	EmailNow       time.Time
 	Profile        config.Profile
@@ -88,11 +89,12 @@ func newUserShowCmd() *cobra.Command {
 				opts.ExplicitOutput = outFmt
 			}
 			opts.EmailNow = time.Now()
+			prof, err := activeProfile(cmd)
+			if err != nil {
+				return err
+			}
+			opts.CacheTenant = cacheTenantKey(prof)
 			if hasEmailOutput {
-				prof, err := activeProfile(cmd)
-				if err != nil {
-					return err
-				}
 				opts.Profile = prof
 			}
 			if opts.KeychainGet == nil {
@@ -117,7 +119,7 @@ func newUserShowCmd() *cobra.Command {
 }
 
 func runUserShow(ctx context.Context, client iruClient, w, stderr io.Writer, opts userShowOpts) error {
-	all, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache, opts.CacheTTL)
+	all, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache, opts.CacheTTL, opts.CacheTenant)
 	if err != nil {
 		return err
 	}

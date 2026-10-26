@@ -36,8 +36,10 @@ import (
 //
 // Returns an error if either Iru call fails or the (filtered) roster is
 // empty.
-func assembleOverview(ctx context.Context, client iruClient, stderr io.Writer, noCache bool, userFilter map[string]struct{}, ttl time.Duration) (email.OverviewView, error) {
-	allDetections, err := fetchAllDetections(ctx, client, stderr, !noCache, ttl)
+//
+// tenant is the cacheTenantKey for the active profile; see fetchAllDetections.
+func assembleOverview(ctx context.Context, client iruClient, stderr io.Writer, noCache bool, userFilter map[string]struct{}, ttl time.Duration, tenant string) (email.OverviewView, error) {
+	allDetections, err := fetchAllDetections(ctx, client, stderr, !noCache, ttl, tenant)
 	if err != nil {
 		return email.OverviewView{}, err
 	}
@@ -317,6 +319,7 @@ type overviewOpts struct {
 	Yes            bool
 	NoCache        bool
 	CacheTTL       time.Duration
+	CacheTenant    string
 	Profile        config.Profile
 	EmailNow       time.Time
 	// Injected for tests:
@@ -350,11 +353,12 @@ func newOverviewCmd() *cobra.Command {
 				return err
 			}
 			opts.CacheTTL = ttl
+			prof, err := activeProfile(cmd)
+			if err != nil {
+				return err
+			}
+			opts.CacheTenant = cacheTenantKey(prof)
 			if outFmt == "email" || opts.EmailFlags.Send {
-				prof, err := activeProfile(cmd)
-				if err != nil {
-					return err
-				}
 				opts.Profile = prof
 			}
 			if opts.KeychainGet == nil {
@@ -401,7 +405,7 @@ func runOverview(ctx context.Context, client iruClient, stdout, stderr io.Writer
 	if err != nil {
 		return err
 	}
-	view, err := assembleOverview(ctx, client, stderr, opts.NoCache, filter, opts.CacheTTL)
+	view, err := assembleOverview(ctx, client, stderr, opts.NoCache, filter, opts.CacheTTL, opts.CacheTenant)
 	if err != nil {
 		return err
 	}

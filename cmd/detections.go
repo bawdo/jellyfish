@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/bawdo/jellyfish/internal/cache"
+	"github.com/bawdo/jellyfish/internal/config"
 	"github.com/bawdo/jellyfish/internal/iru"
 )
 
@@ -65,22 +66,35 @@ func fetchAllCached[T any](
 	return all, nil
 }
 
+// cacheTenantKey returns the on-disk cache key for the profile's tenant,
+// "<subdomain>-<region>", or "" when either part is unset. An empty key makes
+// the cache path lookup fail, so the walk runs live rather than sharing a
+// file between tenants.
+func cacheTenantKey(prof config.Profile) string {
+	if prof.Subdomain == "" || prof.Region == "" {
+		return ""
+	}
+	return prof.Subdomain + "-" + prof.Region
+}
+
 // fetchAllDetections returns every detection in the tenant, from cache when
 // fresh or by walking the API. The progress indicator on stderr lets the user
-// see the walk advancing.
-func fetchAllDetections(ctx context.Context, client iruClient, stderr io.Writer, useCache bool, ttl time.Duration) ([]iru.Detection, error) {
+// see the walk advancing. tenant is the cacheTenantKey for the active profile
+// and keeps each tenant's cache in its own file.
+func fetchAllDetections(ctx context.Context, client iruClient, stderr io.Writer, useCache bool, ttl time.Duration, tenant string) ([]iru.Detection, error) {
 	return fetchAllCached(stderr, useCache, ttl, "detections",
-		cache.DefaultPath, cache.Load, cache.Save,
+		func() (string, error) { return cache.DefaultPath(tenant) }, cache.Load, cache.Save,
 		func(cb func(page []iru.Detection) error) error {
 			return client.ListDetectionsStream(ctx, iru.DetectionFilters{}, cb)
 		})
 }
 
 // fetchAllVulnerabilities returns every vulnerability rollup in the tenant,
-// from cache when fresh or by walking the API.
-func fetchAllVulnerabilities(ctx context.Context, client iruClient, stderr io.Writer, useCache bool, ttl time.Duration) ([]iru.Vulnerability, error) {
+// from cache when fresh or by walking the API. tenant is as for
+// fetchAllDetections.
+func fetchAllVulnerabilities(ctx context.Context, client iruClient, stderr io.Writer, useCache bool, ttl time.Duration, tenant string) ([]iru.Vulnerability, error) {
 	return fetchAllCached(stderr, useCache, ttl, "vulnerabilities",
-		cache.DefaultVulnPath, cache.LoadVulnerabilities, cache.SaveVulnerabilities,
+		func() (string, error) { return cache.DefaultVulnPath(tenant) }, cache.LoadVulnerabilities, cache.SaveVulnerabilities,
 		func(cb func(page []iru.Vulnerability) error) error {
 			return client.ListVulnerabilitiesStream(ctx, iru.VulnerabilityFilters{}, cb)
 		})

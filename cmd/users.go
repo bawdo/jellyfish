@@ -30,6 +30,7 @@ type usersSendEmailOpts struct {
 	Yes            bool
 	NoCache        bool
 	CacheTTL       time.Duration
+	CacheTenant    string
 	Profile        config.Profile
 	EmailNow       time.Time
 	// Injected for tests:
@@ -70,6 +71,7 @@ func newUsersSendEmailCmd() *cobra.Command {
 				return err
 			}
 			opts.CacheTTL = ttl
+			opts.CacheTenant = cacheTenantKey(prof)
 			opts.Profile = prof
 			if opts.KeychainGet == nil {
 				opts.KeychainGet = keychain.GetGmailServiceAccount
@@ -187,7 +189,7 @@ func runUsersSendEmail(ctx context.Context, client iruClient, stderr io.Writer, 
 		sender = s
 	}
 
-	allDetections, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache, opts.CacheTTL)
+	allDetections, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache, opts.CacheTTL, opts.CacheTenant)
 	if err != nil {
 		return err
 	}

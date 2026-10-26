@@ -103,7 +103,7 @@ Every detection returned is active by definition - Iru drops a detection once th
 
 ### Detection cache
 
-`vulns list` and `user show` walk Iru's detections endpoint in full, because Iru has no per-device server filter. The first call takes 30-90 seconds on a large tenant; results are cached for 15 minutes under `~/Library/Caches/jellyfish/`. Pass `--no-cache` to force a fresh fetch. Change the TTL with `cache_ttl_minutes` in `config.yml` or via `jellyfish configure cache`.
+`vulns list` and `user show` walk Iru's detections endpoint in full, because Iru has no per-device server filter. The first call takes 30-90 seconds on a large tenant; results are cached for 15 minutes under `~/Library/Caches/jellyfish/`, one file per tenant (e.g. `detections-<subdomain>-<region>.json`), so switching `--config` between tenants never mixes their data. Pass `--no-cache` to force a fresh fetch. Change the TTL with `cache_ttl_minutes` in `config.yml` or via `jellyfish configure cache`.
 
 ### Vulnerability summary
 

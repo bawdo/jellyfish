@@ -23,12 +23,13 @@ import (
 )
 
 type vulnsListOpts struct {
-	DeviceID string
-	Serial   string
-	Limit    int
-	Output   string
-	NoCache  bool
-	CacheTTL time.Duration
+	DeviceID    string
+	Serial      string
+	Limit       int
+	Output      string
+	NoCache     bool
+	CacheTTL    time.Duration
+	CacheTenant string
 }
 
 func newVulnsCmd() *cobra.Command {
@@ -59,6 +60,11 @@ func newVulnsListCmd() *cobra.Command {
 				return err
 			}
 			opts.CacheTTL = ttl
+			prof, err := activeProfile(cmd)
+			if err != nil {
+				return err
+			}
+			opts.CacheTenant = cacheTenantKey(prof)
 			return runVulnsList(cmd.Context(), client, cmd.OutOrStdout(), cmd.ErrOrStderr(), opts)
 		},
 	}
@@ -88,7 +94,7 @@ func runVulnsList(ctx context.Context, client iruClient, w, stderr io.Writer, op
 	switch {
 	case targetDeviceID != "":
 		// Iru ignores per-device filters on /detections, so walk and filter.
-		all, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache, opts.CacheTTL)
+		all, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache, opts.CacheTTL, opts.CacheTenant)
 		if err != nil {
 			return err
 		}
@@ -109,7 +115,7 @@ func runVulnsList(ctx context.Context, client iruClient, w, stderr io.Writer, op
 		}
 		detections = ds
 	default:
-		ds, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache, opts.CacheTTL)
+		ds, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache, opts.CacheTTL, opts.CacheTenant)
 		if err != nil {
 			return err
 		}
@@ -176,6 +182,7 @@ type vulnsSummaryOpts struct {
 	Output         string
 	NoCache        bool
 	CacheTTL       time.Duration
+	CacheTenant    string
 	EmailFlags     emailFlagValues
 	EmailNow       time.Time
 	Profile        config.Profile
@@ -209,11 +216,12 @@ minutes; pass --no-cache to force a fresh fetch.`,
 				opts.ExplicitOutput = outFmt
 			}
 			opts.EmailNow = time.Now()
+			prof, err := activeProfile(cmd)
+			if err != nil {
+				return err
+			}
+			opts.CacheTenant = cacheTenantKey(prof)
 			if hasEmailOutput {
-				prof, err := activeProfile(cmd)
-				if err != nil {
-					return err
-				}
 				opts.Profile = prof
 			}
 			if opts.KeychainGet == nil {
@@ -251,7 +259,7 @@ minutes; pass --no-cache to force a fresh fetch.`,
 }
 
 func runVulnsSummary(ctx context.Context, client iruClient, w, stderr io.Writer, opts vulnsSummaryOpts) error {
-	all, err := fetchAllVulnerabilities(ctx, client, stderr, !opts.NoCache, opts.CacheTTL)
+	all, err := fetchAllVulnerabilities(ctx, client, stderr, !opts.NoCache, opts.CacheTTL, opts.CacheTenant)
 	if err != nil {
 		return err
 	}

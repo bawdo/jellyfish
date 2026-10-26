@@ -70,7 +70,7 @@ func TestAssembleOverviewSumsAndSorts(t *testing.T) {
 		},
 	}
 
-	view, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil, time.Duration(0))
+	view, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil, time.Duration(0), "")
 	if err != nil {
 		t.Fatalf("assembleOverview: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestAssembleOverviewEmptyRosterErrors(t *testing.T) {
 		fakeClient:    &fakeClient{users: []iru.User{{ID: "u1", Name: "x"}}},
 		devicesByUser: map[string][]iru.Device{"u1": nil},
 	}
-	_, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil, time.Duration(0))
+	_, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil, time.Duration(0), "")
 	if err == nil || err.Error() == "" {
 		t.Fatalf("expected an empty-roster error, got nil")
 	}
@@ -146,7 +146,7 @@ func TestAssembleOverviewTieBreakerByName(t *testing.T) {
 			"u-b": {{DeviceID: "d-b"}},
 		},
 	}
-	view, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil, time.Duration(0))
+	view, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil, time.Duration(0), "")
 	if err != nil {
 		t.Fatalf("assembleOverview: %v", err)
 	}
@@ -526,7 +526,7 @@ func TestAssembleOverviewDeviceWalkErrorPropagates(t *testing.T) {
 		devicesByUser: map[string][]iru.Device{"u1": {{DeviceID: "d-a"}}},
 		streamErr:     errors.New("iru down"),
 	}
-	_, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil, time.Duration(0))
+	_, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil, time.Duration(0), "")
 	if err == nil || !strings.Contains(err.Error(), "iru down") {
 		t.Fatalf("expected iru down error, got %v", err)
 	}
@@ -762,7 +762,7 @@ func TestAssembleOverviewFilterByEmails(t *testing.T) {
 		"ghost@x": {}, // not in tenant -> should produce a warn line
 	}
 	var stderr bytes.Buffer
-	view, err := assembleOverview(context.Background(), c, &stderr, false, filter, time.Duration(0))
+	view, err := assembleOverview(context.Background(), c, &stderr, false, filter, time.Duration(0), "")
 	if err != nil {
 		t.Fatalf("assembleOverview: %v", err)
 	}
@@ -906,7 +906,7 @@ func TestAssembleOverviewAcceptsCustomTTL(t *testing.T) {
 		},
 		devicesByUser: map[string][]iru.Device{"u1": {{DeviceID: "d1"}}},
 	}
-	view, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil, 30*time.Minute)
+	view, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil, 30*time.Minute, "")
 	if err != nil {
 		t.Fatalf("assembleOverview: %v", err)
 	}
@@ -931,7 +931,7 @@ func TestAssembleOverviewKeepsDuplicateEmailUsers(t *testing.T) {
 	}
 	// noCache=true bypasses the shared on-disk detection cache so this test does
 	// not pick up stale data left behind by TestAssembleOverviewAcceptsCustomTTL.
-	view, err := assembleOverview(context.Background(), client, io.Discard, true, nil, 0)
+	view, err := assembleOverview(context.Background(), client, io.Discard, true, nil, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}

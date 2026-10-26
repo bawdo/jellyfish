@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"time"
 
 	"github.com/bawdo/jellyfish/internal/iru"
@@ -82,15 +83,31 @@ func cachePath(name string) (string, error) {
 	return filepath.Join(dir, "jellyfish", name), nil
 }
 
-// DefaultPath returns the cache file path for the detections walk.
-func DefaultPath() (string, error) {
-	return cachePath("detections.json")
+// tenantRe bounds a tenant key to characters that are safe in a filename:
+// lowercase alphanumerics and hyphens, starting and ending alphanumeric. This
+// rules out empty keys, path separators and "..".
+var tenantRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
+
+// tenantCachePath returns the per-tenant cache path "<base>-<tenant>.json".
+// Each tenant gets its own file so a walk cached for one tenant can never be
+// served to another.
+func tenantCachePath(base, tenant string) (string, error) {
+	if !tenantRe.MatchString(tenant) {
+		return "", fmt.Errorf("invalid cache tenant key %q", tenant)
+	}
+	return cachePath(base + "-" + tenant + ".json")
 }
 
-// DefaultVulnPath returns the cache file path for vulnerability rollups —
-// distinct from the detections cache.
-func DefaultVulnPath() (string, error) {
-	return cachePath("vulnerabilities.json")
+// DefaultPath returns the cache file path for the detections walk of the
+// given tenant (e.g. "acme-us"). An empty or path-unsafe tenant is an error.
+func DefaultPath(tenant string) (string, error) {
+	return tenantCachePath("detections", tenant)
+}
+
+// DefaultVulnPath returns the cache file path for vulnerability rollups of
+// the given tenant, distinct from the detections cache.
+func DefaultVulnPath(tenant string) (string, error) {
+	return tenantCachePath("vulnerabilities", tenant)
 }
 
 // Load reads the detections cache. See load for hit/miss/error semantics.

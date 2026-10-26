@@ -3,6 +3,7 @@ package cache
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -144,6 +145,74 @@ func TestLoadVulnerabilitiesMissingFile(t *testing.T) {
 	}
 	if out != nil {
 		t.Fatalf("expected nil, got %+v", out)
+	}
+}
+
+func TestDefaultPathsAreTenantSpecific(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	for name, fn := range map[string]func(string) (string, error){
+		"DefaultPath":     DefaultPath,
+		"DefaultVulnPath": DefaultVulnPath,
+	} {
+		a, err := fn("acme-us")
+		if err != nil {
+			t.Fatalf("%s(acme-us): %v", name, err)
+		}
+		b, err := fn("other-eu")
+		if err != nil {
+			t.Fatalf("%s(other-eu): %v", name, err)
+		}
+		if a == b {
+			t.Errorf("%s: tenants share a cache path %q", name, a)
+		}
+		if !strings.Contains(filepath.Base(a), "acme-us") {
+			t.Errorf("%s: path %q does not name the tenant", name, a)
+		}
+	}
+	d, _ := DefaultPath("acme-us")
+	v, _ := DefaultVulnPath("acme-us")
+	if d == v {
+		t.Errorf("detections and vulnerabilities share a path %q", d)
+	}
+}
+
+func TestDefaultPathsRejectUnsafeTenant(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	for _, tenant := range []string{"", "..", "../evil", "a/b", `a\b`, "acme.us", "Acme-US", "acme us", "-"} {
+		if p, err := DefaultPath(tenant); err == nil {
+			t.Errorf("DefaultPath(%q): expected error, got %q", tenant, p)
+		}
+		if p, err := DefaultVulnPath(tenant); err == nil {
+			t.Errorf("DefaultVulnPath(%q): expected error, got %q", tenant, p)
+		}
+	}
+}
+
+func TestCacheForOneTenantMissesForAnother(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	pathA, err := DefaultPath("acme-us")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Save(pathA, []iru.Detection{{CVEID: "CVE-A", DeviceID: "d-a"}}); err != nil {
+		t.Fatal(err)
+	}
+	pathB, err := DefaultPath("other-eu")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, hit, err := Load(pathB, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hit || out != nil {
+		t.Fatalf("tenant B read tenant A's cache: hit=%v out=%+v", hit, out)
+	}
+	if _, hit, _ := Load(pathA, time.Hour); !hit {
+		t.Fatal("tenant A's own cache should still hit")
 	}
 }
 
