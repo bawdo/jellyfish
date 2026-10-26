@@ -18,54 +18,173 @@ func TestRetryWait(t *testing.T) {
 		name       string
 		retryAfter string
 		want       time.Duration
+		wantOK     bool
 	}{
-		{"absent uses backoff", "", backoff},
-		{"zero is honoured", "0", 0},
-		{"small seconds honoured", "5", 5 * time.Second},
-		{"at cap honoured", "30", maxRetryAfter},
-		{"above cap is clamped", "3600", maxRetryAfter},
-		{"huge value is clamped", "999999999999", maxRetryAfter},
-		{"negative falls back to backoff", "-5", backoff},
-		{"http-date unsupported falls back to backoff", "Wed, 21 Oct 2015 07:28:00 GMT", backoff},
-		{"garbage falls back to backoff", "soon", backoff},
+		{"absent uses backoff", "", backoff, true},
+		{"zero is honoured", "0", 0, true},
+		{"small seconds honoured", "5", 5 * time.Second, true},
+		{"at cap honoured", "10", maxRetryAfter, true},
+		{"just above cap gives up", "11", 0, false},
+		{"old 30s cap gives up", "30", 0, false},
+		{"far above cap gives up", "3600", 0, false},
+		{"huge value gives up", "999999999999", 0, false},
+		{"negative falls back to backoff", "-5", backoff, true},
+		{"http-date unsupported falls back to backoff", "Wed, 21 Oct 2015 07:28:00 GMT", backoff, true},
+		{"garbage falls back to backoff", "soon", backoff, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := retryWait(tc.retryAfter, backoff); got != tc.want {
-				t.Fatalf("retryWait(%q) = %v, want %v", tc.retryAfter, got, tc.want)
+			got, ok := retryWait(tc.retryAfter, backoff)
+			if got != tc.want || ok != tc.wantOK {
+				t.Fatalf("retryWait(%q) = (%v, %v), want (%v, %v)", tc.retryAfter, got, ok, tc.want, tc.wantOK)
 			}
 		})
 	}
 }
 
-func TestRetryTransportWaitsOnLargeRetryAfterUntilCtxDone(t *testing.T) {
-	// Wiring check without real sleeps: the server asks for an hour and the
-	// context allows 50ms. The transport must be waiting (not retrying
-	// immediately) and must return on the ctx deadline.
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
+func TestMaxRetryAfterBelowDefaultTimeout(t *testing.T) {
+	// A cap equal to the client timeout can never be honoured in full.
+	c := NewClient(testBaseURL, testToken)
+	if maxRetryAfter >= c.httpClient.Timeout {
+		t.Fatalf("maxRetryAfter %v must be below the default client timeout %v", maxRetryAfter, c.httpClient.Timeout)
+	}
+}
 
-	var calls atomic.Int32
-	rt := &retryTransport{base: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+func TestWaitFitsDeadline(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name        string
+		deadline    time.Time
+		hasDeadline bool
+		wait        time.Duration
+		want        bool
+	}{
+		{"no deadline always fits", time.Time{}, false, time.Hour, true},
+		{"ends before deadline fits", now.Add(time.Second), true, 500 * time.Millisecond, true},
+		{"ends exactly at deadline does not fit", now.Add(time.Second), true, time.Second, false},
+		{"ends after deadline does not fit", now.Add(200 * time.Millisecond), true, 5 * time.Second, false},
+		{"deadline already passed does not fit", now.Add(-time.Second), true, 0, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := waitFitsDeadline(tc.deadline, tc.hasDeadline, now, tc.wait); got != tc.want {
+				t.Fatalf("waitFitsDeadline = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// rateLimited returns a fake base transport that always answers 429 with the
+// given Retry-After and a recognisable body, counting the calls it sees.
+func rateLimited(calls *atomic.Int32, retryAfter string) http.RoundTripper {
+	return roundTripperFunc(func(r *http.Request) (*http.Response, error) {
 		calls.Add(1)
 		h := http.Header{}
-		h.Set("Retry-After", "3600")
+		h.Set("Retry-After", retryAfter)
 		return &http.Response{
 			StatusCode: http.StatusTooManyRequests,
 			Header:     h,
-			Body:       io.NopCloser(strings.NewReader("")),
+			Body:       io.NopCloser(strings.NewReader(`{"detail":"slow down"}`)),
+			Request:    r,
 		}, nil
-	})}
+	})
+}
+
+// roundTripWithin runs rt.RoundTrip(req) and fails the test if it takes
+// longer than limit, so a regression shows up as a failure, not a hang.
+func roundTripWithin(t *testing.T, rt http.RoundTripper, req *http.Request, limit time.Duration) (*http.Response, error) {
+	t.Helper()
+	type result struct {
+		resp *http.Response
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		resp, err := rt.RoundTrip(req)
+		done <- result{resp, err}
+	}()
+	select {
+	case r := <-done:
+		return r.resp, r.err
+	case <-time.After(limit):
+		t.Fatalf("RoundTrip did not return within %v", limit)
+		return nil, nil
+	}
+}
+
+func assertRateLimitedResponse(t *testing.T, resp *http.Response, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("expected the 429 response, got error %v", err)
+	}
+	if resp == nil || resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("expected status 429, got %+v", resp)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if string(body) != `{"detail":"slow down"}` {
+		t.Fatalf("expected upstream body preserved, got %q", body)
+	}
+}
+
+func TestRetryTransportReturns429WhenWaitWouldPassDeadline(t *testing.T) {
+	// The server asks for 5s (inside the cap) but the ctx only allows 200ms.
+	// Waiting would only end in a ctx error, so the 429 itself comes back.
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	var calls atomic.Int32
+	rt := &retryTransport{base: rateLimited(&calls, "5")}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://example.test/x", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = rt.RoundTrip(req)
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("expected context.DeadlineExceeded, got %v", err)
+	start := time.Now()
+	resp, err := roundTripWithin(t, rt, req, 2*time.Second)
+	assertRateLimitedResponse(t, resp, err)
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("expected 1 attempt, got %d", got)
+	}
+	if elapsed := time.Since(start); elapsed > 100*time.Millisecond {
+		t.Fatalf("expected an immediate return, took %v", elapsed)
+	}
+}
+
+func TestRetryTransportReturns429WhenRetryAfterExceedsCap(t *testing.T) {
+	// No deadline at all: a Retry-After above the cap must not be waited out.
+	var calls atomic.Int32
+	rt := &retryTransport{base: rateLimited(&calls, "3600")}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.test/x", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := roundTripWithin(t, rt, req, 2*time.Second)
+	assertRateLimitedResponse(t, resp, err)
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("expected 1 attempt, got %d", got)
+	}
+}
+
+func TestClientTimeoutSurfacesRateLimit(t *testing.T) {
+	// End to end: http.Client.Timeout puts a deadline on the request ctx. A
+	// Retry-After that would outlast it must surface as ErrRateLimited, not
+	// as a deadline error.
+	var calls atomic.Int32
+	c := NewClient(testBaseURL, testToken,
+		WithTimeout(200*time.Millisecond),
+		withBaseTransport(rateLimited(&calls, "5")))
+
+	done := make(chan error, 1)
+	go func() { done <- c.do(context.Background(), http.MethodGet, "/devices", nil, nil) }()
+	select {
+	case err := <-done:
+		if !errors.Is(err, ErrRateLimited) {
+			t.Fatalf("expected ErrRateLimited, got %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("do did not return within 2s")
 	}
 	if got := calls.Load(); got != 1 {
-		t.Fatalf("expected 1 attempt before ctx deadline, got %d", got)
+		t.Fatalf("expected 1 attempt, got %d", got)
 	}
 }
 
