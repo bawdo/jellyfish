@@ -1,0 +1,144 @@
+name: Release
+
+# Runs on every push to main. The CI jobs run first (reused from ci.yml).
+# A release is then cut only when the newest "## [X.Y.Z] - date" heading in
+# CHANGELOG.md names a version that has no vX.Y.Z tag yet. The tag is created
+# at the pushed commit, the darwin binaries are attached with a checksums
+# file, and the checksums are attested with build provenance so anyone can
+# run: gh attestation verify checksums.txt --repo bawdo/jellyfish
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  release:
+    name: Release
+    needs: ci
+    runs-on: macos-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - name: Decide whether a release is due
+        id: plan
+        run: |
+          version=$(./scripts/changelog-version.sh version)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
+            echo "v$version is already tagged; nothing to release"
+            echo "due=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "v$version is not tagged; releasing from $GITHUB_SHA"
+            echo "due=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Go
+        if: steps.plan.outputs.due == 'true'
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: '1.26.x'
+          check-latest: true
+          cache: true
+
+      - name: Build darwin binaries
+        if: steps.plan.outputs.due == 'true'
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          ldflags="-s -w \
+            -X github.com/bawdo/jellyfish/internal/version.Version=$tag \
+            -X github.com/bawdo/jellyfish/internal/version.Commit=$GITHUB_SHA \
+            -X github.com/bawdo/jellyfish/internal/version.Tag=$tag \
+            -X github.com/bawdo/jellyfish/internal/version.Dirty=false"
+          mkdir -p dist
+          for arch in arm64 amd64; do
+            out="dist/jellyfish_${VERSION}_darwin_${arch}"
+            mkdir -p "$out"
+            CGO_ENABLED=1 GOOS=darwin GOARCH=$arch go build -trimpath -ldflags "$ldflags" -o "$out/jellyfish" .
+            cp LICENSE README.md CHANGELOG.md "$out/"
+            tar -C dist -czf "$out.tar.gz" "$(basename "$out")"
+            rm -r "$out"
+          done
+          (cd dist && shasum -a 256 *.tar.gz > checksums.txt && cat checksums.txt)
+
+      - name: Smoke test the native binary
+        if: steps.plan.outputs.due == 'true'
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          set -euo pipefail
+          arch=$(uname -m | sed 's/x86_64/amd64/')
+          tar -C "$RUNNER_TEMP" -xzf "dist/jellyfish_${VERSION}_darwin_${arch}.tar.gz"
+          output=$("$RUNNER_TEMP/jellyfish_${VERSION}_darwin_${arch}/jellyfish" version)
+          echo "$output"
+          echo "$output" | head -1 | grep -q "^jellyfish v$VERSION" \
+            || { echo "built binary does not report v$VERSION"; exit 1; }
+
+      - name: Attest build provenance
+        if: steps.plan.outputs.due == 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: dist/checksums.txt
+
+      - name: Write release notes
+        if: steps.plan.outputs.due == 'true'
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          set -euo pipefail
+          previous=$(git tag -l 'v[0-9]*' | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)
+          {
+            ./scripts/changelog-version.sh notes "$VERSION"
+            echo
+            echo "Verify a download with:"
+            echo
+            echo '```'
+            echo "gh attestation verify checksums.txt --repo $GITHUB_REPOSITORY"
+            echo "shasum -a 256 -c checksums.txt"
+            echo '```'
+            if [ -n "$previous" ]; then
+              echo
+              echo "**Full Changelog**: https://github.com/$GITHUB_REPOSITORY/compare/$previous...v$VERSION"
+            fi
+          } > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
+
+      - name: Create the release
+        if: steps.plan.outputs.due == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Created as a draft, assets uploaded, then published, so an
+          # immutable release never exists without its assets.
+          gh release create "v$VERSION" \
+            --draft \
+            --target "$GITHUB_SHA" \
+            --title "v$VERSION" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            dist/*.tar.gz dist/checksums.txt
+          gh release edit "v$VERSION" --draft=false --latest
+          gh release view "v$VERSION" --json url --jq .url

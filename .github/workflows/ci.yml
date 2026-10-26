@@ -3,11 +3,18 @@ name: CI
 permissions:
   contents: read
 
+# Pull requests run this workflow directly. Pushes to main run it through
+# release.yml (workflow_call) so a release is only cut once every job here
+# has passed on the merge commit.
 on:
   push:
-    branches: [ '*' ]
+    branches-ignore: [ main ]
   pull_request:
     branches: [ '*' ]
+  workflow_call:
+    secrets:
+      CODECOV_TOKEN:
+        required: false
   workflow_dispatch:
 
 concurrency:
@@ -93,6 +100,18 @@ jobs:
           files: ./coverage.txt
           fail_ci_if_error: false
           verbose: true
+
+  changelog:
+    name: Changelog
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - name: Check the newest CHANGELOG.md version is releasable
+        run: ./scripts/changelog-version.sh check
 
   vuln:
     name: Vulnerability Scan

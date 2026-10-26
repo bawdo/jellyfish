@@ -18,7 +18,24 @@ A macOS-only Go CLI for the Iru (formerly Kandji) Endpoint Management API.
 
 ## Install
 
-Requires Go 1.26+ on macOS.
+macOS only. Either download a release or build from source.
+
+### From a release
+
+Each [release](https://github.com/bawdo/jellyfish/releases) ships `darwin_arm64` (Apple silicon) and `darwin_amd64` (Intel) archives plus a `checksums.txt`. Download the archive for your Mac and the checksums file, then verify and install:
+
+```bash
+gh attestation verify checksums.txt --repo bawdo/jellyfish   # built by this repo's CI
+shasum -a 256 -c checksums.txt --ignore-missing              # archive matches
+tar -xzf jellyfish_*_darwin_arm64.tar.gz
+install -m 0755 jellyfish_*_darwin_arm64/jellyfish /usr/local/bin/jellyfish
+```
+
+The attestation check needs the [GitHub CLI](https://cli.github.com/). Skip it if you don't have `gh`, but keep the checksum step.
+
+### From source
+
+Requires Go 1.26+.
 
 ```bash
 go install github.com/bawdo/jellyfish@latest
@@ -285,11 +302,15 @@ Stderr emits one line per recipient (`sent` / `would-send` / `skip` / `error`) a
 ```bash
 make test     # go test ./...
 make lint     # golangci-lint run
-make pre-ci   # nine-check local build validator
+make pre-ci   # ten-check local build validator
 make build    # ./bin/jellyfish with version ldflags
 ```
 
-`make pre-ci` (`scripts/pre-ci-check.sh`) runs the Go version check, `go mod download`, `gofmt -s`, `go test -race`, `golangci-lint`, coverage tracking, a versioned build, `govulncheck`, and a CLI smoke test; logs land in `coverage/`. `make pre-ci-fix` auto-fixes gofmt issues first.
+`make pre-ci` (`scripts/pre-ci-check.sh`) runs the Go version check, `go mod download`, `gofmt -s`, `go test -race`, `golangci-lint`, coverage tracking, a versioned build, `govulncheck`, a CLI smoke test and the changelog check; logs land in `coverage/`. `make pre-ci-fix` auto-fixes gofmt issues first.
+
+### Releasing
+
+A release is cut automatically when a merge to `main` moves the newest `## [X.Y.Z] - YYYY-MM-DD` heading in `CHANGELOG.md` to a version with no `vX.Y.Z` tag. The workflow (`.github/workflows/release.yml`) runs CI, tags the merge commit, builds and attests the darwin binaries, and publishes the release with that changelog section as the notes. See [CONTRIBUTING.md](CONTRIBUTING.md) for the steps.
 
 Real-Keychain integration tests:
 
