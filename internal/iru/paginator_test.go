@@ -367,4 +367,55 @@ func TestWalkCursorHandlesBothNextShapes(t *testing.T) {
 	}
 }
 
+func TestWalkCursorStopsWhenCursorDoesNotAdvance(t *testing.T) {
+	// Simulates the server ignoring the cursor param and handing back the
+	// same next cursor forever. Without a guard this walks indefinitely, so
+	// the fake bails out after a generous number of calls.
+	const runaway = 50
+	calls := 0
+	fetch := func(_ context.Context, _ int, _ string) ([]int, string, error) {
+		calls++
+		if calls > runaway {
+			t.Fatalf("walk did not stop after %d fetches with a repeating cursor", runaway)
+		}
+		return []int{1}, "same", nil
+	}
+	pages := 0
+	err := WalkCursor[int](context.Background(), 1, fetch, func([]int) error {
+		pages++
+		return nil
+	})
+	if !errors.Is(err, ErrCursorStalled) {
+		t.Fatalf("expected ErrCursorStalled, got %v", err)
+	}
+	// First fetch (cursor "") returns "same"; second fetch (cursor "same")
+	// returns "same" again, which is the stall.
+	if calls != 2 {
+		t.Fatalf("expected 2 fetches before detecting the stall, got %d", calls)
+	}
+	if pages != 2 {
+		t.Fatalf("expected both fetched pages to reach the callback, got %d", pages)
+	}
+}
+
 func stringPtr(s string) *string { return &s }
+
+func TestWalkCursorStopsOnCursorCycle(t *testing.T) {
+	// Cursors go "" -> a -> b -> a: a longer cycle than a straight repeat.
+	next := map[string]string{"": "a", "a": "b", "b": "a"}
+	calls := 0
+	fetch := func(_ context.Context, _ int, cursor string) ([]int, string, error) {
+		calls++
+		if calls > 50 {
+			t.Fatalf("walk did not stop on a cursor cycle")
+		}
+		return []int{1}, next[cursor], nil
+	}
+	err := WalkCursor[int](context.Background(), 1, fetch, func([]int) error { return nil })
+	if !errors.Is(err, ErrCursorStalled) {
+		t.Fatalf("expected ErrCursorStalled, got %v", err)
+	}
+	if calls != 3 {
+		t.Fatalf("expected 3 fetches before detecting the cycle, got %d", calls)
+	}
+}

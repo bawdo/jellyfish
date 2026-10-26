@@ -10,6 +10,29 @@ import (
 
 const maxAttempts = 3
 
+// maxRetryAfter caps how long a server-supplied Retry-After can stall a
+// request, so a hostile or misconfigured hop can't hang the CLI.
+const maxRetryAfter = 30 * time.Second
+
+// retryWait returns how long to wait before the next attempt. A Retry-After
+// value in whole seconds is honoured, clamped to maxRetryAfter. Anything else
+// (absent, negative, HTTP-date form, garbage) falls back to backoff.
+func retryWait(retryAfter string, backoff time.Duration) time.Duration {
+	if retryAfter == "" {
+		return backoff
+	}
+	secs, err := strconv.ParseInt(retryAfter, 10, 64)
+	if err != nil || secs < 0 {
+		return backoff
+	}
+	// Compare in seconds before converting so huge values can't overflow
+	// time.Duration.
+	if secs >= int64(maxRetryAfter/time.Second) {
+		return maxRetryAfter
+	}
+	return time.Duration(secs) * time.Second
+}
+
 // retryTransport retries idempotent requests on 429 and 5xx with backoff.
 type retryTransport struct {
 	base http.RoundTripper
@@ -42,11 +65,7 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			_ = resp.Body.Close()
 			resp.Body = io.NopCloser(bytes.NewReader(buf))
 			lastResp = resp
-			if ra := resp.Header.Get("Retry-After"); ra != "" {
-				if secs, err := strconv.Atoi(ra); err == nil {
-					wait = time.Duration(secs) * time.Second
-				}
-			}
+			wait = retryWait(resp.Header.Get("Retry-After"), backoff)
 		}
 
 		if attempt == maxAttempts {

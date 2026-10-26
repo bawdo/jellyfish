@@ -2,12 +2,18 @@ package iru
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/url"
 )
 
 // DefaultLimit is the page size used when callers do not specify one. Iru caps
 // limit at 300 server-side; this matches that.
 const DefaultLimit = 300
+
+// ErrCursorStalled is returned by WalkCursor when the server returns the same
+// next cursor that was just sent, which would otherwise loop forever.
+var ErrCursorStalled = errors.New("iru: pagination cursor did not advance")
 
 // Walk paginates limit/offset style until the fetch returns a short page.
 //
@@ -123,6 +129,7 @@ func WalkCursor[T any](
 		limit = DefaultLimit
 	}
 	cursor := ""
+	seen := map[string]struct{}{}
 	for {
 		page, next, err := fetch(ctx, limit, cursor)
 		if err != nil {
@@ -136,6 +143,12 @@ func WalkCursor[T any](
 		if next == "" {
 			return nil
 		}
+		// A server that ignores the cursor param hands back a cursor we have
+		// already sent, which would loop forever. Bail out instead.
+		if _, dup := seen[next]; dup {
+			return fmt.Errorf("%w (cursor %q)", ErrCursorStalled, next)
+		}
+		seen[next] = struct{}{}
 		cursor = next
 	}
 }

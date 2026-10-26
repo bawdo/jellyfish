@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/bawdo/jellyfish/internal/gmail"
@@ -20,6 +21,7 @@ func TestClassifyError(t *testing.T) {
 		{iru.ErrNotFound, 3},
 		{&iru.APIError{Status: 500}, 4},
 		{iru.ErrRateLimited, 4},
+		{fmt.Errorf("walk: %w", iru.ErrCursorStalled), 4},
 		{&iru.APIError{Status: 429}, 4},
 	}
 	for _, c := range cases {

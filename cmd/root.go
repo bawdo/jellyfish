@@ -37,7 +37,7 @@ func classifyError(err error) int {
 		return 2
 	case errors.Is(err, iru.ErrNotFound):
 		return 3
-	case errors.Is(err, iru.ErrRateLimited):
+	case errors.Is(err, iru.ErrRateLimited), errors.Is(err, iru.ErrCursorStalled):
 		return 4
 	case errors.Is(err, gmail.ErrUnauthorized), errors.Is(err, gmail.ErrForbidden):
 		return 2
