@@ -80,7 +80,7 @@ func Load(path string) (File, error) {
 	for name, prof := range f {
 		if prof.CacheTTLMinutes != 0 {
 			if err := ValidateCacheTTLMinutes(prof.CacheTTLMinutes); err != nil {
-				return nil, fmt.Errorf("profile %q: %w", name, err)
+				return nil, fmt.Errorf("config %s: profile %q: %w", path, name, err)
 			}
 		}
 	}
