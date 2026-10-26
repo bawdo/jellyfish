@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/bawdo/jellyfish/internal/email"
 	"github.com/bawdo/jellyfish/internal/gmail"
 	"github.com/bawdo/jellyfish/internal/iru"
 )
@@ -23,6 +24,7 @@ func TestClassifyError(t *testing.T) {
 		{iru.ErrRateLimited, 4},
 		{fmt.Errorf("walk: %w", iru.ErrCursorStalled), 4},
 		{&iru.APIError{Status: 429}, 4},
+		{fmt.Errorf("render: %w", email.ErrRender), 1},
 	}
 	for _, c := range cases {
 		got := classifyError(c.err)
