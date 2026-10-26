@@ -238,6 +238,8 @@ jellyfish overview --emails alice@example.com,bob@example.com   # roster subset
 
 `--per-user` requires `--send-email` and sends each user a copy with a "Your standing" callout and a highlighted roster row. `--send-email` without `--per-user` requires `--email-to`. `--csv` / `--emails` narrow the roster - and the totals, leaderboards, and fanout - to a named subset.
 
+**Privacy note:** every `--per-user` copy contains the full named roster and both leaderboards, so each recipient sees every colleague's name, `sec_score` and critical/high/medium/low counts. That is deliberate, but it means a single compromised mailbox hands an attacker a ranked list of the most exposed people and devices. Use `--csv` / `--emails` to narrow the audience, or send the admin report only, if that trade-off doesn't suit your organisation.
+
 The roster is keyed by Iru user ID, so when two users share an email both appear in the ranking, and `--per-user` sends each of them their own copy.
 
 Roster rows are coloured by tier:
