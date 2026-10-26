@@ -171,7 +171,7 @@ The logo renders at 56px height (width scales to its aspect ratio); supply a PNG
 
 Adds a short note to the top of an email. Supported by `vulns summary` and `user show` when producing email output.
 
-- `--message` opens `$VISUAL` / `$EDITOR` / `vi` on a scratch file; `#` lines are dropped on save, and an empty result aborts.
+- `--message` opens `$VISUAL` / `$EDITOR` / `vi` on a scratch file; `#` lines are dropped on save, and an empty result aborts. As with git, the editor may include arguments (e.g. `VISUAL="code -w"`).
 - `--message-file <path>` reads the note verbatim (use `-` for stdin; `#` lines are kept).
 - The two are mutually exclusive and require email output. URLs in the note become clickable links.
 

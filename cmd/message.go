@@ -153,10 +153,16 @@ func maybeStripHashLines(s string, strip bool) string {
 	return strings.Join(out, "\n")
 }
 
+// editorShellMeta are the characters that make an editor value need a shell,
+// the same set git uses (prepare_shell_cmd in run-command.c).
+const editorShellMeta = "|&;<>()$`\\\"' \t\n*?[#~=%"
+
 // runEditorTerminal is the production implementation of the editor launcher.
-// Lookup order: $VISUAL > $EDITOR > vi. The chosen command is treated as a
-// single token (no shell word-splitting). Returns an error if the editor
-// exits non-zero or cannot be launched.
+// Lookup order: $VISUAL > $EDITOR > vi. As git does, a plain command name or
+// path is exec'd directly, and anything with arguments or quoting (e.g.
+// "code -w") runs as `sh -c '<editor> "$@"' <editor> <path>`, so the scratch
+// file is always the final argument. Returns an error if the editor exits
+// non-zero or cannot be launched.
 func runEditorTerminal(path string) error {
 	editor := os.Getenv("VISUAL")
 	if editor == "" {
@@ -165,18 +171,31 @@ func runEditorTerminal(path string) error {
 	if editor == "" {
 		editor = "vi"
 	}
-	bin, err := exec.LookPath(editor)
-	if err != nil {
-		return fmt.Errorf("launch editor: %w", err)
+	viaShell := strings.ContainsAny(editor, editorShellMeta)
+	var c *exec.Cmd
+	if viaShell {
+		// #nosec G204 G702 - editor is the invoking user's own $VISUAL/$EDITOR, run by
+		// a shell on purpose (as git does); path is passed as "$1", never interpolated
+		c = exec.Command("/bin/sh", "-c", editor+` "$@"`, editor, path)
+	} else {
+		bin, err := exec.LookPath(editor)
+		if err != nil {
+			return fmt.Errorf("launch editor: %w", err)
+		}
+		// #nosec G204 G702 - bin is the resolved $VISUAL/$EDITOR/vi path; path is the scratch file we just wrote
+		c = exec.Command(bin, path)
 	}
-	// #nosec G204 G702 - bin is the resolved $VISUAL/$EDITOR/vi path; path is the scratch file we just wrote
-	c := exec.Command(bin, path)
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
 	if err := c.Run(); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
+			// sh reports a command it couldn't find (127) or execute (126)
+			// through its exit status; those are launch failures.
+			if viaShell && (exitErr.ExitCode() == 126 || exitErr.ExitCode() == 127) {
+				return fmt.Errorf("launch editor: %s: shell exit status %d", editor, exitErr.ExitCode())
+			}
 			return fmt.Errorf("editor exited with status %d", exitErr.ExitCode())
 		}
 		return fmt.Errorf("launch editor: %w", err)

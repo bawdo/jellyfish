@@ -23,6 +23,9 @@ All notable changes to jellyfish are documented here. The format follows
   completion now offers the valid keys.
 - `vulns summary` puts rows that tie on the sort key in CVE ID order, so the
   output is the same on every run.
+- `--message` accepts an editor with arguments or quoting in `$VISUAL` or
+  `$EDITOR` (for example `code -w`), using the same rules as git. A plain
+  command name or path is still run directly.
 
 ## [0.2.0] - 2026-10-27
 

@@ -91,6 +91,50 @@ func TestMessageEditorTerminalResolution(t *testing.T) {
 	}
 }
 
+// Like git, an editor value with arguments or quoting runs through /bin/sh,
+// so VISUAL="code -w" and quoted paths with spaces work. The scratch file is
+// always the final argument.
+func TestMessageEditorWithArguments(t *testing.T) {
+	cases := []struct {
+		name   string
+		visual func(script string) string
+		dir    string
+	}{
+		{name: "flag after the command", visual: func(s string) string { return s + " --wait" }},
+		{name: "quoted path with a space", visual: func(s string) string { return "'" + s + "' --wait" }, dir: "My Editor"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), tc.dir)
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			args := filepath.Join(dir, "args")
+			script := vulncovEditorScript(t, dir, "ed.sh",
+				`printf '%s\n' "$#" "$1" "$2" > '`+args+`'`+"\n"+`printf 'edited\n' >> "$2"`)
+			t.Setenv("VISUAL", tc.visual(script))
+
+			got, err := vulncovCaptureViaTerminal()
+			if err != nil {
+				t.Fatalf("capture: %v", err)
+			}
+			if got != "edited" {
+				t.Errorf("message: got %q want edited", got)
+			}
+			// #nosec G304 - args is a file this test's fake editor wrote under t.TempDir()
+			b, err := os.ReadFile(args)
+			if err != nil {
+				t.Fatalf("fake editor did not record its arguments: %v", err)
+			}
+			lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+			if len(lines) != 3 || lines[0] != "2" || lines[1] != "--wait" ||
+				!strings.HasPrefix(filepath.Base(lines[2]), "jellyfish-message-") {
+				t.Errorf("editor argv: got %q, want [2 --wait <scratch>]", lines)
+			}
+		})
+	}
+}
+
 func TestMessageEditorTerminalFailures(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -122,6 +166,34 @@ func TestMessageEditorTerminalFailures(t *testing.T) {
 					t.Fatal(err)
 				}
 				return path
+			},
+			wantErr: "launch editor: ",
+		},
+		{
+			name: "non-zero exit through the shell",
+			visual: func(t *testing.T, dir string) string {
+				return vulncovEditorScript(t, dir, "quit.sh", "exit 3") + " --wait"
+			},
+			wantErr: "editor exited with status 3",
+		},
+		{
+			// sh exits 127 for a missing command; that is a launch failure,
+			// not the editor's own exit status.
+			name: "editor not found through the shell",
+			visual: func(_ *testing.T, dir string) string {
+				return filepath.Join(dir, "no-such-editor") + " --wait"
+			},
+			wantErr: "launch editor: ",
+		},
+		{
+			// sh exits 126 when the command exists but can't be executed.
+			name: "editor not executable through the shell",
+			visual: func(t *testing.T, dir string) string {
+				path := filepath.Join(dir, "noexec.sh")
+				if err := os.WriteFile(path, []byte("#!/bin/sh\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				return path + " --wait"
 			},
 			wantErr: "launch editor: ",
 		},
