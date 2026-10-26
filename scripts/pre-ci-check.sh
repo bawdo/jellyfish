@@ -102,13 +102,13 @@ check_go_version() {
     GO_VERSION=$(go version | awk '{print $3}')
     echo "Detected: $GO_VERSION"
 
-    # Jellyfish requires Go 1.25+ (see go.mod). Regex covers 1.25 through
+    # Jellyfish requires Go 1.26+ (see go.mod). Regex covers 1.26 through
     # 1.99 to avoid spurious warnings when the toolchain is upgraded.
-    if [[ "$GO_VERSION" =~ go1\.(2[5-9]|[3-9][0-9])\. ]]; then
+    if [[ "$GO_VERSION" =~ go1\.(2[6-9]|[3-9][0-9])\. ]]; then
         record_result "Go Version" "PASS" ""
-        echo -e "${GREEN}✓ Go version meets Jellyfish requirement (1.25+)${NC}"
+        echo -e "${GREEN}✓ Go version meets Jellyfish requirement (1.26+)${NC}"
     else
-        VERSION_WARNING="Jellyfish requires Go 1.25+, you have $GO_VERSION"
+        VERSION_WARNING="Jellyfish requires Go 1.26+, you have $GO_VERSION"
         record_result "Go Version" "PASS" ""
         echo -e "${YELLOW}⚠ Warning: $VERSION_WARNING${NC}"
     fi

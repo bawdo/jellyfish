@@ -3,7 +3,7 @@
 [![CI](https://github.com/bawdo/jellyfish/actions/workflows/ci.yml/badge.svg)](https://github.com/bawdo/jellyfish/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/bawdo/jellyfish/graph/badge.svg?token=CODECOV_GRAPH_TOKEN)](https://codecov.io/gh/bawdo/jellyfish)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Go 1.25+](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white)](go.mod)
+[![Go 1.26+](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white)](go.mod)
 
 A macOS-only Go CLI for the Iru (formerly Kandji) Endpoint Management API.
 
@@ -18,7 +18,7 @@ A macOS-only Go CLI for the Iru (formerly Kandji) Endpoint Management API.
 
 ## Install
 
-Requires Go 1.25+ on macOS.
+Requires Go 1.26+ on macOS.
 
 ```bash
 go install github.com/bawdo/jellyfish@latest
