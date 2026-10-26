@@ -36,7 +36,7 @@ type cacheFile[T any] struct {
 // (nil, false, nil) for a miss — file absent, corrupt, wrong version, or
 // expired; (nil, false, err) for I/O errors other than NotExist.
 func load[T any](path string, ttl time.Duration) ([]T, bool, error) {
-	data, err := os.ReadFile(path) //nolint:gosec // path is the OS cache dir + fixed filename
+	data, err := os.ReadFile(path) //nolint:gosec // path is the OS cache dir + a filename from a tenantRe-validated key
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, false, nil
@@ -58,20 +58,28 @@ func load[T any](path string, ttl time.Duration) ([]T, bool, error) {
 }
 
 // Pre-tenant filenames written by older jellyfish binaries. They sit next to
-// the per-tenant files, may hold another tenant's data, and are never read
-// any more, so a save removes the one matching the cache it writes.
+// the per-tenant files in the default cache directory, may hold another
+// tenant's data, and are never read any more, so a save to the default
+// directory removes the one matching the cache it writes.
 const (
 	legacyDetectionsName      = "detections.json"
 	legacyVulnerabilitiesName = "vulnerabilities.json"
 )
 
-// removeLegacy best-effort deletes the pre-tenant file legacyName in the
-// directory of path. It is skipped when path is itself that file, and any
-// failure (including NotExist) is ignored: a leftover file is harmless to
-// correctness and must never fail a save.
+// removeLegacy best-effort deletes the pre-tenant file legacyName from the
+// default cache directory, but only when path itself lives there: Save and
+// SaveVulnerabilities accept any path, and a file that merely shares the
+// legacy name in some other directory is not ours to delete. It is skipped
+// when path is itself the legacy file, and any failure (including NotExist)
+// is ignored: a leftover file is harmless to correctness and must never fail
+// a save.
 func removeLegacy(path, legacyName string) {
-	legacy := filepath.Join(filepath.Dir(path), legacyName)
-	if filepath.Clean(path) == legacy {
+	legacy, err := cachePath(legacyName)
+	if err != nil {
+		return
+	}
+	clean := filepath.Clean(path)
+	if filepath.Dir(clean) != filepath.Dir(legacy) || clean == legacy {
 		return
 	}
 	_ = os.Remove(legacy)
@@ -135,8 +143,8 @@ func Load(path string, ttl time.Duration) ([]iru.Detection, bool, error) {
 	return load[iru.Detection](path, ttl)
 }
 
-// Save writes the detections cache and removes any legacy detections.json
-// beside it.
+// Save writes the detections cache and, when path is in the default cache
+// directory, removes any legacy detections.json there.
 func Save(path string, dets []iru.Detection) error {
 	if err := save(path, dets); err != nil {
 		return err
@@ -150,8 +158,8 @@ func LoadVulnerabilities(path string, ttl time.Duration) ([]iru.Vulnerability, b
 	return load[iru.Vulnerability](path, ttl)
 }
 
-// SaveVulnerabilities writes the vulnerability cache and removes any legacy
-// vulnerabilities.json beside it.
+// SaveVulnerabilities writes the vulnerability cache and, when path is in the
+// default cache directory, removes any legacy vulnerabilities.json there.
 func SaveVulnerabilities(path string, vulns []iru.Vulnerability) error {
 	if err := save(path, vulns); err != nil {
 		return err

@@ -303,10 +303,27 @@ func TestSaveWithoutLegacyFileSucceeds(t *testing.T) {
 	}
 }
 
+// isolateCacheDir points os.UserCacheDir at a fresh tempdir and returns the
+// default jellyfish cache directory inside it, created.
+func isolateCacheDir(t *testing.T) string {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	path, err := DefaultPath("acme-us")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 // A failure to remove the legacy file (here: it is a non-empty directory) is
 // best-effort and must not fail the save.
 func TestSaveIgnoresLegacyRemovalFailure(t *testing.T) {
-	dir := t.TempDir()
+	dir := isolateCacheDir(t)
 	blocker := filepath.Join(dir, "detections.json")
 	if err := os.MkdirAll(filepath.Join(blocker, "child"), 0o700); err != nil {
 		t.Fatal(err)
@@ -323,11 +340,35 @@ func TestSaveIgnoresLegacyRemovalFailure(t *testing.T) {
 // Saving to a path whose name is the legacy name itself must not delete the
 // file just written.
 func TestSaveToLegacyNamedPathKeepsFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "detections.json")
+	path := filepath.Join(isolateCacheDir(t), "detections.json")
 	if err := Save(path, []iru.Detection{{CVEID: "CVE-1"}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, hit, _ := Load(path, time.Hour); !hit {
 		t.Fatal("file written to the legacy name must survive its own save")
+	}
+}
+
+// Save accepts any path; a file that only shares the legacy name in some
+// other directory is not ours and must survive a save next to it.
+func TestSaveOutsideDefaultDirLeavesLegacyNamedFiles(t *testing.T) {
+	defaultDir := isolateCacheDir(t)
+	other := t.TempDir()
+	otherDet := writeLegacy(t, other, "detections.json")
+	otherVuln := writeLegacy(t, other, "vulnerabilities.json")
+	// A real legacy file in the default directory must also be left alone
+	// by a save elsewhere.
+	defaultDet := writeLegacy(t, defaultDir, "detections.json")
+
+	if err := Save(filepath.Join(other, "detections-acme-us.json"), []iru.Detection{{CVEID: "CVE-1"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveVulnerabilities(filepath.Join(other, "vulnerabilities-acme-us.json"), []iru.Vulnerability{{CVEID: "CVE-1"}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{otherDet, otherVuln, defaultDet} {
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("%s must survive a save outside the default dir: %v", p, err)
+		}
 	}
 }
