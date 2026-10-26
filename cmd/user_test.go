@@ -185,6 +185,32 @@ func TestUserShowCSVColumnOrder(t *testing.T) {
 	goldenAssert(t, "user_show.csv", buf.Bytes())
 }
 
+// The DETECTIONS heading prints the user-chosen device name outside any table
+// cell, so it must be sanitised itself.
+func TestUserShowTableHeadingSanitisesDeviceName(t *testing.T) {
+	client := &fakeClient{
+		users: []iru.User{{ID: "u-1", Name: "Alice", Email: "alice@example.com"}},
+		devices: []iru.Device{{
+			DeviceID: "d-1", DeviceName: "MBP\x1b]0;pwned\x07\x9b2J", SerialNumber: "SN\r1",
+			User: iru.User{ID: "u-1"},
+		}},
+	}
+	buf := &bytes.Buffer{}
+	err := runUserShow(context.Background(), client, buf, io.Discard, userShowOpts{
+		Identifier: "u-1", Output: "table", NoCache: true,
+	})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "DETECTIONS for MBP]0;pwned�2J (SN1)\n") {
+		t.Fatalf("heading not sanitised:\n%q", out)
+	}
+	if strings.ContainsAny(out, "\x1b\x07\r") || strings.Contains(out, "\x9b") {
+		t.Fatalf("control bytes leaked into table output: %q", out)
+	}
+}
+
 func TestUserShowTextSortsDetectionsBySeverity(t *testing.T) {
 	client := &fakeClient{
 		users:   []iru.User{{ID: "u-1", Name: "Alice", Email: "alice@example.com"}},

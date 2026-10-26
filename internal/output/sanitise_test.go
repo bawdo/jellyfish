@@ -23,3 +23,24 @@ func TestSanitiseTerminalTextLeavesPrintableTextAlone(t *testing.T) {
 		}
 	}
 }
+
+// A lone 0x9b is CSI to an 8-bit terminal but decodes as RuneError, so it
+// must be neutralised as invalid UTF-8 rather than relying on the C1 check.
+func TestSanitiseTerminalNeutralisesInvalidUTF8(t *testing.T) {
+	cases := map[string]string{
+		"\x9b31m":           "�31m",
+		"a\x9b31mb":         "a�31mb",
+		"\x9d0;pwned\x9c":   "�0;pwned�",
+		"\xff\xfe":          "�",
+		"ok\xc3":            "ok�",
+		"\x1b\x9b2J\u009b2": "�2J2",
+	}
+	for in, want := range cases {
+		if got := SanitiseTerminal(in); got != want {
+			t.Errorf("SanitiseTerminal(%q) = %q, want %q", in, got, want)
+		}
+		if got := SanitiseTerminalText(in); got != want {
+			t.Errorf("SanitiseTerminalText(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

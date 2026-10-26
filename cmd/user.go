@@ -320,7 +320,9 @@ func renderUserBundleTable(w io.Writer, b UserBundle) error {
 	}
 
 	for _, d := range b.Devices {
-		_, _ = fmt.Fprintf(w, "\nDETECTIONS for %s (%s)\n", d.Device.DeviceName, d.Device.SerialNumber)
+		// The device name is user-chosen, so it gets the same treatment as a
+		// table cell before it reaches the terminal.
+		_, _ = fmt.Fprintf(w, "\nDETECTIONS for %s (%s)\n", output.SanitiseTerminal(d.Device.DeviceName), output.SanitiseTerminal(d.Device.SerialNumber))
 		if len(d.Detections) == 0 {
 			_, _ = fmt.Fprintln(w, "  (none)")
 			continue

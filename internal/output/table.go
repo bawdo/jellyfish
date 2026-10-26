@@ -5,6 +5,7 @@ import (
 	"io"
 	"reflect"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/jedib0t/go-pretty/v6/table"
 )
@@ -81,7 +82,14 @@ func SanitiseTerminalText(s string) string {
 	})
 }
 
+// stripControls removes every rune drop reports true for. Invalid UTF-8 is
+// replaced with U+FFFD first: a lone byte such as 0x9b decodes as RuneError
+// rather than as the C1 control it is to an 8-bit terminal (CSI), so it
+// would otherwise slip past both the fast path and drop.
 func stripControls(s string, drop func(rune) bool) string {
+	if !utf8.ValidString(s) {
+		s = strings.ToValidUTF8(s, "\uFFFD")
+	}
 	if !strings.ContainsFunc(s, drop) {
 		return s
 	}

@@ -200,7 +200,7 @@ func renderOverviewTable(w io.Writer, v email.OverviewView) error {
 	if !v.GeneratedAt.IsZero() {
 		header += " · " + v.GeneratedAt.Format("2006-01-02 15:04")
 	}
-	_, _ = fmt.Fprintln(w, header)
+	_, _ = fmt.Fprintln(w, output.SanitiseTerminal(header))
 	_, _ = fmt.Fprintln(w)
 
 	type totalRow struct {

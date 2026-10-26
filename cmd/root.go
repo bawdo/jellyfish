@@ -33,8 +33,13 @@ func Execute() int {
 // ESC/OSC sequence would otherwise be interpreted by the admin's terminal.
 // The output format matches what cobra prints: "Error: <msg>", plus the
 // "Run '<cmd> --help' for usage." hint for command-lookup failures.
+//
+// Everything else written to root's stderr goes through
+// output.NewTerminalWriter too: per-recipient status lines, the user picker
+// and progress lines all carry user records or upstream error text.
 func runRoot(ctx context.Context, root *cobra.Command, args []string) int {
 	root.SetArgs(args)
+	root.SetErr(output.NewTerminalWriter(root.ErrOrStderr()))
 	cmd, err := root.ExecuteContextC(ctx)
 	if err != nil {
 		if cmd == nil {

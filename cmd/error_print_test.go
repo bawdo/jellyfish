@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -100,6 +101,35 @@ func TestRunRootSuccessPrintsNothingToStderr(t *testing.T) {
 	}
 }
 
+// Commands write user records and upstream error text to cmd.ErrOrStderr()
+// (per-recipient lines, the user picker); runRoot must route that through the
+// sanitising writer while keeping newlines and the leading \r progress idiom.
+func TestRunRootSanitisesCommandStderr(t *testing.T) {
+	root := newRootCmd()
+	root.AddCommand(&cobra.Command{
+		Use: "noisy",
+		RunE: func(c *cobra.Command, _ []string) error {
+			w := c.ErrOrStderr()
+			_, _ = fmt.Fprintf(w, "\rfetching %s: %d pages...", "detections", 2)
+			_, _ = fmt.Fprintln(w)
+			_, _ = fmt.Fprintf(w, "error input=%s lookup: %v\n", "evil\x1b]0;pwned\x07@x.com", errors.New("bad\rgateway\u009b2J"))
+			_, _ = fmt.Fprintf(w, "  [%d] %s\n", 1, "u-1 - Mallory\x1b[2J (dept: \x9b31m)")
+			return nil
+		},
+	})
+	var out, errBuf bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&errBuf)
+	if code := runRoot(context.Background(), root, []string{"noisy"}); code != 0 {
+		t.Fatalf("exit code: got %d want 0", code)
+	}
+	want := "\rfetching detections: 2 pages...\n" +
+		"error input=evil]0;pwned@x.com lookup: badgateway2J\n" +
+		"  [1] u-1 - Mallory[2J (dept: �31m)\n"
+	if got := errBuf.String(); got != want {
+		t.Fatalf("stderr:\n got %q\nwant %q", got, want)
+	}
+}
 func TestRootSilencesCobraErrorPrinting(t *testing.T) {
 	if !newRootCmd().SilenceErrors {
 		t.Fatal("root SilenceErrors must be true so runRoot owns (sanitised) error printing")
