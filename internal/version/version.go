@@ -25,6 +25,10 @@ var (
 	Dirty = ""
 )
 
+// readBuildInfo is debug.ReadBuildInfo, swappable so tests can drive the
+// fallback with known vcs.* settings.
+var readBuildInfo = debug.ReadBuildInfo
+
 // Info bundles the resolved build identity printed by `jellyfish version`.
 type Info struct {
 	Version string
@@ -45,7 +49,7 @@ func Resolve() Info {
 	if out.Commit != "" && Dirty != "" {
 		return out
 	}
-	bi, ok := debug.ReadBuildInfo()
+	bi, ok := readBuildInfo()
 	if !ok {
 		return out
 	}
