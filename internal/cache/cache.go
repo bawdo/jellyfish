@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"time"
 
 	"github.com/bawdo/jellyfish/internal/iru"
@@ -35,7 +36,7 @@ type cacheFile[T any] struct {
 // (nil, false, nil) for a miss — file absent, corrupt, wrong version, or
 // expired; (nil, false, err) for I/O errors other than NotExist.
 func load[T any](path string, ttl time.Duration) ([]T, bool, error) {
-	data, err := os.ReadFile(path) //nolint:gosec // path is the OS cache dir + fixed filename
+	data, err := os.ReadFile(path) //nolint:gosec // path is the OS cache dir + a filename from a tenantRe-validated key
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, false, nil
@@ -54,6 +55,34 @@ func load[T any](path string, ttl time.Duration) ([]T, bool, error) {
 		return nil, false, nil
 	}
 	return f.Items, true, nil
+}
+
+// Pre-tenant filenames written by older jellyfish binaries. They sit next to
+// the per-tenant files in the default cache directory, may hold another
+// tenant's data, and are never read any more, so a save to the default
+// directory removes the one matching the cache it writes.
+const (
+	legacyDetectionsName      = "detections.json"
+	legacyVulnerabilitiesName = "vulnerabilities.json"
+)
+
+// removeLegacy best-effort deletes the pre-tenant file legacyName from the
+// default cache directory, but only when path itself lives there: Save and
+// SaveVulnerabilities accept any path, and a file that merely shares the
+// legacy name in some other directory is not ours to delete. It is skipped
+// when path is itself the legacy file, and any failure (including NotExist)
+// is ignored: a leftover file is harmless to correctness and must never fail
+// a save.
+func removeLegacy(path, legacyName string) {
+	legacy, err := cachePath(legacyName)
+	if err != nil {
+		return
+	}
+	clean := filepath.Clean(path)
+	if filepath.Dir(clean) != filepath.Dir(legacy) || clean == legacy {
+		return
+	}
+	_ = os.Remove(legacy)
 }
 
 // save writes a cache file with mode 0600, creating the parent dir with 0700.
@@ -82,15 +111,31 @@ func cachePath(name string) (string, error) {
 	return filepath.Join(dir, "jellyfish", name), nil
 }
 
-// DefaultPath returns the cache file path for the detections walk.
-func DefaultPath() (string, error) {
-	return cachePath("detections.json")
+// tenantRe bounds a tenant key to characters that are safe in a filename:
+// lowercase alphanumerics and hyphens, starting and ending alphanumeric. This
+// rules out empty keys, path separators and "..".
+var tenantRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
+
+// tenantCachePath returns the per-tenant cache path "<base>-<tenant>.json".
+// Each tenant gets its own file so a walk cached for one tenant can never be
+// served to another.
+func tenantCachePath(base, tenant string) (string, error) {
+	if !tenantRe.MatchString(tenant) {
+		return "", fmt.Errorf("invalid cache tenant key %q", tenant)
+	}
+	return cachePath(base + "-" + tenant + ".json")
 }
 
-// DefaultVulnPath returns the cache file path for vulnerability rollups —
-// distinct from the detections cache.
-func DefaultVulnPath() (string, error) {
-	return cachePath("vulnerabilities.json")
+// DefaultPath returns the cache file path for the detections walk of the
+// given tenant (e.g. "acme-us"). An empty or path-unsafe tenant is an error.
+func DefaultPath(tenant string) (string, error) {
+	return tenantCachePath("detections", tenant)
+}
+
+// DefaultVulnPath returns the cache file path for vulnerability rollups of
+// the given tenant, distinct from the detections cache.
+func DefaultVulnPath(tenant string) (string, error) {
+	return tenantCachePath("vulnerabilities", tenant)
 }
 
 // Load reads the detections cache. See load for hit/miss/error semantics.
@@ -98,9 +143,14 @@ func Load(path string, ttl time.Duration) ([]iru.Detection, bool, error) {
 	return load[iru.Detection](path, ttl)
 }
 
-// Save writes the detections cache.
+// Save writes the detections cache and, when path is in the default cache
+// directory, removes any legacy detections.json there.
 func Save(path string, dets []iru.Detection) error {
-	return save(path, dets)
+	if err := save(path, dets); err != nil {
+		return err
+	}
+	removeLegacy(path, legacyDetectionsName)
+	return nil
 }
 
 // LoadVulnerabilities reads the vulnerability cache. See load for semantics.
@@ -108,7 +158,12 @@ func LoadVulnerabilities(path string, ttl time.Duration) ([]iru.Vulnerability, b
 	return load[iru.Vulnerability](path, ttl)
 }
 
-// SaveVulnerabilities writes the vulnerability cache.
+// SaveVulnerabilities writes the vulnerability cache and, when path is in the
+// default cache directory, removes any legacy vulnerabilities.json there.
 func SaveVulnerabilities(path string, vulns []iru.Vulnerability) error {
-	return save(path, vulns)
+	if err := save(path, vulns); err != nil {
+		return err
+	}
+	removeLegacy(path, legacyVulnerabilitiesName)
+	return nil
 }

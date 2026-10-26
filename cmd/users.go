@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bufio"
 	"context"
 	"encoding/csv"
 	"errors"
@@ -30,6 +29,7 @@ type usersSendEmailOpts struct {
 	Yes            bool
 	NoCache        bool
 	CacheTTL       time.Duration
+	CacheTenant    string
 	Profile        config.Profile
 	EmailNow       time.Time
 	// Injected for tests:
@@ -57,39 +57,30 @@ func newUsersSendEmailCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			opts.EmailFlags = readEmailFlags(cmd)
 			opts.EmailNow = time.Now()
-			client, err := buildClient(cmd)
+			rc, err := loadRunContext(cmd)
 			if err != nil {
 				return err
 			}
-			prof, err := activeProfile(cmd)
-			if err != nil {
-				return err
-			}
-			ttl, err := resolveCacheTTL(cmd)
-			if err != nil {
-				return err
-			}
-			opts.CacheTTL = ttl
-			opts.Profile = prof
+			opts.CacheTTL = rc.CacheTTL
+			opts.CacheTenant = rc.CacheTenant
+			opts.Profile = rc.Profile
 			if opts.KeychainGet == nil {
 				opts.KeychainGet = keychain.GetGmailServiceAccount
 			}
 			if opts.NewSender == nil {
 				opts.NewSender = gmail.NewSender
 			}
-			return runUsersSendEmail(cmd.Context(), client, cmd.ErrOrStderr(), opts)
+			return runUsersSendEmail(cmd.Context(), rc.Client, cmd.ErrOrStderr(), opts)
 		},
 	}
 	c.Flags().StringVar(&opts.CSVPath, "csv", "", "Path to a CSV file containing recipient emails")
 	c.Flags().StringVar(&opts.Emails, "emails", "", "Comma-separated list of recipient emails")
 	c.Flags().StringVar(&opts.CSVEmailColumn, "csv-email-column", "", "CSV column name holding the email address (default: auto-detect email/user_email/e-mail)")
-	c.Flags().String("email-to", "", "Redirect every email to this address (test/audit mode)")
-	c.Flags().String("email-from", "", "Email From: header (default: email.from from config, then git user.email)")
-	c.Flags().String("email-subject", "", "Email Subject: header (default: rendered email.subject_template or a per-command default)")
-	c.Flags().String("email-header-bg", "", "Email header background colour as #RRGGBB (default: email.header_bg or #2b3a55)")
-	c.Flags().String("email-logo", "", "Path to a PNG to show in the email header (default: email.logo_path)")
-	c.Flags().Bool("message", false, "Open $VISUAL/$EDITOR to compose a message rendered above the email body (shared across all recipients)")
-	c.Flags().String("message-file", "", "Read the email message body from a file (use - for stdin)")
+	addEmailFlags(c, emailFlagHelp{
+		To:       "Redirect every email to this address (test/audit mode)",
+		Message:  "Open $VISUAL/$EDITOR to compose a message rendered above the email body (shared across all recipients)",
+		OmitSend: true,
+	})
 	c.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Resolve and filter but do not send any mail")
 	c.Flags().BoolVar(&opts.Yes, "yes", false, "Skip the confirmation prompt")
 	c.Flags().BoolVar(&opts.NoCache, "no-cache", false, "Skip the detection cache; always fetch fresh")
@@ -122,25 +113,16 @@ func runUsersSendEmail(ctx context.Context, client iruClient, stderr io.Writer, 
 	profForOpts := opts.Profile
 	profForOpts.Email.DefaultTo = ""
 
-	now := opts.EmailNow
-	if now.IsZero() {
-		now = time.Now()
-	}
-	gitLookup := opts.gitEmail
-	if gitLookup == nil {
-		gitLookup = gitUserEmail
-	}
-	baseEmailOpts, err := resolveEmailOptions(opts.EmailFlags, profForOpts, gitLookup, now)
+	baseEmailOpts, err := prepareEmailOptions(opts.EmailFlags, profForOpts, opts.EmailNow, opts.gitEmail, "users-send")
 	if err != nil {
 		return err
 	}
-	baseEmailOpts.Report = "users-send"
 
 	confirmIn := opts.ConfirmReader
 	if confirmIn == nil {
 		confirmIn = os.Stdin
 	}
-	ok, err := confirmSend(stderr, confirmIn, len(recipients), opts.DryRun, opts.Yes)
+	ok, err := confirmSend(stderr, confirmIn, usersSendConfirmPrompt(len(recipients)), opts.DryRun, opts.Yes)
 	if err != nil {
 		return err
 	}
@@ -166,28 +148,16 @@ func runUsersSendEmail(ctx context.Context, client iruClient, stderr io.Writer, 
 	var sender gmail.Sender
 	if !opts.DryRun {
 		if !opts.Profile.Email.GmailConfigured {
-			return errors.New(`sending email requires Gmail credentials. Run "jellyfish configure email" to install a service-account JSON, or pass --dry-run to preview without sending`)
+			return errBulkGmailNotConfigured
 		}
-		kchGet := opts.KeychainGet
-		if kchGet == nil {
-			return errors.New("internal: KeychainGet not wired")
-		}
-		newSender := opts.NewSender
-		if newSender == nil {
-			return errors.New("internal: NewSender not wired")
-		}
-		saJSON, kerr := kchGet()
-		if kerr != nil {
-			return fmt.Errorf(`read Gmail credentials from Keychain: %w. Run "jellyfish configure email" to reinstall`, kerr)
-		}
-		s, serr := newSender(ctx, saJSON, baseEmailOpts.From)
+		s, serr := buildGmailSender(ctx, opts.KeychainGet, opts.NewSender, baseEmailOpts.From)
 		if serr != nil {
 			return serr
 		}
 		sender = s
 	}
 
-	allDetections, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache, opts.CacheTTL)
+	allDetections, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache, opts.CacheTTL, opts.CacheTenant)
 	if err != nil {
 		return err
 	}
@@ -475,24 +445,7 @@ func (c *bulkCounters) exitError() error {
 	}
 }
 
-// confirmSend prompts the operator before sending mail. Returns (true, nil)
-// when the operator confirms (or the prompt is short-circuited by --yes or
-// --dry-run). Returns (false, nil) on "n", blank, or EOF. Errors propagate
-// only on truly broken I/O.
-func confirmSend(stderr io.Writer, in io.Reader, count int, dryRun, yes bool) (bool, error) {
-	if dryRun {
-		_, _ = fmt.Fprintln(stderr, "DRY RUN - no mail will be sent")
-		return true, nil
-	}
-	if yes {
-		return true, nil
-	}
-	_, _ = fmt.Fprintf(stderr, "About to send vulnerability reports to %d input address(es). Continue? [y/N] ", count)
-	br := bufio.NewReader(in)
-	line, err := br.ReadString('\n')
-	if err != nil && err != io.EOF {
-		return false, err
-	}
-	answer := strings.ToLower(strings.TrimSpace(line))
-	return answer == "y" || answer == "yes", nil
+// usersSendConfirmPrompt is the confirm-prompt copy for `users send-email`.
+func usersSendConfirmPrompt(count int) string {
+	return fmt.Sprintf("About to send vulnerability reports to %d input address(es). Continue? [y/N] ", count)
 }

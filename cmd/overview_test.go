@@ -5,11 +5,13 @@ import (
 	"context"
 	"errors"
 	"io"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/bawdo/jellyfish/internal/cache"
 	"github.com/bawdo/jellyfish/internal/config"
 	"github.com/bawdo/jellyfish/internal/email"
 	"github.com/bawdo/jellyfish/internal/gmail"
@@ -70,7 +72,7 @@ func TestAssembleOverviewSumsAndSorts(t *testing.T) {
 		},
 	}
 
-	view, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil, time.Duration(0))
+	view, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil, time.Duration(0), "")
 	if err != nil {
 		t.Fatalf("assembleOverview: %v", err)
 	}
@@ -125,7 +127,7 @@ func TestAssembleOverviewEmptyRosterErrors(t *testing.T) {
 		fakeClient:    &fakeClient{users: []iru.User{{ID: "u1", Name: "x"}}},
 		devicesByUser: map[string][]iru.Device{"u1": nil},
 	}
-	_, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil, time.Duration(0))
+	_, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil, time.Duration(0), "")
 	if err == nil || err.Error() == "" {
 		t.Fatalf("expected an empty-roster error, got nil")
 	}
@@ -146,7 +148,7 @@ func TestAssembleOverviewTieBreakerByName(t *testing.T) {
 			"u-b": {{DeviceID: "d-b"}},
 		},
 	}
-	view, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil, time.Duration(0))
+	view, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil, time.Duration(0), "")
 	if err != nil {
 		t.Fatalf("assembleOverview: %v", err)
 	}
@@ -526,7 +528,7 @@ func TestAssembleOverviewDeviceWalkErrorPropagates(t *testing.T) {
 		devicesByUser: map[string][]iru.Device{"u1": {{DeviceID: "d-a"}}},
 		streamErr:     errors.New("iru down"),
 	}
-	_, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil, time.Duration(0))
+	_, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil, time.Duration(0), "")
 	if err == nil || !strings.Contains(err.Error(), "iru down") {
 		t.Fatalf("expected iru down error, got %v", err)
 	}
@@ -762,7 +764,7 @@ func TestAssembleOverviewFilterByEmails(t *testing.T) {
 		"ghost@x": {}, // not in tenant -> should produce a warn line
 	}
 	var stderr bytes.Buffer
-	view, err := assembleOverview(context.Background(), c, &stderr, false, filter, time.Duration(0))
+	view, err := assembleOverview(context.Background(), c, &stderr, false, filter, time.Duration(0), "")
 	if err != nil {
 		t.Fatalf("assembleOverview: %v", err)
 	}
@@ -891,27 +893,51 @@ func TestRunOverviewAdminMessageFileStdin(t *testing.T) {
 	}
 }
 
+// assembleOverview must carry the caller's TTL and tenant into the cache read:
+// a 20 minute old cache for the tenant is served under a 30 minute TTL and
+// ignored (live walk) under the 15 minute default.
 func TestAssembleOverviewAcceptsCustomTTL(t *testing.T) {
-	// noCache=false so the ttl is actually carried into the cache-aware
-	// branch of fetchAllDetections. The test cache dir is empty (TestMain
-	// redirects HOME to a temp dir), so the read misses and the fake
-	// client's data is used. Cache-hit semantics are exercised in the
-	// internal/cache tests.
-	c := &overviewFakeClient{
-		fakeClient: &fakeClient{
-			users: []iru.User{{ID: "u1", Name: "U1", Email: "u1@x"}},
-			detections: []iru.Detection{
-				{DeviceID: "d1", CVEID: "CVE-A", CVSSScore: 5.0, Severity: "Medium"},
-			},
-		},
-		devicesByUser: map[string][]iru.Device{"u1": {{DeviceID: "d1"}}},
+	// The cached and live detections carry different CVSS scores, so the
+	// user's SecScore shows which source assembleOverview used.
+	cases := []struct {
+		name      string
+		ttl       time.Duration
+		wantScore float64
+	}{
+		{"30m TTL serves the aged cache", 30 * time.Minute, 5.0},
+		{"default TTL walks live", 0, 9.0},
 	}
-	view, err := assembleOverview(context.Background(), c, &bytes.Buffer{}, false, nil, 30*time.Minute)
-	if err != nil {
-		t.Fatalf("assembleOverview: %v", err)
-	}
-	if len(view.Users) != 1 {
-		t.Fatalf("Users len: got %d want 1", len(view.Users))
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cacheDir := isolateCacheDir(t)
+			cachePath := filepath.Join(cacheDir, "detections-acme-us.json")
+			if err := cache.Save(cachePath, []iru.Detection{
+				{DeviceID: "d1", CVEID: "CVE-CACHED", CVSSScore: 5.0, Severity: "Medium"},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			ageCacheFile(t, cachePath, 20*time.Minute)
+			c := &overviewFakeClient{
+				fakeClient: &fakeClient{
+					users: []iru.User{{ID: "u1", Name: "U1", Email: "u1@x"}},
+					detections: []iru.Detection{
+						{DeviceID: "d1", CVEID: "CVE-LIVE", CVSSScore: 9.0, Severity: "Critical"},
+					},
+				},
+				devicesByUser: map[string][]iru.Device{"u1": {{DeviceID: "d1"}}},
+			}
+			var stderr bytes.Buffer
+			view, err := assembleOverview(context.Background(), c, &stderr, false, nil, tc.ttl, "acme-us")
+			if err != nil {
+				t.Fatalf("assembleOverview: %v", err)
+			}
+			if len(view.Users) != 1 {
+				t.Fatalf("Users len: got %d want 1", len(view.Users))
+			}
+			if got := view.Users[0].SecScore; got != tc.wantScore {
+				t.Fatalf("SecScore: got %v want %v\nstderr:\n%s", got, tc.wantScore, stderr.String())
+			}
+		})
 	}
 }
 
@@ -929,9 +955,8 @@ func TestAssembleOverviewKeepsDuplicateEmailUsers(t *testing.T) {
 			{DeviceID: "d-2", CVEID: "CVE-B", Severity: "Critical", CVSSScore: 9.0},
 		},
 	}
-	// noCache=true bypasses the shared on-disk detection cache so this test does
-	// not pick up stale data left behind by TestAssembleOverviewAcceptsCustomTTL.
-	view, err := assembleOverview(context.Background(), client, io.Discard, true, nil, 0)
+	// noCache=true keeps this test off disk: it only checks roster assembly.
+	view, err := assembleOverview(context.Background(), client, io.Discard, true, nil, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}

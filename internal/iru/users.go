@@ -20,7 +20,17 @@ func (c *Client) GetUser(ctx context.Context, id string) (User, error) {
 // from the previous page's next URL; pass "" for the first page. The returned
 // nextCursor is "" when there are no more pages.
 func (c *Client) ListUsersPage(ctx context.Context, limit int, cursor string) ([]User, string, error) {
+	return c.listUsersPage(ctx, limit, cursor, nil)
+}
+
+// listUsersPage fetches one page of /users. extra holds additional query
+// parameters (e.g. an email filter) and may be nil; limit and cursor are set
+// on top of it.
+func (c *Client) listUsersPage(ctx context.Context, limit int, cursor string, extra url.Values) ([]User, string, error) {
 	q := url.Values{}
+	for k, vs := range extra {
+		q[k] = append([]string(nil), vs...)
+	}
 	q.Set("limit", strconv.Itoa(limit))
 	if cursor != "" {
 		q.Set("cursor", cursor)
@@ -40,19 +50,10 @@ func (c *Client) ListUsersPage(ctx context.Context, limit int, cursor string) ([
 // records match.
 func (c *Client) FindUsersByEmail(ctx context.Context, email string) ([]User, error) {
 	var out []User
+	filter := url.Values{"email": {email}}
 	err := WalkCursor[User](ctx, DefaultLimit,
 		func(ctx context.Context, limit int, cursor string) ([]User, string, error) {
-			q := url.Values{}
-			q.Set("email", email)
-			q.Set("limit", strconv.Itoa(limit))
-			if cursor != "" {
-				q.Set("cursor", cursor)
-			}
-			var p paginated[User]
-			if err := c.do(ctx, http.MethodGet, "/users", q, &p); err != nil {
-				return nil, "", err
-			}
-			return p.Results, p.nextCursor(), nil
+			return c.listUsersPage(ctx, limit, cursor, filter)
 		},
 		func(page []User) error {
 			out = append(out, page...)

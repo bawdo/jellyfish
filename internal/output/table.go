@@ -4,6 +4,8 @@ import (
 	"errors"
 	"io"
 	"reflect"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/jedib0t/go-pretty/v6/table"
 )
@@ -45,7 +47,7 @@ func (r *tableRenderer) Render(w io.Writer, v any) error {
 	err := eachRow(r.columns, v, func(cells []string) error {
 		row := make(table.Row, len(cells))
 		for i, c := range cells {
-			row[i] = c
+			row[i] = SanitiseTerminal(c)
 		}
 		t.AppendRow(row)
 		return nil
@@ -56,6 +58,52 @@ func (r *tableRenderer) Render(w io.Writer, v any) error {
 
 	t.Render()
 	return nil
+}
+
+// SanitiseTerminal neutralises terminal escape injection in single-line text
+// such as a table cell: cells carry API data that end users choose (device
+// names, for example), and an embedded ESC/CSI/OSC sequence would otherwise
+// be interpreted by the admin's terminal. Every C0 control (including tab and
+// newline, which also break the table layout), DEL and every C1 control is
+// removed outright rather than replaced, so the remaining text stays
+// readable. The table renderer uses this: CSV, JSON and YAML are data formats
+// and must round-trip as is.
+func SanitiseTerminal(s string) string {
+	return stripControls(s, isTerminalControl)
+}
+
+// SanitiseTerminalText is SanitiseTerminal for multi-line text, such as an
+// error message bound for stderr: newline is kept so the message keeps its
+// line breaks, and every other C0 control (including carriage return, which
+// could overwrite what was already printed), DEL and C1 control is removed.
+func SanitiseTerminalText(s string) string {
+	return stripControls(s, func(r rune) bool {
+		return r != '\n' && isTerminalControl(r)
+	})
+}
+
+// stripControls removes every rune drop reports true for. Invalid UTF-8 is
+// replaced with U+FFFD first: a lone byte such as 0x9b decodes as RuneError
+// rather than as the C1 control it is to an 8-bit terminal (CSI), so it
+// would otherwise slip past both the fast path and drop.
+func stripControls(s string, drop func(rune) bool) string {
+	if !utf8.ValidString(s) {
+		s = strings.ToValidUTF8(s, "\uFFFD")
+	}
+	if !strings.ContainsFunc(s, drop) {
+		return s
+	}
+	return strings.Map(func(r rune) rune {
+		if drop(r) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+// isTerminalControl reports whether r is a C0 control, DEL or a C1 control.
+func isTerminalControl(r rune) bool {
+	return r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f)
 }
 
 // eachRow calls emit once per row of v, with each row's cells as a []string.

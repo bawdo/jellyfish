@@ -28,7 +28,20 @@ type configureOpts struct {
 	Stderr        io.Writer
 	StoreToken    func(account, token string) error
 	ReadTokenLine func(r *bufio.Reader) (string, error) // masked read; injected for tests
-	VerifyBaseURL string                                // override for tests, blank in production
+	// ReadToken fetches the stored token for account (keychain.Get in
+	// production). It is only called when the user keeps the existing token
+	// but changes tenant, so the kept token can be checked against it.
+	ReadToken func(account string) (string, error)
+	// Verify checks token against baseURL. Nil means verifyIruToken; tests
+	// inject a fake so they can run without binding a local port.
+	Verify func(ctx context.Context, baseURL, token string) error
+}
+
+// verifyIruToken confirms token authenticates against the Iru API at baseURL
+// by fetching a single page of devices.
+func verifyIruToken(ctx context.Context, baseURL, token string) error {
+	_, err := iru.NewClient(baseURL, token).ListDevicesPage(ctx, iru.DeviceFilters{}, 1, 0)
+	return err
 }
 
 // configureEmailOpts is the DI surface for `configure email`.
@@ -57,6 +70,7 @@ func newConfigureCmd() *cobra.Command {
 				Stdout:        cmd.OutOrStdout(),
 				Stderr:        cmd.ErrOrStderr(),
 				StoreToken:    keychain.Set,
+				ReadToken:     keychain.Get,
 				ReadTokenLine: readMaskedToken,
 			})
 		},
@@ -133,37 +147,80 @@ func runConfigure(ctx context.Context, o configureOpts) error {
 		return errors.New("token must not be empty")
 	}
 
+	tenantChanged := existing && (subdomain != prof.Subdomain || region != prof.Region)
+
 	prof.Subdomain = subdomain
 	prof.Region = region
 	file["default"] = prof
-	if err := config.Save(o.ConfigPath, file); err != nil {
-		return err
+
+	verify := o.Verify
+	if verify == nil {
+		verify = verifyIruToken
 	}
 
 	if token == "" {
+		// Keeping the stored token while pointing the config at a different
+		// tenant would leave the old tenant's token paired with the new
+		// tenant's URL, so check the kept token against the new tenant first.
+		if tenantChanged {
+			if err := verifyKeptToken(ctx, o.ReadToken, verify, baseURL); err != nil {
+				return err
+			}
+		}
+		if err := config.Save(o.ConfigPath, file); err != nil {
+			return err
+		}
 		_, _ = fmt.Fprintln(o.Stdout, "Configured. Existing token unchanged.")
 		return nil
 	}
 
-	if err := o.StoreToken("default", token); err != nil {
-		return fmt.Errorf("store token in Keychain: %w", err)
+	// Verify the new token before touching the Keychain or the config file.
+	// Storing first would let a mistyped token overwrite a working one, and
+	// saving first would point the config at a new tenant while the Keychain
+	// still holds the old tenant's token.
+	if err := verify(ctx, baseURL, token); err != nil {
+		if errors.Is(err, iru.ErrUnauthorized) || errors.Is(err, iru.ErrForbidden) {
+			return fmt.Errorf("new token was rejected by Iru (%w); the existing Keychain token and config were left unchanged. Check the token and re-run `jellyfish configure`", err)
+		}
+		return fmt.Errorf("could not verify new token against Iru (%w); the existing Keychain token and config were left unchanged. Re-run `jellyfish configure` once Iru is reachable", err)
 	}
 
-	// Verify the token works.
-	verifyURL := baseURL
-	if o.VerifyBaseURL != "" {
-		verifyURL = o.VerifyBaseURL
+	if err := o.StoreToken("default", token); err != nil {
+		return fmt.Errorf("store token in Keychain (config left unchanged): %w", err)
 	}
-	c := iru.NewClient(verifyURL, token)
-	if _, err := c.ListDevicesPage(ctx, iru.DeviceFilters{}, 1, 0); err != nil {
-		if errors.Is(err, iru.ErrUnauthorized) || errors.Is(err, iru.ErrForbidden) {
-			_, _ = fmt.Fprintln(o.Stderr, "Warning: token did not authenticate against Iru. Config saved; re-run configure after rotating the token.")
-			return nil
-		}
-		_, _ = fmt.Fprintf(o.Stderr, "Warning: verification request failed: %v\n", err)
-		return nil
+	if err := config.Save(o.ConfigPath, file); err != nil {
+		return fmt.Errorf("token verified and stored in Keychain, but saving config failed: %w", err)
 	}
 	_, _ = fmt.Fprintln(o.Stdout, "Configured. Token verified.")
+	return nil
+}
+
+// verifyKeptToken reads the token already in the Keychain and checks it
+// against baseURL (the new tenant). It is used when the user changes
+// subdomain or region but presses Enter to keep the existing token. Errors
+// wrap the underlying sentinel so classifyError maps them onto the same exit
+// codes as a rejected or unverifiable new token.
+//
+// A nil readToken is a wiring bug rather than a cue to fall back to the real
+// Keychain: production always sets configureOpts.ReadToken, and a fallback
+// would only let a test that forgot the seam touch the admin's Keychain.
+func verifyKeptToken(ctx context.Context, readToken func(string) (string, error), verify func(context.Context, string, string) error, baseURL string) error {
+	if readToken == nil {
+		return errors.New("internal error: no Keychain reader configured to check the existing token; the config was left unchanged")
+	}
+	token, err := readToken("default")
+	if errors.Is(err, keychain.ErrNotFound) {
+		return errors.New("an API token is required when changing tenant and none is stored in the Keychain; the config was left unchanged. Re-run `jellyfish configure` and enter the token for the new tenant")
+	}
+	if err != nil {
+		return fmt.Errorf("read existing token from Keychain (config left unchanged): %w", err)
+	}
+	if err := verify(ctx, baseURL, token); err != nil {
+		if errors.Is(err, iru.ErrUnauthorized) || errors.Is(err, iru.ErrForbidden) {
+			return fmt.Errorf("existing token was rejected by the new tenant (%w); the config was left unchanged. Re-run `jellyfish configure` and enter the token for the new tenant", err)
+		}
+		return fmt.Errorf("could not verify existing token against the new tenant (%w); the config was left unchanged. Re-run `jellyfish configure` once Iru is reachable, or enter the token for the new tenant", err)
+	}
 	return nil
 }
 
@@ -492,16 +549,14 @@ func promptLogo(stdout, stderr io.Writer, r *bufio.Reader, current, logosDir str
 // copyLogoToManagedDir validates src as a PNG <= MaxLogoBytes and copies it
 // to <logosDir>/<basename(src)> with mode 0o600. Returns the destination path.
 func copyLogoToManagedDir(src, logosDir string) (string, error) {
-	if _, err := email.ValidateLogoFile(src); err != nil {
+	// Write the bytes that passed validation rather than reading src again,
+	// so the copy can't differ from what was checked.
+	data, err := email.ReadLogoFile(src)
+	if err != nil {
 		return "", err
 	}
 	if err := os.MkdirAll(logosDir, 0o700); err != nil {
 		return "", fmt.Errorf("create logos dir %s: %w", logosDir, err)
-	}
-	// #nosec G304 - src is the operator's own input
-	data, err := os.ReadFile(src)
-	if err != nil {
-		return "", fmt.Errorf("read %s: %w", src, err)
 	}
 	dst := filepath.Join(logosDir, filepath.Base(src))
 	// #nosec G304 G703 - dst is constructed from operator-controlled logosDir

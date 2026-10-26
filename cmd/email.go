@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 	"text/template"
@@ -34,6 +35,34 @@ type emailFlagValues struct {
 // gitEmailLookup is the function signature for "find a from address by asking
 // git". Production passes gitUserEmail; tests inject a fixture.
 type gitEmailLookup func() (string, error)
+
+// emailFlagHelp overrides the per-command help text for the email flags that
+// differ between commands. An empty field keeps the default text. OmitSend
+// skips registering --send-email (for commands that always send).
+type emailFlagHelp struct {
+	To       string
+	Send     string
+	Message  string
+	OmitSend bool
+}
+
+// addEmailFlags registers the email flags that readEmailFlags reads.
+func addEmailFlags(c *cobra.Command, h emailFlagHelp) {
+	to := firstNonEmpty(h.To, "Email To: header (default: email.default_to from config)")
+	send := firstNonEmpty(h.Send, "Send the rendered email via Gmail (requires `jellyfish configure email` to be run first)")
+	message := firstNonEmpty(h.Message, "Open $VISUAL/$EDITOR to compose a message rendered above the email body")
+
+	c.Flags().String("email-to", "", to)
+	c.Flags().String("email-from", "", "Email From: header (default: email.from from config, then git user.email)")
+	c.Flags().String("email-subject", "", "Email Subject: header (default: rendered email.subject_template or a per-command default)")
+	c.Flags().String("email-header-bg", "", "Email header background colour as #RRGGBB (default: email.header_bg or #2b3a55)")
+	c.Flags().String("email-logo", "", "Path to a PNG to show in the email header (default: email.logo_path)")
+	if !h.OmitSend {
+		c.Flags().Bool("send-email", false, send)
+	}
+	c.Flags().Bool("message", false, message)
+	c.Flags().String("message-file", "", "Read the email message body from a file (use - for stdin)")
+}
 
 // readEmailFlags pulls --email-to / --email-from / --email-subject /
 // --email-header-bg / --email-logo / --send-email / --message / --message-file
@@ -149,6 +178,31 @@ func resolveNowAndGitLookup(now time.Time, lookupGit gitEmailLookup) (time.Time,
 		lookupGit = gitUserEmail
 	}
 	return now, lookupGit
+}
+
+// prepareEmailOptions is the common front half of every email render and
+// send path: apply the now/git defaults, resolve flag/config precedence and
+// stamp the Report header.
+func prepareEmailOptions(flags emailFlagValues, prof config.Profile, now time.Time, lookupGit gitEmailLookup, report string) (email.Options, error) {
+	now, lookupGit = resolveNowAndGitLookup(now, lookupGit)
+	eo, err := resolveEmailOptions(flags, prof, lookupGit, now)
+	if err != nil {
+		return email.Options{}, err
+	}
+	eo.Report = report
+	return eo, nil
+}
+
+// attachMessage captures --message / --message-file into eo.Message. eo.To
+// is shown as the recipient in the editor template, so call it after the
+// final recipient is known.
+func attachMessage(eo *email.Options, flags emailFlagValues, stdin io.Reader, stderr io.Writer) error {
+	msg, err := captureMessage(flags, true, eo.To, eo.Subject, stdin, stderr, nil)
+	if err != nil {
+		return err
+	}
+	eo.Message = msg
+	return nil
 }
 
 func firstNonEmpty(values ...string) string {

@@ -29,6 +29,7 @@ type userShowOpts struct {
 	Output         string
 	NoCache        bool
 	CacheTTL       time.Duration
+	CacheTenant    string
 	EmailFlags     emailFlagValues
 	EmailNow       time.Time
 	Profile        config.Profile
@@ -73,54 +74,37 @@ func newUserShowCmd() *cobra.Command {
 			if err := validateMessageFlags(opts.EmailFlags, hasEmailOutput); err != nil {
 				return err
 			}
-			client, err := buildClient(cmd)
+			rc, err := loadRunContext(cmd)
 			if err != nil {
 				return err
 			}
-			ttl, err := resolveCacheTTL(cmd)
-			if err != nil {
-				return err
-			}
-			opts.CacheTTL = ttl
+			opts.CacheTTL = rc.CacheTTL
+			opts.CacheTenant = rc.CacheTenant
+			opts.Profile = rc.Profile
 			opts.Identifier = args[0]
 			opts.Output = outFmt
 			if cmd.Flags().Changed("output") {
 				opts.ExplicitOutput = outFmt
 			}
 			opts.EmailNow = time.Now()
-			if hasEmailOutput {
-				prof, err := activeProfile(cmd)
-				if err != nil {
-					return err
-				}
-				opts.Profile = prof
-			}
 			if opts.KeychainGet == nil {
 				opts.KeychainGet = keychain.GetGmailServiceAccount
 			}
 			if opts.NewSender == nil {
 				opts.NewSender = gmail.NewSender
 			}
-			return runUserShow(cmd.Context(), client, cmd.OutOrStdout(), cmd.ErrOrStderr(), opts)
+			return runUserShow(cmd.Context(), rc.Client, cmd.OutOrStdout(), cmd.ErrOrStderr(), opts)
 		},
 	}
 	c.Flags().BoolVar(&opts.NoCache, "no-cache", false, "Skip the detection cache; always fetch fresh")
-	c.Flags().String("email-to", "", "Email To: header (default: email.default_to from config)")
-	c.Flags().String("email-from", "", "Email From: header (default: email.from from config, then git user.email)")
-	c.Flags().String("email-subject", "", "Email Subject: header (default: rendered email.subject_template or a per-command default)")
-	c.Flags().String("email-header-bg", "", "Email header background colour as #RRGGBB (default: email.header_bg or #2b3a55)")
-	c.Flags().String("email-logo", "", "Path to a PNG to show in the email header (default: email.logo_path)")
-	c.Flags().Bool("send-email", false, "Send the rendered email via Gmail (requires `jellyfish configure email` to be run first)")
-	c.Flags().Bool("message", false, "Open $VISUAL/$EDITOR to compose a message rendered above the email body")
-	c.Flags().String("message-file", "", "Read the email message body from a file (use - for stdin)")
+	addEmailFlags(c, emailFlagHelp{})
 	return c
 }
 
+// runUserShow resolves the user (including any disambiguation prompt) before
+// walking detections, so a mistyped ID or email fails fast instead of after
+// the full (potentially 30-90 s) detection walk.
 func runUserShow(ctx context.Context, client iruClient, w, stderr io.Writer, opts userShowOpts) error {
-	all, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache, opts.CacheTTL)
-	if err != nil {
-		return err
-	}
 	prompt := opts.PromptReader
 	if prompt == nil {
 		prompt = os.Stdin
@@ -136,6 +120,10 @@ func runUserShow(ctx context.Context, client iruClient, w, stderr io.Writer, opt
 	if !ok {
 		_, _ = fmt.Fprintln(stderr, "aborted: no user shown")
 		return nil
+	}
+	all, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache, opts.CacheTTL, opts.CacheTenant)
+	if err != nil {
+		return err
 	}
 	bundle, err := buildBundleForUser(ctx, client, user, all)
 	if err != nil {
@@ -251,17 +239,13 @@ func renderUserBundle(w io.Writer, stderr io.Writer, opts userShowOpts, b UserBu
 	case "table", "":
 		return renderUserBundleTable(w, b)
 	case "email":
-		now, gitLookup := resolveNowAndGitLookup(opts.EmailNow, opts.gitEmail)
-		emailOpts, err := resolveEmailOptions(opts.EmailFlags, opts.Profile, gitLookup, now)
+		emailOpts, err := prepareEmailOptions(opts.EmailFlags, opts.Profile, opts.EmailNow, opts.gitEmail, "user-show")
 		if err != nil {
 			return err
 		}
-		emailOpts.Report = "user-show"
-		msg, err := captureMessage(opts.EmailFlags, true, emailOpts.To, emailOpts.Subject, os.Stdin, stderr, nil)
-		if err != nil {
+		if err := attachMessage(&emailOpts, opts.EmailFlags, os.Stdin, stderr); err != nil {
 			return err
 		}
-		emailOpts.Message = msg
 		return email.NewUserShowRendererWithStderr(emailOpts, stderr).Render(w, bundleToEmailInput(b))
 	default:
 		return fmt.Errorf("unsupported output format %q", opts.Output)
@@ -269,12 +253,10 @@ func renderUserBundle(w io.Writer, stderr io.Writer, opts userShowOpts, b UserBu
 }
 
 func runSendUserShow(ctx context.Context, stderr io.Writer, opts userShowOpts, b UserBundle) error {
-	now, gitLookup := resolveNowAndGitLookup(opts.EmailNow, opts.gitEmail)
-	emailOpts, err := resolveEmailOptions(opts.EmailFlags, opts.Profile, gitLookup, now)
+	emailOpts, err := prepareEmailOptions(opts.EmailFlags, opts.Profile, opts.EmailNow, opts.gitEmail, "user-show")
 	if err != nil {
 		return err
 	}
-	emailOpts.Report = "user-show"
 
 	sender, to, err := resolveSendOptions(
 		ctx,
@@ -290,11 +272,9 @@ func runSendUserShow(ctx context.Context, stderr io.Writer, opts userShowOpts, b
 	}
 	emailOpts.To = to
 
-	msg, err := captureMessage(opts.EmailFlags, true, emailOpts.To, emailOpts.Subject, os.Stdin, stderr, nil)
-	if err != nil {
+	if err := attachMessage(&emailOpts, opts.EmailFlags, os.Stdin, stderr); err != nil {
 		return err
 	}
-	emailOpts.Message = msg
 
 	id, err := sendUserBundle(ctx, sender, emailOpts, stderr, b)
 	if err != nil {
@@ -340,7 +320,9 @@ func renderUserBundleTable(w io.Writer, b UserBundle) error {
 	}
 
 	for _, d := range b.Devices {
-		_, _ = fmt.Fprintf(w, "\nDETECTIONS for %s (%s)\n", d.Device.DeviceName, d.Device.SerialNumber)
+		// The device name is user-chosen, so it gets the same treatment as a
+		// table cell before it reaches the terminal.
+		_, _ = fmt.Fprintf(w, "\nDETECTIONS for %s (%s)\n", output.SanitiseTerminal(d.Device.DeviceName), output.SanitiseTerminal(d.Device.SerialNumber))
 		if len(d.Detections) == 0 {
 			_, _ = fmt.Fprintln(w, "  (none)")
 			continue
@@ -390,11 +372,7 @@ func renderUserBundleCSV(w io.Writer, b UserBundle) error {
 		}
 	}
 	sort.SliceStable(rows, func(i, j int) bool {
-		ri, rj := iru.SeverityRank(rows[i].severity), iru.SeverityRank(rows[j].severity)
-		if ri != rj {
-			return ri < rj
-		}
-		return rows[i].cvssScore > rows[j].cvssScore
+		return lessBySeverityThenCVSS(rows[i].severity, rows[i].cvssScore, rows[j].severity, rows[j].cvssScore)
 	})
 	c := output.CSV().WithColumns([]output.Column{
 		{Header: "user_id", Extract: func(v any) string { return v.(row).userID }},

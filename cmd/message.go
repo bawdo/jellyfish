@@ -1,14 +1,11 @@
 package cmd
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 )
 
@@ -115,15 +112,20 @@ func captureMessageViaEditor(recipient, subject string, runEditor func(path stri
 		"# Jellyfish message\n# Subject: %s\n# To: %s\n# Lines starting with '#' will be ignored.\n#\n\n",
 		subject, display,
 	)
-	var nonce [4]byte
-	if _, err := rand.Read(nonce[:]); err != nil {
+	// CreateTemp opens the file O_EXCL with mode 0600 under os.TempDir().
+	f, err := os.CreateTemp("", "jellyfish-message-*.txt")
+	if err != nil {
 		return "", fmt.Errorf("create message scratch file: %w", err)
 	}
-	scratch := filepath.Join(os.TempDir(), "jellyfish-message-"+hex.EncodeToString(nonce[:])+".txt")
-	if err := os.WriteFile(scratch, []byte(templateBody), 0o600); err != nil {
-		return "", fmt.Errorf("create message scratch file: %w", err)
-	}
+	scratch := f.Name()
 	defer func() { _ = os.Remove(scratch) }()
+	_, werr := f.WriteString(templateBody)
+	if cerr := f.Close(); werr == nil {
+		werr = cerr
+	}
+	if werr != nil {
+		return "", fmt.Errorf("create message scratch file: %w", werr)
+	}
 	if err := runEditor(scratch); err != nil {
 		return "", err
 	}

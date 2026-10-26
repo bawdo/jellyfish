@@ -3,6 +3,7 @@ package iru
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,11 +28,22 @@ type clientConfig struct {
 	httpClient *http.Client
 	userAgent  string
 	timeout    *time.Duration
+	// baseTransport is the innermost RoundTripper. Unexported so only tests
+	// can swap it; production always uses http.DefaultTransport.
+	baseTransport http.RoundTripper
 }
 
-// WithHTTPClient supplies a custom *http.Client. NewClient attaches the auth
-// transport when the supplied client has none, and still applies WithTimeout
-// (if also given) regardless of the order the two options are passed in.
+// withBaseTransport replaces the innermost transport beneath the auth and
+// retry layers. It exists so tests can exercise the full stack in memory.
+func withBaseTransport(rt http.RoundTripper) Option {
+	return func(cfg *clientConfig) { cfg.baseTransport = rt }
+}
+
+// WithHTTPClient supplies a custom *http.Client. NewClient works on a shallow
+// copy, so the supplied client is left untouched. The copy gets the auth and
+// retry transport when the supplied client has no Transport, keeps the
+// caller's CheckRedirect if one is set, and still takes WithTimeout (if also
+// given) regardless of the order the two options are passed in.
 func WithHTTPClient(h *http.Client) Option {
 	return func(cfg *clientConfig) { cfg.httpClient = h }
 }
@@ -54,15 +66,48 @@ func NewClient(baseURL, token string, opts ...Option) *Client {
 		o(&cfg)
 	}
 
-	httpClient := cfg.httpClient
-	if httpClient == nil {
+	var httpClient *http.Client
+	if cfg.httpClient != nil {
+		// Work on a shallow copy so the caller's *http.Client is never
+		// mutated (it may be shared with other code).
+		hc := *cfg.httpClient
+		httpClient = &hc
+	} else {
 		httpClient = &http.Client{Timeout: 30 * time.Second}
+	}
+	base := cfg.baseTransport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	// The token and the request URL (query strings included) must only reach
+	// the origin (scheme and host) derived from baseURL.
+	var apiScheme, apiHost string
+	if u, err := url.Parse(baseURL); err == nil {
+		apiScheme, apiHost = u.Scheme, u.Host
 	}
 	// Preserve the auth transport when callers swap in their own http.Client.
 	if httpClient.Transport == nil {
 		httpClient.Transport = &authTransport{
-			token: token,
-			base:  &retryTransport{base: http.DefaultTransport},
+			token:  token,
+			scheme: apiScheme,
+			host:   apiHost,
+			base:   &retryTransport{base: base},
+		}
+	}
+	// Refuse redirects off the API origin (another host, or a downgrade from
+	// https to http) unless the caller supplied their own policy.
+	if httpClient.CheckRedirect == nil {
+		httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+			if !sameOrigin(req.URL, apiScheme, apiHost) {
+				// One check covers both a foreign host and a scheme change.
+				return fmt.Errorf("iru: refusing redirect off the API origin to %q, want %q",
+					req.URL.Scheme+"://"+req.URL.Host, apiScheme+"://"+apiHost)
+			}
+			// Keep Go's default cap.
+			if len(via) >= 10 {
+				return errors.New("stopped after 10 redirects")
+			}
+			return nil
 		}
 	}
 	if cfg.timeout != nil {
@@ -114,7 +159,21 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 		return fmt.Errorf("read response body: %w", readErr)
 	}
 	if err := json.Unmarshal(data, out); err != nil {
-		return fmt.Errorf("decode response: %w (raw=%q)", err, string(data))
+		return fmt.Errorf("decode response: %w (raw=%q)", err, rawExcerpt(data))
 	}
 	return nil
+}
+
+// maxRawExcerpt bounds how much of an undecodable body goes into an error.
+// It matches the 512 byte limit decodeAPIError uses for error bodies.
+const maxRawExcerpt = 512
+
+// rawExcerpt returns data as a string, cut to maxRawExcerpt bytes with a
+// marker giving the full length when it is longer. A full page of results
+// would otherwise be dumped into the error message.
+func rawExcerpt(data []byte) string {
+	if len(data) <= maxRawExcerpt {
+		return string(data)
+	}
+	return fmt.Sprintf("%s...(%d bytes total)", data[:maxRawExcerpt], len(data))
 }

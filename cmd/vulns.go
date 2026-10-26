@@ -23,12 +23,13 @@ import (
 )
 
 type vulnsListOpts struct {
-	DeviceID string
-	Serial   string
-	Limit    int
-	Output   string
-	NoCache  bool
-	CacheTTL time.Duration
+	DeviceID    string
+	Serial      string
+	Limit       int
+	Output      string
+	NoCache     bool
+	CacheTTL    time.Duration
+	CacheTenant string
 }
 
 func newVulnsCmd() *cobra.Command {
@@ -50,16 +51,13 @@ func newVulnsListCmd() *cobra.Command {
 			outFmt, _ := cmd.Flags().GetString("output")
 			opts.Output = outFmt
 
-			client, err := buildClient(cmd)
+			rc, err := loadRunContext(cmd)
 			if err != nil {
 				return err
 			}
-			ttl, err := resolveCacheTTL(cmd)
-			if err != nil {
-				return err
-			}
-			opts.CacheTTL = ttl
-			return runVulnsList(cmd.Context(), client, cmd.OutOrStdout(), cmd.ErrOrStderr(), opts)
+			opts.CacheTTL = rc.CacheTTL
+			opts.CacheTenant = rc.CacheTenant
+			return runVulnsList(cmd.Context(), rc.Client, cmd.OutOrStdout(), cmd.ErrOrStderr(), opts)
 		},
 	}
 	c.Flags().StringVar(&opts.DeviceID, "device-id", "", "Filter to a single device by ID")
@@ -88,7 +86,7 @@ func runVulnsList(ctx context.Context, client iruClient, w, stderr io.Writer, op
 	switch {
 	case targetDeviceID != "":
 		// Iru ignores per-device filters on /detections, so walk and filter.
-		all, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache, opts.CacheTTL)
+		all, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache, opts.CacheTTL, opts.CacheTenant)
 		if err != nil {
 			return err
 		}
@@ -109,7 +107,7 @@ func runVulnsList(ctx context.Context, client iruClient, w, stderr io.Writer, op
 		}
 		detections = ds
 	default:
-		ds, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache, opts.CacheTTL)
+		ds, err := fetchAllDetections(ctx, client, stderr, !opts.NoCache, opts.CacheTTL, opts.CacheTenant)
 		if err != nil {
 			return err
 		}
@@ -145,12 +143,18 @@ func renderDetections(w io.Writer, format string, detections []iru.Detection) er
 // original order for fully-equal records.
 func sortDetectionsBySeverity(ds []iru.Detection) {
 	sort.SliceStable(ds, func(i, j int) bool {
-		ri, rj := iru.SeverityRank(ds[i].Severity), iru.SeverityRank(ds[j].Severity)
-		if ri != rj {
-			return ri < rj
-		}
-		return ds[i].CVSSScore > ds[j].CVSSScore
+		return lessBySeverityThenCVSS(ds[i].Severity, ds[i].CVSSScore, ds[j].Severity, ds[j].CVSSScore)
 	})
+}
+
+// lessBySeverityThenCVSS is the shared "severity" ordering: lower
+// iru.SeverityRank (Critical) first, then higher CVSS first.
+func lessBySeverityThenCVSS(sevA string, cvssA float64, sevB string, cvssB float64) bool {
+	ra, rb := iru.SeverityRank(sevA), iru.SeverityRank(sevB)
+	if ra != rb {
+		return ra < rb
+	}
+	return cvssA > cvssB
 }
 
 func detectionColumns() []output.Column {
@@ -176,6 +180,7 @@ type vulnsSummaryOpts struct {
 	Output         string
 	NoCache        bool
 	CacheTTL       time.Duration
+	CacheTenant    string
 	EmailFlags     emailFlagValues
 	EmailNow       time.Time
 	Profile        config.Profile
@@ -209,29 +214,20 @@ minutes; pass --no-cache to force a fresh fetch.`,
 				opts.ExplicitOutput = outFmt
 			}
 			opts.EmailNow = time.Now()
-			if hasEmailOutput {
-				prof, err := activeProfile(cmd)
-				if err != nil {
-					return err
-				}
-				opts.Profile = prof
+			rc, err := loadRunContext(cmd)
+			if err != nil {
+				return err
 			}
+			opts.CacheTTL = rc.CacheTTL
+			opts.CacheTenant = rc.CacheTenant
+			opts.Profile = rc.Profile
 			if opts.KeychainGet == nil {
 				opts.KeychainGet = keychain.GetGmailServiceAccount
 			}
 			if opts.NewSender == nil {
 				opts.NewSender = gmail.NewSender
 			}
-			client, err := buildClient(cmd)
-			if err != nil {
-				return err
-			}
-			ttl, err := resolveCacheTTL(cmd)
-			if err != nil {
-				return err
-			}
-			opts.CacheTTL = ttl
-			return runVulnsSummary(cmd.Context(), client, cmd.OutOrStdout(), cmd.ErrOrStderr(), opts)
+			return runVulnsSummary(cmd.Context(), rc.Client, cmd.OutOrStdout(), cmd.ErrOrStderr(), opts)
 		},
 	}
 	c.Flags().StringVar(&opts.Status, "status", "", "Filter by status: active | remediated (default: all)")
@@ -239,19 +235,12 @@ minutes; pass --no-cache to force a fresh fetch.`,
 	c.Flags().StringVar(&opts.Sort, "sort", "severity", "Sort by: severity (default) | cvss | kev | devices | cve")
 	c.Flags().IntVar(&opts.Limit, "limit", 0, "Cap the rendered rows after sort")
 	c.Flags().BoolVar(&opts.NoCache, "no-cache", false, "Skip the vulnerabilities cache; always fetch fresh")
-	c.Flags().String("email-to", "", "Email To: header (default: email.default_to from config)")
-	c.Flags().String("email-from", "", "Email From: header (default: email.from from config, then git user.email)")
-	c.Flags().String("email-subject", "", "Email Subject: header (default: rendered email.subject_template or a per-command default)")
-	c.Flags().String("email-header-bg", "", "Email header background colour as #RRGGBB (default: email.header_bg or #2b3a55)")
-	c.Flags().String("email-logo", "", "Path to a PNG to show in the email header (default: email.logo_path)")
-	c.Flags().Bool("send-email", false, "Send the rendered email via Gmail (requires `jellyfish configure email` to be run first)")
-	c.Flags().Bool("message", false, "Open $VISUAL/$EDITOR to compose a message rendered above the email body")
-	c.Flags().String("message-file", "", "Read the email message body from a file (use - for stdin)")
+	addEmailFlags(c, emailFlagHelp{})
 	return c
 }
 
 func runVulnsSummary(ctx context.Context, client iruClient, w, stderr io.Writer, opts vulnsSummaryOpts) error {
-	all, err := fetchAllVulnerabilities(ctx, client, stderr, !opts.NoCache, opts.CacheTTL)
+	all, err := fetchAllVulnerabilities(ctx, client, stderr, !opts.NoCache, opts.CacheTTL, opts.CacheTenant)
 	if err != nil {
 		return err
 	}
@@ -295,11 +284,7 @@ func sortVulns(vs []iru.Vulnerability, key string) {
 		sort.Slice(vs, func(i, j int) bool { return vs[i].CVEID < vs[j].CVEID })
 	case "severity", "":
 		sort.SliceStable(vs, func(i, j int) bool {
-			ri, rj := iru.SeverityRank(vs[i].Severity), iru.SeverityRank(vs[j].Severity)
-			if ri != rj {
-				return ri < rj
-			}
-			return vs[i].CVSSScore > vs[j].CVSSScore
+			return lessBySeverityThenCVSS(vs[i].Severity, vs[i].CVSSScore, vs[j].Severity, vs[j].CVSSScore)
 		})
 	}
 }
@@ -313,17 +298,13 @@ func renderVulns(w io.Writer, stderr io.Writer, opts vulnsSummaryOpts, vs []iru.
 		c := output.CSV().WithColumns(vulnColumns())
 		return c.Render(w, vs)
 	case "email":
-		now, gitLookup := resolveNowAndGitLookup(opts.EmailNow, opts.gitEmail)
-		emailOpts, err := resolveEmailOptions(opts.EmailFlags, opts.Profile, gitLookup, now)
+		emailOpts, err := prepareEmailOptions(opts.EmailFlags, opts.Profile, opts.EmailNow, opts.gitEmail, "vulns-summary")
 		if err != nil {
 			return err
 		}
-		emailOpts.Report = "vulns-summary"
-		msg, err := captureMessage(opts.EmailFlags, true, emailOpts.To, emailOpts.Subject, os.Stdin, stderr, nil)
-		if err != nil {
+		if err := attachMessage(&emailOpts, opts.EmailFlags, os.Stdin, stderr); err != nil {
 			return err
 		}
-		emailOpts.Message = msg
 		return email.NewVulnSummaryRendererWithStderr(emailOpts, stderr).Render(w, vs)
 	}
 	r, err := output.For(opts.Output)
@@ -334,12 +315,10 @@ func renderVulns(w io.Writer, stderr io.Writer, opts vulnsSummaryOpts, vs []iru.
 }
 
 func runSendVulnsSummary(ctx context.Context, stderr io.Writer, opts vulnsSummaryOpts, vs []iru.Vulnerability) error {
-	now, gitLookup := resolveNowAndGitLookup(opts.EmailNow, opts.gitEmail)
-	emailOpts, err := resolveEmailOptions(opts.EmailFlags, opts.Profile, gitLookup, now)
+	emailOpts, err := prepareEmailOptions(opts.EmailFlags, opts.Profile, opts.EmailNow, opts.gitEmail, "vulns-summary")
 	if err != nil {
 		return err
 	}
-	emailOpts.Report = "vulns-summary"
 
 	sender, to, err := resolveSendOptions(
 		ctx,
@@ -355,11 +334,9 @@ func runSendVulnsSummary(ctx context.Context, stderr io.Writer, opts vulnsSummar
 	}
 	emailOpts.To = to
 
-	msg, err := captureMessage(opts.EmailFlags, true, emailOpts.To, emailOpts.Subject, os.Stdin, stderr, nil)
-	if err != nil {
+	if err := attachMessage(&emailOpts, opts.EmailFlags, os.Stdin, stderr); err != nil {
 		return err
 	}
-	emailOpts.Message = msg
 
 	var buf bytes.Buffer
 	if err := email.NewVulnSummaryRendererWithStderr(emailOpts, stderr).Render(&buf, vs); err != nil {

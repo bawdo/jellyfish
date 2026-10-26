@@ -1,0 +1,154 @@
+package cmd
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"testing"
+
+	"github.com/spf13/cobra"
+
+	"github.com/bawdo/jellyfish/internal/iru"
+)
+
+// runWithStubLeaf runs a root command carrying an extra "boom" leaf whose
+// RunE returns err, and returns the exit code plus everything written to
+// stdout and stderr.
+func runWithStubLeaf(t *testing.T, err error, args ...string) (int, string, string) {
+	t.Helper()
+	root := newRootCmd()
+	root.AddCommand(&cobra.Command{
+		Use:  "boom",
+		RunE: func(*cobra.Command, []string) error { return err },
+	})
+	var out, errBuf bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&errBuf)
+	code := runRoot(context.Background(), root, args)
+	return code, out.String(), errBuf.String()
+}
+
+func TestRunRootSanitisesErrorText(t *testing.T) {
+	apiErr := &iru.APIError{Status: 400, Message: "bad\x1b]0;pwned\x07request\u009b31m"}
+	code, _, stderr := runWithStubLeaf(t, apiErr, "boom")
+	if code != 1 {
+		t.Errorf("exit code: got %d want 1", code)
+	}
+	for _, r := range stderr {
+		if (r < 0x20 && r != '\n') || r == 0x7f || (r >= 0x80 && r <= 0x9f) {
+			t.Fatalf("control character %U leaked into stderr: %q", r, stderr)
+		}
+	}
+	want := "Error: " + expectSanitised(apiErr.Error()) + "\n"
+	if stderr != want {
+		t.Fatalf("stderr:\n got %q\nwant %q", stderr, want)
+	}
+}
+
+// expectSanitised mirrors the expected sanitisation independently of the
+// implementation: drop C0 (except newline), DEL and C1.
+func expectSanitised(s string) string {
+	var b []rune
+	for _, r := range s {
+		if (r < 0x20 && r != '\n') || r == 0x7f || (r >= 0x80 && r <= 0x9f) {
+			continue
+		}
+		b = append(b, r)
+	}
+	return string(b)
+}
+
+func TestRunRootKeepsNewlinesInErrorText(t *testing.T) {
+	_, _, stderr := runWithStubLeaf(t, errors.New("first line\nsecond line"), "boom")
+	if want := "Error: first line\nsecond line\n"; stderr != want {
+		t.Fatalf("stderr: got %q want %q", stderr, want)
+	}
+}
+
+func TestRunRootPlainErrorOutputUnchanged(t *testing.T) {
+	cases := []struct {
+		name   string
+		err    error
+		args   []string
+		code   int
+		stderr string
+	}{
+		{"leaf error", errors.New("oops"), []string{"boom"}, 1, "Error: oops\n"},
+		{"not found keeps exit 3", iru.ErrNotFound, []string{"boom"}, 3, "Error: " + iru.ErrNotFound.Error() + "\n"},
+		{"unknown root flag", nil, []string{"--bogus"}, 1, "Error: unknown flag: --bogus\n"},
+		{"unknown leaf flag", nil, []string{"vulns", "list", "--bogus"}, 1, "Error: unknown flag: --bogus\n"},
+		{"unknown command", nil, []string{"bogus"}, 1,
+			"Error: unknown command \"bogus\" for \"jellyfish\"\nRun 'jellyfish --help' for usage.\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			code, _, stderr := runWithStubLeaf(t, tc.err, tc.args...)
+			if code != tc.code {
+				t.Errorf("exit code: got %d want %d", code, tc.code)
+			}
+			if stderr != tc.stderr {
+				t.Errorf("stderr:\n got %q\nwant %q", stderr, tc.stderr)
+			}
+		})
+	}
+}
+
+func TestRunRootSuccessPrintsNothingToStderr(t *testing.T) {
+	code, _, stderr := runWithStubLeaf(t, nil, "boom")
+	if code != 0 || stderr != "" {
+		t.Fatalf("got code %d stderr %q, want 0 and empty", code, stderr)
+	}
+}
+
+// Commands write user records and upstream error text to cmd.ErrOrStderr()
+// (per-recipient lines, the user picker); runRoot must route that through the
+// sanitising writer while keeping newlines and the leading \r progress idiom.
+func TestRunRootSanitisesCommandStderr(t *testing.T) {
+	root := newRootCmd()
+	root.AddCommand(&cobra.Command{
+		Use: "noisy",
+		RunE: func(c *cobra.Command, _ []string) error {
+			w := c.ErrOrStderr()
+			_, _ = fmt.Fprintf(w, "\rfetching %s: %d pages...", "detections", 2)
+			_, _ = fmt.Fprintln(w)
+			_, _ = fmt.Fprintf(w, "error input=%s lookup: %v\n", "evil\x1b]0;pwned\x07@x.com", errors.New("bad\rgateway\u009b2J"))
+			_, _ = fmt.Fprintf(w, "  [%d] %s\n", 1, "u-1 - Mallory\x1b[2J (dept: \x9b31m)")
+			return nil
+		},
+	})
+	var out, errBuf bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&errBuf)
+	if code := runRoot(context.Background(), root, []string{"noisy"}); code != 0 {
+		t.Fatalf("exit code: got %d want 0", code)
+	}
+	want := "\rfetching detections: 2 pages...\n" +
+		"error input=evil]0;pwned@x.com lookup: badgateway2J\n" +
+		"  [1] u-1 - Mallory[2J (dept: �31m)\n"
+	if got := errBuf.String(); got != want {
+		t.Fatalf("stderr:\n got %q\nwant %q", got, want)
+	}
+}
+
+// A nil args slice must not let cobra fall back to os.Args (under go test,
+// the test binary's own -test.* flags, which root would reject).
+func TestRunRootNilArgsMeansNoArgs(t *testing.T) {
+	code, stdout, stderr := runWithStubLeaf(t, nil)
+	if code != 0 {
+		t.Fatalf("exit code: got %d want 0 (stderr %q)", code, stderr)
+	}
+	if stderr != "" {
+		t.Fatalf("stderr: got %q want empty", stderr)
+	}
+	if !strings.Contains(stdout, "Usage:") {
+		t.Fatalf("want root help on stdout, got %q", stdout)
+	}
+}
+
+func TestRootSilencesCobraErrorPrinting(t *testing.T) {
+	if !newRootCmd().SilenceErrors {
+		t.Fatal("root SilenceErrors must be true so runRoot owns (sanitised) error printing")
+	}
+}

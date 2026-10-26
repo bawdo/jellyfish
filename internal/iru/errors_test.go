@@ -53,3 +53,18 @@ func TestAPIErrorCarriesStatusAndMessage(t *testing.T) {
 		t.Fatalf("expected non-empty message")
 	}
 }
+
+func TestDecodeAPIErrorBoundsBody(t *testing.T) {
+	// An endless error body must be cut off at maxErrorBody, not read to
+	// exhaustion.
+	body := &endlessBody{}
+	err := decodeAPIError(&http.Response{StatusCode: http.StatusBadGateway, Body: body})
+
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusBadGateway {
+		t.Fatalf("expected *APIError with status 502, got %v", err)
+	}
+	if got := body.read.Load(); got > maxErrorBody {
+		t.Fatalf("read %d bytes of the body, want at most %d", got, maxErrorBody)
+	}
+}

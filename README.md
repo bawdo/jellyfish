@@ -3,7 +3,7 @@
 [![CI](https://github.com/bawdo/jellyfish/actions/workflows/ci.yml/badge.svg)](https://github.com/bawdo/jellyfish/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/bawdo/jellyfish/graph/badge.svg?token=CODECOV_GRAPH_TOKEN)](https://codecov.io/gh/bawdo/jellyfish)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Go 1.25+](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white)](go.mod)
+[![Go 1.26+](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white)](go.mod)
 
 A macOS-only Go CLI for the Iru (formerly Kandji) Endpoint Management API.
 
@@ -18,7 +18,7 @@ A macOS-only Go CLI for the Iru (formerly Kandji) Endpoint Management API.
 
 ## Install
 
-Requires Go 1.25+ on macOS.
+Requires Go 1.26+ on macOS.
 
 ```bash
 go install github.com/bawdo/jellyfish@latest
@@ -56,6 +56,8 @@ jellyfish configure
 
 Prompts for the tenant subdomain (the bit before `.api.kandji.io` - the hostname is still `kandji.io` even though the product was renamed Iru), region (`us` or `eu`), and API token. Re-running is safe: each prompt shows the current value, and Enter keeps it.
 
+A new token is checked against Iru before anything is written. If Iru rejects it, or the check can't complete, the existing Keychain token and config are left untouched and the command exits non-zero: 2 if Iru rejects the token, and 4 for an Iru 5xx, a rate limit, or a network failure (DNS, connection refused, timeout). If you change subdomain or region but press Enter to keep the existing token, that stored token is checked against the new tenant the same way before the config is saved.
+
 Subdomain and region are written to `~/.config/jellyfish/config.yml` (mode `0600`); the token goes to the macOS Keychain under service `jellyfish.secrets`, account `default`:
 
 ```bash
@@ -69,7 +71,7 @@ security delete-generic-password -s jellyfish.secrets -a default
 jellyfish configure email
 ```
 
-Prompts for `From`, default `To`, a Gmail service-account JSON path, header background colour, a logo PNG, and an optional `List-Id` domain. Non-secret values go to the `email:` block of `config.yml`; the Gmail JSON goes to the Keychain; the logo PNG (validated, under 512 KB) is copied into `~/.config/jellyfish/logos/`. Enter keeps a value; a literal `-` clears it.
+Prompts for `From`, default `To`, a Gmail service-account JSON path, header background colour, a logo PNG, and an optional `List-Id` domain. Non-secret values go to the `email:` block of `config.yml`; the Gmail JSON goes to the Keychain; the logo PNG (validated: a regular file under 512 KB and at most 2048×2048 pixels) is copied into `~/.config/jellyfish/logos/`. Enter keeps a value; a literal `-` clears it.
 
 `list_id_domain` sets the `List-Id` header on sent mail. Left unset, it falls back to `jellyfish.` plus the domain of `email.from` - so a `from` of `ops@example.com` yields `List-Id: <jellyfish.example.com>`. You can also edit `config.yml` directly.
 
@@ -103,7 +105,7 @@ Every detection returned is active by definition - Iru drops a detection once th
 
 ### Detection cache
 
-`vulns list` and `user show` walk Iru's detections endpoint in full, because Iru has no per-device server filter. The first call takes 30-90 seconds on a large tenant; results are cached for 15 minutes under `~/Library/Caches/jellyfish/`. Pass `--no-cache` to force a fresh fetch. Change the TTL with `cache_ttl_minutes` in `config.yml` or via `jellyfish configure cache`.
+`vulns list` and `user show` walk Iru's detections endpoint in full, because Iru has no per-device server filter. The first call takes 30-90 seconds on a large tenant; results are cached for 15 minutes under `~/Library/Caches/jellyfish/`, one file per tenant (e.g. `detections-<subdomain>-<region>.json`), so switching `--config` between tenants never mixes their data. Pass `--no-cache` to force a fresh fetch. Change the TTL with `cache_ttl_minutes` in `config.yml` or via `jellyfish configure cache`.
 
 ### Vulnerability summary
 
@@ -163,7 +165,7 @@ Recipient, sender, and subject default from the `email:` block of `config.yml`; 
 | `--email-logo` | `email.logo_path` | empty (no logo) |
 | `--message` / `--message-file` | - | unset |
 
-The logo renders at 56px height (width scales to its aspect ratio); supply a PNG under 512 KB, ideally at 2x height for retina displays. `email.subject_template` is a Go template with `{{.Date}}` and `{{.Time}}`. CVE link targets (`cve_link_primary`, `cve_link_secondary`) are config-overridable; the `{cve}` token is substituted literally.
+The logo renders at 56px height (width scales to its aspect ratio); supply a PNG under 512 KB and no larger than 2048×2048 pixels, ideally at 2x height for retina displays. A configured logo that fails these checks is dropped with a warning and the email renders without it. `email.subject_template` is a Go template with `{{.Date}}` and `{{.Time}}`. CVE link targets (`cve_link_primary`, `cve_link_secondary`) are config-overridable; the `{cve}` token is substituted literally.
 
 #### Message section (`--message`, `--message-file`)
 
@@ -236,6 +238,8 @@ jellyfish overview --emails alice@example.com,bob@example.com   # roster subset
 
 `--per-user` requires `--send-email` and sends each user a copy with a "Your standing" callout and a highlighted roster row. `--send-email` without `--per-user` requires `--email-to`. `--csv` / `--emails` narrow the roster - and the totals, leaderboards, and fanout - to a named subset.
 
+**Privacy note:** every `--per-user` copy contains the full named roster and both leaderboards, so each recipient sees every colleague's name, `sec_score` and critical/high/medium/low counts. That is deliberate, but it means a single compromised mailbox hands an attacker a ranked list of the most exposed people and devices. Use `--csv` / `--emails` to narrow the audience, or send the admin report only, if that trade-off doesn't suit your organisation.
+
 The roster is keyed by Iru user ID, so when two users share an email both appear in the ranking, and `--per-user` sends each of them their own copy.
 
 Roster rows are coloured by tier:
@@ -274,7 +278,7 @@ Stderr emits one line per recipient (`sent` / `would-send` / `skip` / `error`) a
 | 1 | User error (bad flags, missing config) |
 | 2 | Authentication or permissions failure |
 | 3 | User, device or detection not found |
-| 4 | Upstream error (5xx, network) |
+| 4 | Upstream or network error (5xx, rate limit, stalled pagination, DNS or connection failure, timeout) |
 
 ## Development
 

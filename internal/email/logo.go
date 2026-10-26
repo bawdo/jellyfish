@@ -2,10 +2,13 @@ package email
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"image/png"
+	"io"
 	"os"
 	"path/filepath"
+	"syscall"
 )
 
 // logoPart is the inline image attachment included in the multipart/related
@@ -20,25 +23,57 @@ type logoPart struct {
 // generous for a header logo and well under any mail-client size limit.
 const MaxLogoBytes = 512 * 1024
 
-// loadLogo reads path, validates it as a PNG no larger than MaxLogoBytes,
-// and returns a *logoPart. An empty path returns (nil, nil): callers treat
-// that as "no logo configured", not an error.
+// MaxLogoDimension caps a logo's width and height in pixels. The header
+// renders the logo at a few dozen pixels tall, so nothing larger is ever
+// needed, and checking the PNG header against this bound before a full
+// decode stops a small, highly compressed file from forcing a huge pixel
+// buffer allocation (a decompression bomb).
+const MaxLogoDimension = 2048
+
+// loadLogo reads path, validates it as a regular-file PNG no larger than
+// MaxLogoBytes on disk and MaxLogoDimension pixels on either side, and
+// returns a *logoPart. An empty path returns (nil, nil): callers treat that
+// as "no logo configured", not an error.
 func loadLogo(path string) (*logoPart, error) {
 	if path == "" {
 		return nil, nil
 	}
+	// Open first and Stat the handle, so the checks apply to the file that is
+	// actually read: a Stat of the path followed by an Open would let the path
+	// be swapped (for a FIFO, say) in between. O_NONBLOCK stops the open
+	// itself blocking on a FIFO with no writer; it has no effect on a regular
+	// file.
 	// #nosec G304 - path is the operator's own config or flag input
-	info, err := os.Stat(path)
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, fmt.Errorf("stat %s: %w", path, err)
+	}
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("stat %s: %w", path, err)
+	}
+	// A FIFO or device reports size 0 and can be read without end (or block
+	// forever), so only regular files get past this point.
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("logo %s is not a regular file", path)
 	}
 	if info.Size() > MaxLogoBytes {
 		return nil, fmt.Errorf("logo %s is %d bytes (max %d)", path, info.Size(), MaxLogoBytes)
 	}
-	// #nosec G304 - see above
-	data, err := os.ReadFile(path)
+	// The Stat size is only advisory (the file can grow after the check),
+	// so the read itself is bounded too.
+	data, err := readLogoBytes(f, path)
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", path, err)
+		return nil, err
+	}
+	cfg, err := png.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("decode PNG %s: %w", path, err)
+	}
+	if cfg.Width > MaxLogoDimension || cfg.Height > MaxLogoDimension {
+		return nil, fmt.Errorf("logo %s is %dx%d pixels (max %dx%d)",
+			path, cfg.Width, cfg.Height, MaxLogoDimension, MaxLogoDimension)
 	}
 	if _, err := png.Decode(bytes.NewReader(data)); err != nil {
 		return nil, fmt.Errorf("decode PNG %s: %w", path, err)
@@ -50,24 +85,31 @@ func loadLogo(path string) (*logoPart, error) {
 	}, nil
 }
 
-// ValidateLogoFile checks that path points at a readable PNG no larger than
-// MaxLogoBytes. Returns the byte length on success.
-func ValidateLogoFile(path string) (int64, error) {
-	// #nosec G304 - path is the operator's own input
-	info, err := os.Stat(path)
+// readLogoBytes reads at most MaxLogoBytes from r, failing if there is more.
+// path is used only in error messages.
+func readLogoBytes(r io.Reader, path string) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(r, MaxLogoBytes+1))
 	if err != nil {
-		return 0, fmt.Errorf("stat %s: %w", path, err)
+		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
-	if info.Size() > MaxLogoBytes {
-		return 0, fmt.Errorf("logo %s is %d bytes (max %d)", path, info.Size(), MaxLogoBytes)
+	if len(data) > MaxLogoBytes {
+		return nil, fmt.Errorf("logo %s is over %d bytes (max %d)", path, MaxLogoBytes, MaxLogoBytes)
 	}
-	// #nosec G304 - see above
-	data, err := os.ReadFile(path)
+	return data, nil
+}
+
+// ReadLogoFile reads path and returns its bytes once they pass the same
+// checks as a configured logo (regular file, at most MaxLogoBytes, a PNG no
+// larger than MaxLogoDimension on either side). Callers that copy the logo
+// should write these bytes rather than reading the file a second time.
+func ReadLogoFile(path string) ([]byte, error) {
+	if path == "" {
+		// loadLogo treats "" as "no logo"; here an explicit path is required.
+		return nil, errors.New("logo path is empty")
+	}
+	part, err := loadLogo(path)
 	if err != nil {
-		return 0, fmt.Errorf("read %s: %w", path, err)
+		return nil, err
 	}
-	if _, err := png.Decode(bytes.NewReader(data)); err != nil {
-		return 0, fmt.Errorf("decode PNG %s: %w", path, err)
-	}
-	return info.Size(), nil
+	return part.Bytes, nil
 }
