@@ -37,7 +37,13 @@ func Execute() int {
 // Everything else written to root's stderr goes through
 // output.NewTerminalWriter too: per-recipient status lines, the user picker
 // and progress lines all carry user records or upstream error text.
+//
+// A nil args is treated as no arguments: cobra would otherwise fall back to
+// os.Args, which under `go test` are the test binary's own flags.
 func runRoot(ctx context.Context, root *cobra.Command, args []string) int {
+	if args == nil {
+		args = []string{}
+	}
 	root.SetArgs(args)
 	root.SetErr(output.NewTerminalWriter(root.ErrOrStderr()))
 	cmd, err := root.ExecuteContextC(ctx)

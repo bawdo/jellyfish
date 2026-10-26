@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -130,6 +131,22 @@ func TestRunRootSanitisesCommandStderr(t *testing.T) {
 		t.Fatalf("stderr:\n got %q\nwant %q", got, want)
 	}
 }
+
+// A nil args slice must not let cobra fall back to os.Args (under go test,
+// the test binary's own -test.* flags, which root would reject).
+func TestRunRootNilArgsMeansNoArgs(t *testing.T) {
+	code, stdout, stderr := runWithStubLeaf(t, nil)
+	if code != 0 {
+		t.Fatalf("exit code: got %d want 0 (stderr %q)", code, stderr)
+	}
+	if stderr != "" {
+		t.Fatalf("stderr: got %q want empty", stderr)
+	}
+	if !strings.Contains(stdout, "Usage:") {
+		t.Fatalf("want root help on stdout, got %q", stdout)
+	}
+}
+
 func TestRootSilencesCobraErrorPrinting(t *testing.T) {
 	if !newRootCmd().SilenceErrors {
 		t.Fatal("root SilenceErrors must be true so runRoot owns (sanitised) error printing")
