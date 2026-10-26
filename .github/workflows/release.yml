@@ -6,8 +6,8 @@ name: Release
 # tagged, the pushed commit is tagged and built. If the tag already exists
 # (made by hand), its commit is built instead and a stale draft of the same
 # name is replaced. The darwin binaries are attached with a checksums file,
-# and the checksums are attested with build provenance so anyone can run:
-# gh attestation verify checksums.txt --repo bawdo/jellyfish
+# and the archives listed in it are attested with build provenance so
+# anyone can run: gh attestation verify <archive> --repo bawdo/jellyfish
 
 permissions:
   contents: read
@@ -95,11 +95,11 @@ jobs:
           {
             ./scripts/changelog-version.sh notes "$VERSION"
             echo
-            echo "Verify a download with:"
+            echo "Verify a downloaded archive with:"
             echo
             echo '```'
-            echo "gh attestation verify checksums.txt --repo $GITHUB_REPOSITORY"
-            echo "shasum -a 256 -c checksums.txt"
+            echo "gh attestation verify jellyfish_${VERSION}_darwin_<arch>.tar.gz --repo $GITHUB_REPOSITORY"
+            echo "shasum -a 256 -c checksums.txt --ignore-missing"
             echo '```'
             if [ -n "$previous" ]; then
               echo
