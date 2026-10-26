@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -82,5 +84,50 @@ func TestFetchAllDetectionsEmptyTenantSkipsCache(t *testing.T) {
 	got, err := fetchAllDetections(ctx, clientB, io.Discard, true, time.Hour, "")
 	if err != nil || len(got) != 1 || got[0].CVEID != "CVE-B" {
 		t.Fatalf("empty tenant got %+v err %v; want a live walk every time", got, err)
+	}
+}
+
+// When the cache is wanted but its path can't be resolved, the user gets one
+// warning line instead of a silent 30-90 s live walk on every run.
+func TestFetchAllDetectionsWarnsWhenCachePathUnresolvable(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	client := &fakeClient{detections: []iru.Detection{{CVEID: "CVE-A"}}}
+	var stderr bytes.Buffer
+	got, err := fetchAllDetections(context.Background(), client, &stderr, true, time.Hour, "")
+	if err != nil || len(got) != 1 {
+		t.Fatalf("got %+v err %v; want the live walk to still succeed", got, err)
+	}
+	out := stderr.String()
+	if n := strings.Count(out, "warning: cache disabled"); n != 1 {
+		t.Fatalf("want exactly one cache-disabled warning, got %d in:\n%s", n, out)
+	}
+	if !strings.Contains(out, "fetching live") || !strings.Contains(out, "invalid cache tenant key") {
+		t.Errorf("warning should name the reason and say it is fetching live, got:\n%s", out)
+	}
+}
+
+func TestFetchAllVulnerabilitiesWarnsWhenCachePathUnresolvable(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	client := &fakeClient{vulnerabilities: []iru.Vulnerability{{CVEID: "CVE-A"}}}
+	var stderr bytes.Buffer
+	if _, err := fetchAllVulnerabilities(context.Background(), client, &stderr, true, time.Hour, "-bad-"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stderr.String(), "warning: cache disabled") {
+		t.Errorf("missing cache-disabled warning, got:\n%s", stderr.String())
+	}
+}
+
+// --no-cache is an explicit opt-out, so an unresolvable path is not news.
+func TestFetchAllDetectionsNoWarningWhenCacheNotWanted(t *testing.T) {
+	client := &fakeClient{detections: []iru.Detection{{CVEID: "CVE-A"}}}
+	var stderr bytes.Buffer
+	if _, err := fetchAllDetections(context.Background(), client, &stderr, false, time.Hour, ""); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(stderr.String(), "warning") {
+		t.Errorf("no warning expected under --no-cache, got:\n%s", stderr.String())
 	}
 }

@@ -57,28 +57,20 @@ func newUsersSendEmailCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			opts.EmailFlags = readEmailFlags(cmd)
 			opts.EmailNow = time.Now()
-			client, err := buildClient(cmd)
+			rc, err := loadRunContext(cmd)
 			if err != nil {
 				return err
 			}
-			prof, err := activeProfile(cmd)
-			if err != nil {
-				return err
-			}
-			ttl, err := resolveCacheTTL(cmd)
-			if err != nil {
-				return err
-			}
-			opts.CacheTTL = ttl
-			opts.CacheTenant = cacheTenantKey(prof)
-			opts.Profile = prof
+			opts.CacheTTL = rc.CacheTTL
+			opts.CacheTenant = rc.CacheTenant
+			opts.Profile = rc.Profile
 			if opts.KeychainGet == nil {
 				opts.KeychainGet = keychain.GetGmailServiceAccount
 			}
 			if opts.NewSender == nil {
 				opts.NewSender = gmail.NewSender
 			}
-			return runUsersSendEmail(cmd.Context(), client, cmd.ErrOrStderr(), opts)
+			return runUsersSendEmail(cmd.Context(), rc.Client, cmd.ErrOrStderr(), opts)
 		},
 	}
 	c.Flags().StringVar(&opts.CSVPath, "csv", "", "Path to a CSV file containing recipient emails")

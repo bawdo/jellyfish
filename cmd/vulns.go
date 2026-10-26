@@ -51,21 +51,13 @@ func newVulnsListCmd() *cobra.Command {
 			outFmt, _ := cmd.Flags().GetString("output")
 			opts.Output = outFmt
 
-			client, err := buildClient(cmd)
+			rc, err := loadRunContext(cmd)
 			if err != nil {
 				return err
 			}
-			ttl, err := resolveCacheTTL(cmd)
-			if err != nil {
-				return err
-			}
-			opts.CacheTTL = ttl
-			prof, err := activeProfile(cmd)
-			if err != nil {
-				return err
-			}
-			opts.CacheTenant = cacheTenantKey(prof)
-			return runVulnsList(cmd.Context(), client, cmd.OutOrStdout(), cmd.ErrOrStderr(), opts)
+			opts.CacheTTL = rc.CacheTTL
+			opts.CacheTenant = rc.CacheTenant
+			return runVulnsList(cmd.Context(), rc.Client, cmd.OutOrStdout(), cmd.ErrOrStderr(), opts)
 		},
 	}
 	c.Flags().StringVar(&opts.DeviceID, "device-id", "", "Filter to a single device by ID")
@@ -222,30 +214,20 @@ minutes; pass --no-cache to force a fresh fetch.`,
 				opts.ExplicitOutput = outFmt
 			}
 			opts.EmailNow = time.Now()
-			prof, err := activeProfile(cmd)
+			rc, err := loadRunContext(cmd)
 			if err != nil {
 				return err
 			}
-			opts.CacheTenant = cacheTenantKey(prof)
-			if hasEmailOutput {
-				opts.Profile = prof
-			}
+			opts.CacheTTL = rc.CacheTTL
+			opts.CacheTenant = rc.CacheTenant
+			opts.Profile = rc.Profile
 			if opts.KeychainGet == nil {
 				opts.KeychainGet = keychain.GetGmailServiceAccount
 			}
 			if opts.NewSender == nil {
 				opts.NewSender = gmail.NewSender
 			}
-			client, err := buildClient(cmd)
-			if err != nil {
-				return err
-			}
-			ttl, err := resolveCacheTTL(cmd)
-			if err != nil {
-				return err
-			}
-			opts.CacheTTL = ttl
-			return runVulnsSummary(cmd.Context(), client, cmd.OutOrStdout(), cmd.ErrOrStderr(), opts)
+			return runVulnsSummary(cmd.Context(), rc.Client, cmd.OutOrStdout(), cmd.ErrOrStderr(), opts)
 		},
 	}
 	c.Flags().StringVar(&opts.Status, "status", "", "Filter by status: active | remediated (default: all)")

@@ -343,30 +343,20 @@ func newOverviewCmd() *cobra.Command {
 			}
 			opts.EmailFlags = readEmailFlags(cmd)
 			opts.EmailNow = time.Now()
-			client, err := buildClient(cmd)
+			rc, err := loadRunContext(cmd)
 			if err != nil {
 				return err
 			}
-			ttl, err := resolveCacheTTL(cmd)
-			if err != nil {
-				return err
-			}
-			opts.CacheTTL = ttl
-			prof, err := activeProfile(cmd)
-			if err != nil {
-				return err
-			}
-			opts.CacheTenant = cacheTenantKey(prof)
-			if outFmt == "email" || opts.EmailFlags.Send {
-				opts.Profile = prof
-			}
+			opts.CacheTTL = rc.CacheTTL
+			opts.CacheTenant = rc.CacheTenant
+			opts.Profile = rc.Profile
 			if opts.KeychainGet == nil {
 				opts.KeychainGet = keychain.GetGmailServiceAccount
 			}
 			if opts.NewSender == nil {
 				opts.NewSender = gmail.NewSender
 			}
-			return runOverview(cmd.Context(), client, cmd.OutOrStdout(), cmd.ErrOrStderr(), opts)
+			return runOverview(cmd.Context(), rc.Client, cmd.OutOrStdout(), cmd.ErrOrStderr(), opts)
 		},
 	}
 	c.Flags().BoolVar(&opts.PerUser, "per-user", false, "With --send-email: send one personalised copy per user with devices")

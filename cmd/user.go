@@ -74,36 +74,26 @@ func newUserShowCmd() *cobra.Command {
 			if err := validateMessageFlags(opts.EmailFlags, hasEmailOutput); err != nil {
 				return err
 			}
-			client, err := buildClient(cmd)
+			rc, err := loadRunContext(cmd)
 			if err != nil {
 				return err
 			}
-			ttl, err := resolveCacheTTL(cmd)
-			if err != nil {
-				return err
-			}
-			opts.CacheTTL = ttl
+			opts.CacheTTL = rc.CacheTTL
+			opts.CacheTenant = rc.CacheTenant
+			opts.Profile = rc.Profile
 			opts.Identifier = args[0]
 			opts.Output = outFmt
 			if cmd.Flags().Changed("output") {
 				opts.ExplicitOutput = outFmt
 			}
 			opts.EmailNow = time.Now()
-			prof, err := activeProfile(cmd)
-			if err != nil {
-				return err
-			}
-			opts.CacheTenant = cacheTenantKey(prof)
-			if hasEmailOutput {
-				opts.Profile = prof
-			}
 			if opts.KeychainGet == nil {
 				opts.KeychainGet = keychain.GetGmailServiceAccount
 			}
 			if opts.NewSender == nil {
 				opts.NewSender = gmail.NewSender
 			}
-			return runUserShow(cmd.Context(), client, cmd.OutOrStdout(), cmd.ErrOrStderr(), opts)
+			return runUserShow(cmd.Context(), rc.Client, cmd.OutOrStdout(), cmd.ErrOrStderr(), opts)
 		},
 	}
 	c.Flags().BoolVar(&opts.NoCache, "no-cache", false, "Skip the detection cache; always fetch fresh")

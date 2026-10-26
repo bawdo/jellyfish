@@ -13,8 +13,9 @@ import (
 
 // fetchAllCached returns every record of a resource: from the on-disk cache
 // when fresh (and useCache is set), otherwise by walking the API with a
-// per-page progress line on stderr. The cache funcs are best-effort - a path
-// or save failure degrades to a live walk rather than failing the command.
+// per-page progress line on stderr. The cache funcs are best-effort: a path
+// or save failure degrades to a live walk rather than failing the command,
+// with a one-line warning on stderr so the slow walk is not a mystery.
 func fetchAllCached[T any](
 	stderr io.Writer,
 	useCache bool,
@@ -30,8 +31,12 @@ func fetchAllCached[T any](
 	}
 	cachePath, err := cachePathFn()
 	if err != nil {
-		// Non-fatal: just proceed without cache.
+		// Non-fatal: proceed without cache, but say so when the cache was
+		// wanted (under --no-cache the path is irrelevant).
 		cachePath = ""
+		if useCache {
+			_, _ = fmt.Fprintf(stderr, "warning: cache disabled (%v); fetching live\n", err)
+		}
 	}
 
 	if useCache && cachePath != "" {
