@@ -1,0 +1,27 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Australia/Sydney
+    groups:
+      go-modules:
+        patterns: ["*"]
+    commit-message:
+      prefix: "Bumped"
+    labels: [dependencies]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Australia/Sydney
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "Bumped"
+    labels: [dependencies]
