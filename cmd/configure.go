@@ -28,7 +28,10 @@ type configureOpts struct {
 	Stderr        io.Writer
 	StoreToken    func(account, token string) error
 	ReadTokenLine func(r *bufio.Reader) (string, error) // masked read; injected for tests
-	VerifyBaseURL string                                // override for tests, blank in production
+	// ReadToken fetches the stored token for account (keychain.Get in
+	// production). It is only called when the user keeps the existing token
+	// but changes tenant, so the kept token can be checked against it.
+	ReadToken func(account string) (string, error)
 	// Verify checks token against baseURL. Nil means verifyIruToken; tests
 	// inject a fake so they can run without binding a local port.
 	Verify func(ctx context.Context, baseURL, token string) error
@@ -67,6 +70,7 @@ func newConfigureCmd() *cobra.Command {
 				Stdout:        cmd.OutOrStdout(),
 				Stderr:        cmd.ErrOrStderr(),
 				StoreToken:    keychain.Set,
+				ReadToken:     keychain.Get,
 				ReadTokenLine: readMaskedToken,
 			})
 		},
@@ -143,11 +147,26 @@ func runConfigure(ctx context.Context, o configureOpts) error {
 		return errors.New("token must not be empty")
 	}
 
+	tenantChanged := existing && (subdomain != prof.Subdomain || region != prof.Region)
+
 	prof.Subdomain = subdomain
 	prof.Region = region
 	file["default"] = prof
 
+	verify := o.Verify
+	if verify == nil {
+		verify = verifyIruToken
+	}
+
 	if token == "" {
+		// Keeping the stored token while pointing the config at a different
+		// tenant would leave the old tenant's token paired with the new
+		// tenant's URL, so check the kept token against the new tenant first.
+		if tenantChanged {
+			if err := verifyKeptToken(ctx, o.ReadToken, verify, baseURL); err != nil {
+				return err
+			}
+		}
 		if err := config.Save(o.ConfigPath, file); err != nil {
 			return err
 		}
@@ -159,15 +178,7 @@ func runConfigure(ctx context.Context, o configureOpts) error {
 	// Storing first would let a mistyped token overwrite a working one, and
 	// saving first would point the config at a new tenant while the Keychain
 	// still holds the old tenant's token.
-	verifyURL := baseURL
-	if o.VerifyBaseURL != "" {
-		verifyURL = o.VerifyBaseURL
-	}
-	verify := o.Verify
-	if verify == nil {
-		verify = verifyIruToken
-	}
-	if err := verify(ctx, verifyURL, token); err != nil {
+	if err := verify(ctx, baseURL, token); err != nil {
 		if errors.Is(err, iru.ErrUnauthorized) || errors.Is(err, iru.ErrForbidden) {
 			return fmt.Errorf("new token was rejected by Iru (%w); the existing Keychain token and config were left unchanged. Check the token and re-run `jellyfish configure`", err)
 		}
@@ -181,6 +192,31 @@ func runConfigure(ctx context.Context, o configureOpts) error {
 		return fmt.Errorf("token verified and stored in Keychain, but saving config failed: %w", err)
 	}
 	_, _ = fmt.Fprintln(o.Stdout, "Configured. Token verified.")
+	return nil
+}
+
+// verifyKeptToken reads the token already in the Keychain and checks it
+// against baseURL (the new tenant). It is used when the user changes
+// subdomain or region but presses Enter to keep the existing token. Errors
+// wrap the underlying sentinel so classifyError maps them onto the same exit
+// codes as a rejected or unverifiable new token.
+func verifyKeptToken(ctx context.Context, readToken func(string) (string, error), verify func(context.Context, string, string) error, baseURL string) error {
+	if readToken == nil {
+		readToken = keychain.Get
+	}
+	token, err := readToken("default")
+	if errors.Is(err, keychain.ErrNotFound) {
+		return errors.New("an API token is required when changing tenant and none is stored in the Keychain; the config was left unchanged. Re-run `jellyfish configure` and enter the token for the new tenant")
+	}
+	if err != nil {
+		return fmt.Errorf("read existing token from Keychain (config left unchanged): %w", err)
+	}
+	if err := verify(ctx, baseURL, token); err != nil {
+		if errors.Is(err, iru.ErrUnauthorized) || errors.Is(err, iru.ErrForbidden) {
+			return fmt.Errorf("existing token was rejected by the new tenant (%w); the config was left unchanged. Re-run `jellyfish configure` and enter the token for the new tenant", err)
+		}
+		return fmt.Errorf("could not verify existing token against the new tenant (%w); the config was left unchanged. Re-run `jellyfish configure` once Iru is reachable, or enter the token for the new tenant", err)
+	}
 	return nil
 }
 

@@ -56,7 +56,7 @@ jellyfish configure
 
 Prompts for the tenant subdomain (the bit before `.api.kandji.io` - the hostname is still `kandji.io` even though the product was renamed Iru), region (`us` or `eu`), and API token. Re-running is safe: each prompt shows the current value, and Enter keeps it.
 
-A new token is checked against Iru before anything is written. If Iru rejects it, or the check can't complete, the existing Keychain token and config are left untouched and the command exits non-zero (2 for a rejected token, 4 for an Iru outage or rate limit).
+A new token is checked against Iru before anything is written. If Iru rejects it, or the check can't complete, the existing Keychain token and config are left untouched and the command exits non-zero: 2 if Iru rejects the token, 4 for an Iru 5xx or rate limit, and 1 if Iru can't be reached at all (DNS or connection failure). If you change subdomain or region but press Enter to keep the existing token, that stored token is checked against the new tenant the same way before the config is saved.
 
 Subdomain and region are written to `~/.config/jellyfish/config.yml` (mode `0600`); the token goes to the macOS Keychain under service `jellyfish.secrets`, account `default`:
 

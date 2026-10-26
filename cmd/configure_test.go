@@ -5,8 +5,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,17 +12,15 @@ import (
 
 	"github.com/bawdo/jellyfish/internal/config"
 	"github.com/bawdo/jellyfish/internal/iru"
+	"github.com/bawdo/jellyfish/internal/keychain"
 )
 
 func TestConfigureWritesConfigAndCallsKeychain(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := r.Header.Get("Authorization"); got != "Bearer tkn-123" {
-			t.Errorf("auth header %q", got)
-		}
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`[]`))
-	}))
-	t.Cleanup(srv.Close)
+	var verifiedURL, verifiedToken string
+	verify := func(_ context.Context, baseURL, token string) error {
+		verifiedURL, verifiedToken = baseURL, token
+		return nil
+	}
 
 	tmp := t.TempDir()
 	cfgPath := filepath.Join(tmp, "config.yml")
@@ -45,10 +41,16 @@ func TestConfigureWritesConfigAndCallsKeychain(t *testing.T) {
 		Stderr:        out,
 		StoreToken:    store,
 		ReadTokenLine: func(_ *bufio.Reader) (string, error) { return "tkn-123", nil },
-		VerifyBaseURL: srv.URL,
+		Verify:        verify,
 	})
 	if err != nil {
 		t.Fatalf("runConfigure: %v", err)
+	}
+	if verifiedToken != "tkn-123" {
+		t.Errorf("verify token %q", verifiedToken)
+	}
+	if verifiedURL != "https://acme.api.kandji.io/api/v1" {
+		t.Errorf("verify URL %q", verifiedURL)
 	}
 
 	if len(keychainCalls) != 1 || keychainCalls[0] != "tkn-123" {
@@ -75,12 +77,7 @@ func TestConfigureWritesConfigAndCallsKeychain(t *testing.T) {
 
 func TestConfigureRerunKeepsSubdomainAndRegionOnEnter(t *testing.T) {
 	var hits int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		hits++
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`[]`))
-	}))
-	t.Cleanup(srv.Close)
+	verify := func(context.Context, string, string) error { hits++; return nil }
 
 	tmp := t.TempDir()
 	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
@@ -103,7 +100,7 @@ func TestConfigureRerunKeepsSubdomainAndRegionOnEnter(t *testing.T) {
 		Stderr:        out,
 		StoreToken:    store,
 		ReadTokenLine: func(_ *bufio.Reader) (string, error) { return "newtkn", nil },
-		VerifyBaseURL: srv.URL,
+		Verify:        verify,
 	})
 	if err != nil {
 		t.Fatalf("runConfigure: %v", err)
@@ -124,11 +121,7 @@ func TestConfigureRerunKeepsSubdomainAndRegionOnEnter(t *testing.T) {
 
 func TestConfigureRerunEnterKeepsTokenSkipsKeychainAndVerify(t *testing.T) {
 	var hits int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		hits++
-		w.WriteHeader(http.StatusOK)
-	}))
-	t.Cleanup(srv.Close)
+	verify := func(context.Context, string, string) error { hits++; return nil }
 
 	tmp := t.TempDir()
 	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
@@ -151,7 +144,8 @@ func TestConfigureRerunEnterKeepsTokenSkipsKeychainAndVerify(t *testing.T) {
 		Stderr:        out,
 		StoreToken:    store,
 		ReadTokenLine: func(_ *bufio.Reader) (string, error) { return "", nil },
-		VerifyBaseURL: srv.URL,
+		ReadToken:     func(string) (string, error) { t.Error("ReadToken called for unchanged tenant"); return "", nil },
+		Verify:        verify,
 	})
 	if err != nil {
 		t.Fatalf("runConfigure: %v", err)
@@ -165,12 +159,6 @@ func TestConfigureRerunEnterKeepsTokenSkipsKeychainAndVerify(t *testing.T) {
 }
 
 func TestConfigureRerunPreservesEmailAndCacheTTL(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`[]`))
-	}))
-	t.Cleanup(srv.Close)
-
 	tmp := t.TempDir()
 	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
 		Subdomain: "acme", Region: "us",
@@ -194,7 +182,7 @@ func TestConfigureRerunPreservesEmailAndCacheTTL(t *testing.T) {
 		Stderr:        out,
 		StoreToken:    func(_, _ string) error { return nil },
 		ReadTokenLine: func(_ *bufio.Reader) (string, error) { return "newtkn", nil },
-		VerifyBaseURL: srv.URL,
+		Verify:        func(context.Context, string, string) error { return nil },
 	})
 	if err != nil {
 		t.Fatalf("runConfigure: %v", err)
@@ -224,11 +212,11 @@ func TestConfigureRerunPreservesEmailAndCacheTTL(t *testing.T) {
 }
 
 func TestConfigureRerunChangedSubdomainUpdatesProfile(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`[]`))
-	}))
-	t.Cleanup(srv.Close)
+	var verifiedURL, verifiedToken string
+	verify := func(_ context.Context, baseURL, token string) error {
+		verifiedURL, verifiedToken = baseURL, token
+		return nil
+	}
 
 	tmp := t.TempDir()
 	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
@@ -245,7 +233,8 @@ func TestConfigureRerunChangedSubdomainUpdatesProfile(t *testing.T) {
 		Stderr:        out,
 		StoreToken:    func(_, _ string) error { return nil },
 		ReadTokenLine: func(_ *bufio.Reader) (string, error) { return "tkn", nil },
-		VerifyBaseURL: srv.URL,
+		ReadToken:     func(string) (string, error) { t.Error("ReadToken called when a new token was entered"); return "", nil },
+		Verify:        verify,
 	})
 	if err != nil {
 		t.Fatalf("runConfigure: %v", err)
@@ -254,6 +243,12 @@ func TestConfigureRerunChangedSubdomainUpdatesProfile(t *testing.T) {
 	got := loaded["default"]
 	if got.Subdomain != "newco" {
 		t.Errorf("subdomain: got %q", got.Subdomain)
+	}
+	// A new token was entered, so it (not the stored one) is checked against
+	// the new tenant. The keep-token variant is covered by
+	// TestConfigureKeepTokenTenantChangeVerifiesExistingToken.
+	if verifiedToken != "tkn" || verifiedURL != "https://newco.api.kandji.io/api/v1" {
+		t.Errorf("verify got (%q, %q); want new token against new tenant", verifiedURL, verifiedToken)
 	}
 }
 
@@ -1098,8 +1093,10 @@ func TestConfigureEmailLogoClearLeavesUnmanagedFile(t *testing.T) {
 	}
 }
 
-// The tests below use the Verify seam rather than httptest, so they run in
-// environments where binding a local port is not allowed.
+// Token verification tests. Every runConfigure test injects the Verify seam
+// (and ReadToken where the tenant changes) rather than starting an httptest
+// server, so they run where binding a local port is not allowed and never
+// touch the real Keychain.
 
 func TestConfigureBadTokenLeavesKeychainAndConfigUnchanged(t *testing.T) {
 	for _, sentinel := range []error{iru.ErrUnauthorized, iru.ErrForbidden} {
@@ -1294,29 +1291,190 @@ func TestConfigureStoreFailureDoesNotSaveConfig(t *testing.T) {
 	}
 }
 
-func TestConfigureKeepTokenSavesConfigWithoutVerify(t *testing.T) {
+func TestConfigureKeepTokenSameTenantSavesWithoutVerify(t *testing.T) {
 	tmp := t.TempDir()
 	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
-		Subdomain: "acme", Region: "us",
+		Subdomain: "acme", Region: "us", CacheTTLMinutes: 30,
 	}})
 	out := &bytes.Buffer{}
 	err := runConfigure(context.Background(), configureOpts{
 		ConfigPath:    cfgPath,
-		Stdin:         strings.NewReader("newco\neu\n"),
+		Stdin:         strings.NewReader("\n\n"),
 		Stdout:        out,
 		Stderr:        out,
 		StoreToken:    func(_, _ string) error { t.Error("StoreToken called"); return nil },
 		ReadTokenLine: func(_ *bufio.Reader) (string, error) { return "", nil },
+		ReadToken:     func(string) (string, error) { t.Error("ReadToken called"); return "", nil },
 		Verify:        func(context.Context, string, string) error { t.Error("Verify called"); return nil },
 	})
 	if err != nil {
 		t.Fatalf("runConfigure: %v", err)
 	}
 	loaded, _ := config.Load(cfgPath)
-	if got := loaded["default"]; got.Subdomain != "newco" || got.Region != "eu" {
+	if got := loaded["default"]; got.Subdomain != "acme" || got.Region != "us" || got.CacheTTLMinutes != 30 {
 		t.Errorf("saved profile %+v", got)
 	}
 	if !strings.Contains(out.String(), "Existing token unchanged") {
 		t.Errorf("stdout %q", out.String())
+	}
+}
+
+func TestConfigureKeepTokenTenantChangeVerifiesExistingToken(t *testing.T) {
+	cases := []struct {
+		name, stdin, wantURL, wantSub, wantRegion string
+	}{
+		{"subdomain changed", "newco\n\n", "https://newco.api.kandji.io/api/v1", "newco", "us"},
+		{"region changed", "\neu\n", "https://acme.api.eu.kandji.io/api/v1", "acme", "eu"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
+				Subdomain: "acme", Region: "us",
+			}})
+			var readAccount, verifiedURL, verifiedToken string
+			out := &bytes.Buffer{}
+			err := runConfigure(context.Background(), configureOpts{
+				ConfigPath:    cfgPath,
+				Stdin:         strings.NewReader(c.stdin),
+				Stdout:        out,
+				Stderr:        out,
+				StoreToken:    func(_, _ string) error { t.Error("StoreToken called"); return nil },
+				ReadTokenLine: func(_ *bufio.Reader) (string, error) { return "", nil },
+				ReadToken: func(account string) (string, error) {
+					readAccount = account
+					return "kept-tkn", nil
+				},
+				Verify: func(_ context.Context, baseURL, token string) error {
+					verifiedURL, verifiedToken = baseURL, token
+					return nil
+				},
+			})
+			if err != nil {
+				t.Fatalf("runConfigure: %v", err)
+			}
+			if readAccount != "default" {
+				t.Errorf("ReadToken account: got %q", readAccount)
+			}
+			if verifiedToken != "kept-tkn" {
+				t.Errorf("verify token: got %q", verifiedToken)
+			}
+			if verifiedURL != c.wantURL {
+				t.Errorf("verify URL: got %q want %q", verifiedURL, c.wantURL)
+			}
+			loaded, _ := config.Load(cfgPath)
+			if got := loaded["default"]; got.Subdomain != c.wantSub || got.Region != c.wantRegion {
+				t.Errorf("saved profile %+v", got)
+			}
+			if !strings.Contains(out.String(), "Existing token unchanged") {
+				t.Errorf("stdout %q", out.String())
+			}
+		})
+	}
+}
+
+func TestConfigureKeepTokenTenantChangeVerifyFailureLeavesConfig(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		code int
+	}{
+		{"unauthorised", iru.ErrUnauthorized, 2},
+		{"forbidden", iru.ErrForbidden, 2},
+		{"5xx", &iru.APIError{Status: 503, Message: "unavailable"}, 4},
+		{"rate limited", iru.ErrRateLimited, 4},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
+				Subdomain: "acme", Region: "us",
+			}})
+			out := &bytes.Buffer{}
+			err := runConfigure(context.Background(), configureOpts{
+				ConfigPath:    cfgPath,
+				Stdin:         strings.NewReader("newco\neu\n"),
+				Stdout:        out,
+				Stderr:        out,
+				StoreToken:    func(_, _ string) error { t.Error("StoreToken called"); return nil },
+				ReadTokenLine: func(_ *bufio.Reader) (string, error) { return "", nil },
+				ReadToken:     func(string) (string, error) { return "old-tenant-tkn", nil },
+				Verify:        func(context.Context, string, string) error { return c.err },
+			})
+			if err == nil {
+				t.Fatal("expected error when the kept token fails against the new tenant")
+			}
+			if !errors.Is(err, c.err) {
+				t.Errorf("error should wrap %v; got %v", c.err, err)
+			}
+			if code := classifyError(err); code != c.code {
+				t.Errorf("exit code: got %d want %d", code, c.code)
+			}
+			if !strings.Contains(err.Error(), "unchanged") || !strings.Contains(err.Error(), "new tenant") {
+				t.Errorf("error should say config was left unchanged and ask for the new tenant's token; got %v", err)
+			}
+			loaded, _ := config.Load(cfgPath)
+			if got := loaded["default"]; got.Subdomain != "acme" || got.Region != "us" {
+				t.Errorf("config must not change on failed verify; got %+v", got)
+			}
+			if strings.Contains(out.String(), "Configured") {
+				t.Errorf("must not report success; stdout %q", out.String())
+			}
+		})
+	}
+}
+
+func TestConfigureKeepTokenTenantChangeMissingTokenErrors(t *testing.T) {
+	tmp := t.TempDir()
+	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
+		Subdomain: "acme", Region: "us",
+	}})
+	err := runConfigure(context.Background(), configureOpts{
+		ConfigPath:    cfgPath,
+		Stdin:         strings.NewReader("newco\n\n"),
+		Stdout:        &bytes.Buffer{},
+		Stderr:        &bytes.Buffer{},
+		StoreToken:    func(_, _ string) error { t.Error("StoreToken called"); return nil },
+		ReadTokenLine: func(_ *bufio.Reader) (string, error) { return "", nil },
+		ReadToken:     func(string) (string, error) { return "", keychain.ErrNotFound },
+		Verify:        func(context.Context, string, string) error { t.Error("Verify called"); return nil },
+	})
+	if err == nil {
+		t.Fatal("expected error when no token is stored and the tenant changed")
+	}
+	if !strings.Contains(err.Error(), "token is required") {
+		t.Errorf("error should say a token is required; got %v", err)
+	}
+	if code := classifyError(err); code != 1 {
+		t.Errorf("exit code: got %d want 1", code)
+	}
+	loaded, _ := config.Load(cfgPath)
+	if got := loaded["default"]; got.Subdomain != "acme" {
+		t.Errorf("config must not change; got %+v", got)
+	}
+}
+
+func TestConfigureKeepTokenTenantChangeReadErrorLeavesConfig(t *testing.T) {
+	tmp := t.TempDir()
+	cfgPath := seedConfigFile(t, tmp, config.File{"default": config.Profile{
+		Subdomain: "acme", Region: "us",
+	}})
+	readErr := errors.New("keychain locked")
+	err := runConfigure(context.Background(), configureOpts{
+		ConfigPath:    cfgPath,
+		Stdin:         strings.NewReader("newco\n\n"),
+		Stdout:        &bytes.Buffer{},
+		Stderr:        &bytes.Buffer{},
+		StoreToken:    func(_, _ string) error { t.Error("StoreToken called"); return nil },
+		ReadTokenLine: func(_ *bufio.Reader) (string, error) { return "", nil },
+		ReadToken:     func(string) (string, error) { return "", readErr },
+		Verify:        func(context.Context, string, string) error { t.Error("Verify called"); return nil },
+	})
+	if !errors.Is(err, readErr) {
+		t.Fatalf("expected wrapped read error; got %v", err)
+	}
+	loaded, _ := config.Load(cfgPath)
+	if got := loaded["default"]; got.Subdomain != "acme" {
+		t.Errorf("config must not change; got %+v", got)
 	}
 }
