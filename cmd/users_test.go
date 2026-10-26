@@ -196,7 +196,7 @@ func TestConfirmSend(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer
-			ok, err := confirmSend(&out, strings.NewReader(tc.input), tc.count, tc.dryRun, tc.yes)
+			ok, err := confirmSend(&out, strings.NewReader(tc.input), usersSendConfirmPrompt(tc.count), tc.dryRun, tc.yes)
 			if err != nil {
 				t.Fatalf("err: %v", err)
 			}

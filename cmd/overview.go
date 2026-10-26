@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -374,14 +373,11 @@ func newOverviewCmd() *cobra.Command {
 	c.Flags().StringVar(&opts.CSVPath, "csv", "", "Path to a CSV file holding the user emails to include. Mutually exclusive with --emails. Default: all users with devices.")
 	c.Flags().StringVar(&opts.Emails, "emails", "", "Comma-separated list of user emails to include. Mutually exclusive with --csv. Default: all users with devices.")
 	c.Flags().StringVar(&opts.CSVEmailColumn, "csv-email-column", "", "CSV column name holding the email address (default: auto-detect email/user_email/e-mail)")
-	c.Flags().String("email-to", "", "Email recipient(s) for the admin report (comma-separated). Required with --send-email unless --per-user is set. With --send-email --per-user, redirects every personalised copy to this address (test/audit mode).")
-	c.Flags().String("email-from", "", "Email From: header (default: email.from from config, then git user.email)")
-	c.Flags().String("email-subject", "", "Email Subject: header (default: rendered email.subject_template or a per-command default)")
-	c.Flags().String("email-header-bg", "", "Email header background colour as #RRGGBB (default: email.header_bg or #2b3a55)")
-	c.Flags().String("email-logo", "", "Path to a PNG to show in the email header (default: email.logo_path)")
-	c.Flags().Bool("send-email", false, "Send the rendered overview via Gmail (requires `jellyfish configure email` to be run first)")
-	c.Flags().Bool("message", false, "Open $VISUAL/$EDITOR to compose a message rendered above the email body (shared across all recipients)")
-	c.Flags().String("message-file", "", "Read the email message body from a file (use - for stdin)")
+	addEmailFlags(c, emailFlagHelp{
+		To:      "Email recipient(s) for the admin report (comma-separated). Required with --send-email unless --per-user is set. With --send-email --per-user, redirects every personalised copy to this address (test/audit mode).",
+		Send:    "Send the rendered overview via Gmail (requires `jellyfish configure email` to be run first)",
+		Message: "Open $VISUAL/$EDITOR to compose a message rendered above the email body (shared across all recipients)",
+	})
 	c.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Render but do not send (only meaningful with --send-email)")
 	c.Flags().BoolVar(&opts.Yes, "yes", false, "Skip the confirmation prompt")
 	c.Flags().BoolVar(&opts.NoCache, "no-cache", false, "Skip the detection cache; always fetch fresh")
@@ -461,26 +457,22 @@ func validateOverviewFlags(opts overviewOpts) error {
 // <unspecified> if neither is set). Mirrors `vulns summary -o email` and
 // `user show -o email`: pure rendering, no Gmail credentials are touched.
 func renderOverviewEmailStdout(stdout, stderr io.Writer, opts overviewOpts, view email.OverviewView) error {
-	now, gitLookup := resolveNowAndGitLookup(opts.EmailNow, opts.gitEmail)
-	emailOpts, err := resolveEmailOptions(opts.EmailFlags, opts.Profile, gitLookup, now)
+	emailOpts, err := prepareEmailOptions(opts.EmailFlags, opts.Profile, opts.EmailNow, opts.gitEmail, "overview")
 	if err != nil {
 		return err
 	}
-	emailOpts.Report = "overview"
 	emailOpts.Tenant = opts.Profile.Subdomain
 	view.Tenant = opts.Profile.Subdomain
 	if view.GeneratedAt.IsZero() {
-		view.GeneratedAt = now
+		view.GeneratedAt = emailOpts.GeneratedAt
 	}
 	msgIn := opts.MessageReader
 	if msgIn == nil {
 		msgIn = os.Stdin
 	}
-	message, err := captureMessage(opts.EmailFlags, true, emailOpts.To, emailOpts.Subject, msgIn, stderr, nil)
-	if err != nil {
+	if err := attachMessage(&emailOpts, opts.EmailFlags, msgIn, stderr); err != nil {
 		return err
 	}
-	emailOpts.Message = message
 	return email.NewOverviewRendererWithStderr(emailOpts, stderr).Render(stdout, email.OverviewInput{View: view})
 }
 
@@ -507,21 +499,18 @@ func buildOverviewUserFilter(opts overviewOpts) (map[string]struct{}, error) {
 // to the admin path or the --per-user fanout. The -o email stdout-render path
 // is renderOverviewEmailStdout — separate function, no Gmail credentials.
 func runOverviewEmail(ctx context.Context, stderr io.Writer, opts overviewOpts, view email.OverviewView) error {
-	now, gitLookup := resolveNowAndGitLookup(opts.EmailNow, opts.gitEmail)
-
 	// Bulk-style: don't honour email.default_to.
 	profForOpts := opts.Profile
 	profForOpts.Email.DefaultTo = ""
 
-	baseEmailOpts, err := resolveEmailOptions(opts.EmailFlags, profForOpts, gitLookup, now)
+	baseEmailOpts, err := prepareEmailOptions(opts.EmailFlags, profForOpts, opts.EmailNow, opts.gitEmail, "overview")
 	if err != nil {
 		return err
 	}
-	baseEmailOpts.Report = "overview"
 	baseEmailOpts.Tenant = opts.Profile.Subdomain
 	view.Tenant = opts.Profile.Subdomain
 	if view.GeneratedAt.IsZero() {
-		view.GeneratedAt = now
+		view.GeneratedAt = baseEmailOpts.GeneratedAt
 	}
 
 	if opts.PerUser {
@@ -608,7 +597,7 @@ func prepareOverviewSend(ctx context.Context, stderr io.Writer, opts overviewOpt
 	if confirmIn == nil {
 		confirmIn = os.Stdin
 	}
-	ok, err := confirmSendOverview(stderr, confirmIn, count, perUser, opts.DryRun, opts.Yes)
+	ok, err := confirmSend(stderr, confirmIn, overviewConfirmPrompt(count, perUser), opts.DryRun, opts.Yes)
 	if err != nil {
 		return nil, false, err
 	}
@@ -630,44 +619,19 @@ func prepareOverviewSend(ctx context.Context, stderr io.Writer, opts overviewOpt
 	if opts.DryRun {
 		return nil, true, nil
 	}
-	sender, err = buildOverviewSender(ctx, opts, baseOpts.From)
+	if !opts.Profile.Email.GmailConfigured {
+		return nil, false, errBulkGmailNotConfigured
+	}
+	sender, err = buildGmailSender(ctx, opts.KeychainGet, opts.NewSender, baseOpts.From)
 	if err != nil {
 		return nil, false, err
 	}
 	return sender, true, nil
 }
 
-// buildOverviewSender constructs a Gmail sender. Centralised so admin and
-// per-user paths share the keychain + factory plumbing.
-func buildOverviewSender(ctx context.Context, opts overviewOpts, from string) (gmail.Sender, error) {
-	if !opts.Profile.Email.GmailConfigured {
-		return nil, errors.New(`sending email requires Gmail credentials. Run "jellyfish configure email" to install a service-account JSON, or pass --dry-run to preview without sending`)
-	}
-	kchGet := opts.KeychainGet
-	if kchGet == nil {
-		return nil, errors.New("internal: KeychainGet not wired")
-	}
-	newSender := opts.NewSender
-	if newSender == nil {
-		return nil, errors.New("internal: NewSender not wired")
-	}
-	saJSON, kerr := kchGet()
-	if kerr != nil {
-		return nil, fmt.Errorf(`read Gmail credentials from Keychain: %w. Run "jellyfish configure email" to reinstall`, kerr)
-	}
-	return newSender(ctx, saJSON, from)
-}
-
-// confirmSendOverview is the overview's confirm-prompt. perUser switches the
-// prompt copy. Otherwise identical to confirmSend in users.go.
-func confirmSendOverview(stderr io.Writer, in io.Reader, count int, perUser, dryRun, yes bool) (bool, error) {
-	if dryRun {
-		_, _ = fmt.Fprintln(stderr, "DRY RUN - no mail will be sent")
-		return true, nil
-	}
-	if yes {
-		return true, nil
-	}
+// overviewConfirmPrompt is the confirm-prompt copy for `overview
+// --send-email`. perUser switches the wording for the personalised fanout.
+func overviewConfirmPrompt(count int, perUser bool) string {
 	noun := "recipient"
 	if count != 1 {
 		noun = "recipients"
@@ -676,14 +640,7 @@ func confirmSendOverview(stderr io.Writer, in io.Reader, count int, perUser, dry
 	if perUser {
 		verb = "send personalised overviews"
 	}
-	_, _ = fmt.Fprintf(stderr, "About to %s to %d %s. Continue? [y/N] ", verb, count, noun)
-	br := bufio.NewReader(in)
-	line, err := br.ReadString('\n')
-	if err != nil && err != io.EOF {
-		return false, err
-	}
-	answer := strings.ToLower(strings.TrimSpace(line))
-	return answer == "y" || answer == "yes", nil
+	return fmt.Sprintf("About to %s to %d %s. Continue? [y/N] ", verb, count, noun)
 }
 
 func runOverviewPerUser(ctx context.Context, stderr io.Writer, opts overviewOpts, view email.OverviewView, baseOpts email.Options) error {

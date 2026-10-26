@@ -26,9 +26,6 @@ type fakeClient struct {
 	vulnerabilities []iru.Vulnerability
 }
 
-func (f *fakeClient) ListDetections(ctx context.Context, _ iru.DetectionFilters) ([]iru.Detection, error) {
-	return f.detections, nil
-}
 func (f *fakeClient) ListDetectionsPage(_ context.Context, _ iru.DetectionFilters, _ int, _ string) ([]iru.Detection, string, error) {
 	return f.detections, "", nil
 }
@@ -55,9 +52,6 @@ func (f *fakeClient) ListDevicesStream(_ context.Context, _ iru.DeviceFilters, c
 		return nil
 	}
 	return cb(f.devices)
-}
-func (f *fakeClient) ListDevicesPage(_ context.Context, _ iru.DeviceFilters, _, _ int) ([]iru.Device, error) {
-	return f.devices, nil
 }
 func (f *fakeClient) GetDeviceBySerial(_ context.Context, s string) (iru.Device, error) {
 	if f.bySerial != nil {
@@ -91,23 +85,11 @@ func (f *fakeClient) FindUsersByEmail(_ context.Context, e string) ([]iru.User, 
 	}
 	return out, nil
 }
-func (f *fakeClient) ListUsersStream(_ context.Context, cb func(page []iru.User) error) error {
-	if len(f.users) == 0 {
-		return nil
-	}
-	return cb(f.users)
-}
-func (f *fakeClient) ListVulnerabilities(_ context.Context, _ iru.VulnerabilityFilters) ([]iru.Vulnerability, error) {
-	return f.vulnerabilities, nil
-}
 func (f *fakeClient) ListVulnerabilitiesStream(_ context.Context, _ iru.VulnerabilityFilters, cb func(page []iru.Vulnerability) error) error {
 	if len(f.vulnerabilities) == 0 {
 		return nil
 	}
 	return cb(f.vulnerabilities)
-}
-func (f *fakeClient) ListVulnerabilitiesPage(_ context.Context, _ iru.VulnerabilityFilters, _, _ int) ([]iru.Vulnerability, int, error) {
-	return f.vulnerabilities, len(f.vulnerabilities), nil
 }
 
 func TestVulnsListJSON(t *testing.T) {

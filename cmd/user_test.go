@@ -72,6 +72,55 @@ func TestUserShowUserNotFound(t *testing.T) {
 	}
 }
 
+// streamCountingClient wraps fakeClient and records whether the detection
+// walk was started, so tests can assert it was skipped.
+type streamCountingClient struct {
+	*fakeClient
+	detectionStreamCalls int
+}
+
+func (c *streamCountingClient) ListDetectionsStream(ctx context.Context, f iru.DetectionFilters, cb func(page []iru.Detection) error) error {
+	c.detectionStreamCalls++
+	return c.fakeClient.ListDetectionsStream(ctx, f, cb)
+}
+
+func TestUserShowUserNotFoundSkipsDetectionWalk(t *testing.T) {
+	for _, id := range []string{"u-x", "nobody@x"} {
+		client := &streamCountingClient{fakeClient: &fakeClient{
+			detections: []iru.Detection{{CVEID: "CVE-1", DeviceID: "d-1"}},
+		}}
+		err := runUserShow(context.Background(), client, &bytes.Buffer{}, io.Discard, userShowOpts{Identifier: id, Output: "json", NoCache: true})
+		if !errors.Is(err, iru.ErrNotFound) {
+			t.Fatalf("%s: expected ErrNotFound, got %v", id, err)
+		}
+		if client.detectionStreamCalls != 0 {
+			t.Fatalf("%s: detection stream called %d time(s) for an unresolved user", id, client.detectionStreamCalls)
+		}
+	}
+}
+
+func TestUserShowTTYAbortSkipsDetectionWalk(t *testing.T) {
+	client := &streamCountingClient{fakeClient: &fakeClient{
+		usersByEmail: map[string][]iru.User{
+			"k@x": {{ID: "u-1", Email: "k@x"}, {ID: "u-2", Email: "k@x"}},
+		},
+		detections: []iru.Detection{{CVEID: "CVE-1", DeviceID: "d-1"}},
+	}}
+	err := runUserShow(context.Background(), client, &bytes.Buffer{}, io.Discard, userShowOpts{
+		Identifier:   "k@x",
+		Output:       "json",
+		NoCache:      true,
+		PromptReader: strings.NewReader("q\n"),
+		stdinIsTTY:   func() bool { return true },
+	})
+	if err != nil {
+		t.Fatalf("expected nil error on abort, got %v", err)
+	}
+	if client.detectionStreamCalls != 0 {
+		t.Fatalf("detection stream called %d time(s) after abort", client.detectionStreamCalls)
+	}
+}
+
 func TestUserShowCSVSortsBySeverity(t *testing.T) {
 	client := &fakeClient{
 		users:   []iru.User{{ID: "u-1", Name: "Alice", Email: "alice@example.com"}},
