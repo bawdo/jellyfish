@@ -353,3 +353,32 @@ func TestRetriesGiveUpAfterMaxAttempts(t *testing.T) {
 		t.Fatalf("expected 3 attempts, got %d", got)
 	}
 }
+
+// Only GET and HEAD are retried: replaying a write after a 5xx could apply
+// it twice.
+func TestRetryTransportDoesNotRetryNonIdempotentMethods(t *testing.T) {
+	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
+		var calls atomic.Int32
+		rt := &retryTransport{base: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+			calls.Add(1)
+			return &http.Response{
+				StatusCode: http.StatusServiceUnavailable,
+				Header:     http.Header{},
+				Body:       io.NopCloser(strings.NewReader("")),
+				Request:    r,
+			}, nil
+		})}
+		req, _ := http.NewRequest(method, testBaseURL+"/x", nil)
+		resp, err := rt.RoundTrip(req)
+		if err != nil {
+			t.Fatalf("%s: %v", method, err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusServiceUnavailable {
+			t.Fatalf("%s: status %d, want 503", method, resp.StatusCode)
+		}
+		if got := calls.Load(); got != 1 {
+			t.Fatalf("%s: %d attempts, want 1", method, got)
+		}
+	}
+}

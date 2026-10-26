@@ -2,6 +2,7 @@ package iru
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -201,5 +202,62 @@ func TestNewClientKeepsCallerTransportAndCheckRedirect(t *testing.T) {
 	_ = c.httpClient.CheckRedirect(nil, nil)
 	if !called {
 		t.Error("caller's CheckRedirect was replaced")
+	}
+}
+
+// A base URL that does not parse must fail before anything is sent, so the
+// token never leaves the process.
+func TestDoRejectsMalformedBaseURL(t *testing.T) {
+	fake := &recordingTransport{respond: func(r *http.Request) *http.Response {
+		return fakeResponse(r, http.StatusOK, "")
+	}}
+	c := NewClient("https://acme.api.kandji.io/api/v1\x7f", testToken, withBaseTransport(fake))
+
+	if err := c.do(context.Background(), http.MethodGet, "/devices", nil, nil); err == nil {
+		t.Fatal("expected an error for a malformed base URL")
+	}
+	if len(fake.seen) != 0 {
+		t.Fatalf("requests = %+v, want none", fake.seen)
+	}
+}
+
+// failingBody returns some bytes and then a read error.
+type failingBody struct {
+	sent bool
+	err  error
+}
+
+func (b *failingBody) Read(p []byte) (int, error) {
+	if !b.sent {
+		b.sent = true
+		return copy(p, `{"id":`), nil
+	}
+	return 0, b.err
+}
+
+func (b *failingBody) Close() error { return nil }
+
+func TestDoWrapsBodyReadError(t *testing.T) {
+	readErr := errors.New("connection reset")
+	rt := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{},
+			Body:       &failingBody{err: readErr},
+			Request:    r,
+		}, nil
+	})
+	c := NewClient(testBaseURL, testToken, withBaseTransport(rt))
+
+	var out map[string]any
+	err := c.do(context.Background(), http.MethodGet, "/users", nil, &out)
+	if !errors.Is(err, readErr) {
+		t.Fatalf("expected the read error in the chain, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "read response body") {
+		t.Fatalf("expected a read response body prefix, got %q", err.Error())
+	}
+	if out != nil {
+		t.Fatalf("expected nothing decoded, got %+v", out)
 	}
 }

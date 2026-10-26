@@ -419,3 +419,40 @@ func TestWalkCursorStopsOnCursorCycle(t *testing.T) {
 		t.Fatalf("expected 3 fetches before detecting the cycle, got %d", calls)
 	}
 }
+
+func TestWalkPagedPropagatesFetchError(t *testing.T) {
+	boom := errors.New("boom")
+	calls := 0
+	err := WalkPaged[int](context.Background(), 2,
+		func(_ context.Context, page, _ int) ([]int, int, error) {
+			calls++
+			if page == 2 {
+				return nil, 0, boom
+			}
+			return []int{1, 2}, 10, nil
+		},
+		func([]int) error { return nil })
+	if !errors.Is(err, boom) {
+		t.Fatalf("expected boom, got %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("expected the walk to stop at page 2, got %d calls", calls)
+	}
+}
+
+func TestWalkPagedStopsOnCallbackError(t *testing.T) {
+	stop := errors.New("stop")
+	calls := 0
+	err := WalkPaged[int](context.Background(), 2,
+		func(_ context.Context, _, _ int) ([]int, int, error) {
+			calls++
+			return []int{1, 2}, 10, nil
+		},
+		func([]int) error { return stop })
+	if !errors.Is(err, stop) {
+		t.Fatalf("expected stop, got %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("expected no fetch after the callback failed, got %d calls", calls)
+	}
+}

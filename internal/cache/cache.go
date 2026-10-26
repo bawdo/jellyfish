@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/bawdo/jellyfish/internal/atomicfile"
 	"github.com/bawdo/jellyfish/internal/iru"
 )
 
@@ -85,7 +86,8 @@ func removeLegacy(path, legacyName string) {
 	_ = os.Remove(legacy)
 }
 
-// save writes a cache file with mode 0600, creating the parent dir with 0700.
+// save writes a cache file with mode 0600 (enforced on an existing file too,
+// and replaced atomically), creating the parent dir with 0700.
 func save[T any](path string, items []T) error {
 	if err := os.MkdirAll(filepath.Dir(path), dirMode); err != nil {
 		return fmt.Errorf("create cache dir: %w", err)
@@ -98,7 +100,7 @@ func save[T any](path string, items []T) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, fileMode)
+	return atomicfile.WriteFile(path, data, fileMode)
 }
 
 // cachePath returns ~/.cache/jellyfish/<name> or the OS-appropriate

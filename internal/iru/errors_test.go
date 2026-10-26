@@ -3,8 +3,10 @@ package iru
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -66,5 +68,64 @@ func TestDecodeAPIErrorBoundsBody(t *testing.T) {
 	}
 	if got := body.read.Load(); got > maxErrorBody {
 		t.Fatalf("read %d bytes of the body, want at most %d", got, maxErrorBody)
+	}
+}
+
+func TestAPIErrorString(t *testing.T) {
+	cases := []struct {
+		err  *APIError
+		want string
+	}{
+		{&APIError{Status: 500}, "iru: api error: status 500"},
+		{&APIError{Status: 400, Message: "bad subdomain"}, "iru: api error: status 400: bad subdomain"},
+	}
+	for _, c := range cases {
+		if got := c.err.Error(); got != c.want {
+			t.Errorf("Error() = %q, want %q", got, c.want)
+		}
+	}
+}
+
+// Statuses without a sentinel must not match any of them, so they fall to
+// the generic exit codes rather than auth or not-found.
+func TestAPIErrorIsOnlyMatchesItsOwnSentinel(t *testing.T) {
+	sentinels := []error{ErrUnauthorized, ErrForbidden, ErrNotFound, ErrRateLimited}
+	for _, status := range []int{400, 409, 500, 502} {
+		err := error(&APIError{Status: status})
+		for _, s := range sentinels {
+			if errors.Is(err, s) {
+				t.Errorf("status %d matched %v", status, s)
+			}
+		}
+	}
+	if errors.Is(&APIError{Status: http.StatusNotFound}, ErrForbidden) {
+		t.Error("404 must not match ErrForbidden")
+	}
+}
+
+func TestDecodeAPIErrorMessage(t *testing.T) {
+	cases := []struct {
+		name, body, wantMsg, wantCode string
+	}{
+		{"detail and code", `{"detail":"nope","code":"E1"}`, "nope", "E1"},
+		{"short plain text kept", "gateway exploded", "gateway exploded", ""},
+		{"json without detail kept whole", `{"errors":["x"]}`, `{"errors":["x"]}`, ""},
+		{"long plain text dropped", strings.Repeat("x", 512), "", ""},
+		{"empty body", "", "", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := decodeAPIError(&http.Response{
+				StatusCode: http.StatusBadGateway,
+				Body:       io.NopCloser(strings.NewReader(c.body)),
+			})
+			var apiErr *APIError
+			if !errors.As(err, &apiErr) {
+				t.Fatalf("expected *APIError, got %v", err)
+			}
+			if apiErr.Status != http.StatusBadGateway || apiErr.Message != c.wantMsg || apiErr.Code != c.wantCode {
+				t.Fatalf("got %+v, want message %q code %q", apiErr, c.wantMsg, c.wantCode)
+			}
+		})
 	}
 }
