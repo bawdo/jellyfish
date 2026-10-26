@@ -25,13 +25,13 @@ macOS only. Either download a release or build from source.
 Each [release](https://github.com/bawdo/jellyfish/releases) ships `darwin_arm64` (Apple silicon) and `darwin_amd64` (Intel) archives plus a `checksums.txt`. Download the archive for your Mac and the checksums file, then verify and install:
 
 ```bash
-gh attestation verify checksums.txt --repo bawdo/jellyfish   # built by this repo's CI
-shasum -a 256 -c checksums.txt --ignore-missing              # archive matches
+gh attestation verify jellyfish_*_darwin_arm64.tar.gz --repo bawdo/jellyfish   # built by this repo's CI
+shasum -a 256 -c checksums.txt --ignore-missing                                # archive matches
 tar -xzf jellyfish_*_darwin_arm64.tar.gz
 install -m 0755 jellyfish_*_darwin_arm64/jellyfish /usr/local/bin/jellyfish
 ```
 
-The attestation check needs the [GitHub CLI](https://cli.github.com/). Skip it if you don't have `gh`, but keep the checksum step.
+The attestation check needs the [GitHub CLI](https://cli.github.com/) and is run against the archive, which is what the workflow attests. Skip it if you don't have `gh`, but keep the checksum step.
 
 ### From source
 

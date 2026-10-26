@@ -30,11 +30,12 @@ you ask otherwise.
 
 ## Verifying a release
 
-Every release ships a `checksums.txt` with a build provenance attestation
-from the release workflow. To confirm a download came from this
-repository's CI and has not been altered:
+Every release archive carries a build provenance attestation from the
+release workflow, and a `checksums.txt` lists the archive digests. To
+confirm a download came from this repository's CI and has not been
+altered, run both against the archive you downloaded:
 
 ```bash
-gh attestation verify checksums.txt --repo bawdo/jellyfish
-shasum -a 256 -c checksums.txt
+gh attestation verify jellyfish_<version>_darwin_<arch>.tar.gz --repo bawdo/jellyfish
+shasum -a 256 -c checksums.txt --ignore-missing
 ```
