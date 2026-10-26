@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"syscall"
 )
 
 // logoPart is the inline image attachment included in the multipart/related
@@ -37,25 +38,29 @@ func loadLogo(path string) (*logoPart, error) {
 	if path == "" {
 		return nil, nil
 	}
+	// Open first and Stat the handle, so the checks apply to the file that is
+	// actually read: a Stat of the path followed by an Open would let the path
+	// be swapped (for a FIFO, say) in between. O_NONBLOCK stops the open
+	// itself blocking on a FIFO with no writer; it has no effect on a regular
+	// file.
 	// #nosec G304 - path is the operator's own config or flag input
-	info, err := os.Stat(path)
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, fmt.Errorf("stat %s: %w", path, err)
+	}
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
 	if err != nil {
 		return nil, fmt.Errorf("stat %s: %w", path, err)
 	}
 	// A FIFO or device reports size 0 and can be read without end (or block
-	// forever on open), so only regular files get past this point.
+	// forever), so only regular files get past this point.
 	if !info.Mode().IsRegular() {
 		return nil, fmt.Errorf("logo %s is not a regular file", path)
 	}
 	if info.Size() > MaxLogoBytes {
 		return nil, fmt.Errorf("logo %s is %d bytes (max %d)", path, info.Size(), MaxLogoBytes)
 	}
-	// #nosec G304 - see above
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", path, err)
-	}
-	defer func() { _ = f.Close() }()
 	// The Stat size is only advisory (the file can grow after the check),
 	// so the read itself is bounded too.
 	data, err := readLogoBytes(f, path)

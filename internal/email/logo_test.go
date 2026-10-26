@@ -3,11 +3,13 @@ package email
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"hash/crc32"
 	"image"
 	"image/png"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -43,6 +45,9 @@ func TestLoadLogoMissing(t *testing.T) {
 	_, err := loadLogo(filepath.Join(t.TempDir(), "nope.png"))
 	if err == nil {
 		t.Fatal("expected error for missing file")
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("error %v should wrap fs.ErrNotExist", err)
 	}
 }
 
