@@ -29,6 +29,16 @@ type configureOpts struct {
 	StoreToken    func(account, token string) error
 	ReadTokenLine func(r *bufio.Reader) (string, error) // masked read; injected for tests
 	VerifyBaseURL string                                // override for tests, blank in production
+	// Verify checks token against baseURL. Nil means verifyIruToken; tests
+	// inject a fake so they can run without binding a local port.
+	Verify func(ctx context.Context, baseURL, token string) error
+}
+
+// verifyIruToken confirms token authenticates against the Iru API at baseURL
+// by fetching a single page of devices.
+func verifyIruToken(ctx context.Context, baseURL, token string) error {
+	_, err := iru.NewClient(baseURL, token).ListDevicesPage(ctx, iru.DeviceFilters{}, 1, 0)
+	return err
 }
 
 // configureEmailOpts is the DI surface for `configure email`.
@@ -136,32 +146,39 @@ func runConfigure(ctx context.Context, o configureOpts) error {
 	prof.Subdomain = subdomain
 	prof.Region = region
 	file["default"] = prof
-	if err := config.Save(o.ConfigPath, file); err != nil {
-		return err
-	}
 
 	if token == "" {
+		if err := config.Save(o.ConfigPath, file); err != nil {
+			return err
+		}
 		_, _ = fmt.Fprintln(o.Stdout, "Configured. Existing token unchanged.")
 		return nil
 	}
 
-	if err := o.StoreToken("default", token); err != nil {
-		return fmt.Errorf("store token in Keychain: %w", err)
-	}
-
-	// Verify the token works.
+	// Verify the new token before touching the Keychain or the config file.
+	// Storing first would let a mistyped token overwrite a working one, and
+	// saving first would point the config at a new tenant while the Keychain
+	// still holds the old tenant's token.
 	verifyURL := baseURL
 	if o.VerifyBaseURL != "" {
 		verifyURL = o.VerifyBaseURL
 	}
-	c := iru.NewClient(verifyURL, token)
-	if _, err := c.ListDevicesPage(ctx, iru.DeviceFilters{}, 1, 0); err != nil {
+	verify := o.Verify
+	if verify == nil {
+		verify = verifyIruToken
+	}
+	if err := verify(ctx, verifyURL, token); err != nil {
 		if errors.Is(err, iru.ErrUnauthorized) || errors.Is(err, iru.ErrForbidden) {
-			_, _ = fmt.Fprintln(o.Stderr, "Warning: token did not authenticate against Iru. Config saved; re-run configure after rotating the token.")
-			return nil
+			return fmt.Errorf("new token was rejected by Iru (%w); the existing Keychain token and config were left unchanged. Check the token and re-run `jellyfish configure`", err)
 		}
-		_, _ = fmt.Fprintf(o.Stderr, "Warning: verification request failed: %v\n", err)
-		return nil
+		return fmt.Errorf("could not verify new token against Iru (%w); the existing Keychain token and config were left unchanged. Re-run `jellyfish configure` once Iru is reachable", err)
+	}
+
+	if err := o.StoreToken("default", token); err != nil {
+		return fmt.Errorf("store token in Keychain (config left unchanged): %w", err)
+	}
+	if err := config.Save(o.ConfigPath, file); err != nil {
+		return fmt.Errorf("token verified and stored in Keychain, but saving config failed: %w", err)
 	}
 	_, _ = fmt.Fprintln(o.Stdout, "Configured. Token verified.")
 	return nil
