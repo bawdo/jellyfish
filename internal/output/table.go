@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"reflect"
+	"strings"
 
 	"github.com/jedib0t/go-pretty/v6/table"
 )
@@ -45,7 +46,7 @@ func (r *tableRenderer) Render(w io.Writer, v any) error {
 	err := eachRow(r.columns, v, func(cells []string) error {
 		row := make(table.Row, len(cells))
 		for i, c := range cells {
-			row[i] = c
+			row[i] = sanitiseTerminalCell(c)
 		}
 		t.AppendRow(row)
 		return nil
@@ -56,6 +57,30 @@ func (r *tableRenderer) Render(w io.Writer, v any) error {
 
 	t.Render()
 	return nil
+}
+
+// sanitiseTerminalCell neutralises terminal escape injection: cells carry API
+// data that end users choose (device names, for example), and an embedded
+// ESC/CSI/OSC sequence would otherwise be interpreted by the admin's
+// terminal. Every C0 control (including tab and newline, which also break the
+// table layout), DEL and every C1 control is removed outright rather than
+// replaced, so the remaining text stays readable. Only the table renderer
+// uses this: CSV, JSON and YAML are data formats and must round-trip as is.
+func sanitiseTerminalCell(s string) string {
+	if !strings.ContainsFunc(s, isTerminalControl) {
+		return s
+	}
+	return strings.Map(func(r rune) rune {
+		if isTerminalControl(r) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+// isTerminalControl reports whether r is a C0 control, DEL or a C1 control.
+func isTerminalControl(r rune) bool {
+	return r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f)
 }
 
 // eachRow calls emit once per row of v, with each row's cells as a []string.
