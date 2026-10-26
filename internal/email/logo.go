@@ -93,16 +93,18 @@ func readLogoBytes(r io.Reader, path string) ([]byte, error) {
 	return data, nil
 }
 
-// ValidateLogoFile checks that path points at a readable PNG within
-// MaxLogoBytes and MaxLogoDimension. Returns the byte length on success.
-func ValidateLogoFile(path string) (int64, error) {
+// ReadLogoFile reads path and returns its bytes once they pass the same
+// checks as a configured logo (regular file, at most MaxLogoBytes, a PNG no
+// larger than MaxLogoDimension on either side). Callers that copy the logo
+// should write these bytes rather than reading the file a second time.
+func ReadLogoFile(path string) ([]byte, error) {
 	if path == "" {
 		// loadLogo treats "" as "no logo"; here an explicit path is required.
-		return 0, errors.New("logo path is empty")
+		return nil, errors.New("logo path is empty")
 	}
 	part, err := loadLogo(path)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return int64(len(part.Bytes)), nil
+	return part.Bytes, nil
 }

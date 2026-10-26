@@ -75,21 +75,21 @@ func TestLoadLogoEmptyPathReturnsNilNil(t *testing.T) {
 	}
 }
 
-func TestValidateLogoFileSuccess(t *testing.T) {
+func TestReadLogoFileSuccess(t *testing.T) {
 	want, err := os.Stat("testdata/logo_small.png")
 	if err != nil {
 		t.Fatalf("stat fixture: %v", err)
 	}
-	n, err := ValidateLogoFile("testdata/logo_small.png")
+	data, err := ReadLogoFile("testdata/logo_small.png")
 	if err != nil {
-		t.Fatalf("ValidateLogoFile: %v", err)
+		t.Fatalf("ReadLogoFile: %v", err)
 	}
-	if n != want.Size() {
-		t.Errorf("size: got %d want %d", n, want.Size())
+	if int64(len(data)) != want.Size() {
+		t.Errorf("size: got %d want %d", len(data), want.Size())
 	}
 }
 
-func TestValidateLogoFileErrors(t *testing.T) {
+func TestReadLogoFileErrors(t *testing.T) {
 	dir := t.TempDir()
 	notPNG := filepath.Join(dir, "not_png.png")
 	if err := os.WriteFile(notPNG, []byte("this is not a png"), 0o600); err != nil {
@@ -105,12 +105,12 @@ func TestValidateLogoFileErrors(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			n, err := ValidateLogoFile(tc.path)
+			data, err := ReadLogoFile(tc.path)
 			if err == nil {
 				t.Fatal("expected error")
 			}
-			if n != 0 {
-				t.Errorf("size on error: got %d want 0", n)
+			if data != nil {
+				t.Errorf("bytes on error: got %d, want nil", len(data))
 			}
 			if !strings.HasPrefix(err.Error(), tc.prefix) {
 				t.Errorf("error %q, want prefix %q", err.Error(), tc.prefix)
@@ -119,13 +119,13 @@ func TestValidateLogoFileErrors(t *testing.T) {
 	}
 }
 
-func TestValidateLogoFileEmptyPath(t *testing.T) {
-	n, err := ValidateLogoFile("")
+func TestReadLogoFileEmptyPath(t *testing.T) {
+	data, err := ReadLogoFile("")
 	if err == nil {
 		t.Fatal("expected error for empty path")
 	}
-	if n != 0 {
-		t.Errorf("size on error: got %d want 0", n)
+	if data != nil {
+		t.Errorf("bytes on error: got %d, want nil", len(data))
 	}
 	if got, want := err.Error(), "logo path is empty"; got != want {
 		t.Errorf("error %q, want %q", got, want)

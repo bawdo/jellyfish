@@ -545,16 +545,14 @@ func promptLogo(stdout, stderr io.Writer, r *bufio.Reader, current, logosDir str
 // copyLogoToManagedDir validates src as a PNG <= MaxLogoBytes and copies it
 // to <logosDir>/<basename(src)> with mode 0o600. Returns the destination path.
 func copyLogoToManagedDir(src, logosDir string) (string, error) {
-	if _, err := email.ValidateLogoFile(src); err != nil {
+	// Write the bytes that passed validation rather than reading src again,
+	// so the copy can't differ from what was checked.
+	data, err := email.ReadLogoFile(src)
+	if err != nil {
 		return "", err
 	}
 	if err := os.MkdirAll(logosDir, 0o700); err != nil {
 		return "", fmt.Errorf("create logos dir %s: %w", logosDir, err)
-	}
-	// #nosec G304 - src is the operator's own input
-	data, err := os.ReadFile(src)
-	if err != nil {
-		return "", fmt.Errorf("read %s: %w", src, err)
 	}
 	dst := filepath.Join(logosDir, filepath.Base(src))
 	// #nosec G304 G703 - dst is constructed from operator-controlled logosDir
