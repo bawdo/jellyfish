@@ -1,0 +1,40 @@
+# Security policy
+
+jellyfish holds an Iru API token and, optionally, a Google Workspace
+service-account key. Both live in the macOS Keychain, and the token is only
+ever sent to the Iru origin derived from the configured subdomain and
+region. Bugs that weaken either of those properties are security bugs.
+
+## Supported versions
+
+Only the newest release on the
+[Releases page](https://github.com/bawdo/jellyfish/releases) receives
+fixes. There are no maintenance branches.
+
+## Reporting a vulnerability
+
+Please do not open a public issue for a security problem.
+
+Use GitHub's private reporting form:
+<https://github.com/bawdo/jellyfish/security/advisories/new>. It goes
+straight to the maintainer and nobody else can see it.
+
+Include what you can of: the command and flags involved, the version from
+`jellyfish version`, what you expected, and what happened. A proof of
+concept helps but is not required.
+
+You will get an acknowledgement within seven days. A fix, or an explanation
+of why the report is not being treated as a vulnerability, follows as a
+published advisory and a release. Credit is given in the advisory unless
+you ask otherwise.
+
+## Verifying a release
+
+Every release ships a `checksums.txt` with a build provenance attestation
+from the release workflow. To confirm a download came from this
+repository's CI and has not been altered:
+
+```bash
+gh attestation verify checksums.txt --repo bawdo/jellyfish
+shasum -a 256 -c checksums.txt
+```

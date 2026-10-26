@@ -4,6 +4,19 @@ All notable changes to jellyfish are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Releases are cut automatically. A merge to `main` whose newest
+  `CHANGELOG.md` heading names an untagged version tags that commit, builds
+  the darwin arm64 and amd64 binaries, attests the checksums with build
+  provenance and publishes the release with the changelog section as its
+  notes. CI fails if the newest changelog version is behind the latest tag,
+  has a malformed date or no link reference.
+- `SECURITY.md`, `CONTRIBUTING.md`, a pull request template and Dependabot
+  version updates for Go modules and GitHub Actions.
+
 ## [0.3.0] - 2026-10-27
 
 ### Security
@@ -146,6 +159,7 @@ First release.
 - A `help` bareword alias for `--help`, and `jellyfish version` with commit
   and tag.
 
+[Unreleased]: https://github.com/bawdo/jellyfish/compare/v0.3.0...HEAD
 [0.3.0]: https://github.com/bawdo/jellyfish/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/bawdo/jellyfish/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/bawdo/jellyfish/compare/v0.1.0...v0.1.1
