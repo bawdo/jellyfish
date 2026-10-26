@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -63,5 +64,50 @@ func TestLoadLogoEmptyPathReturnsNilNil(t *testing.T) {
 	}
 	if p != nil {
 		t.Fatalf("loadLogo(\"\"): expected nil, got %+v", p)
+	}
+}
+
+func TestValidateLogoFileSuccess(t *testing.T) {
+	want, err := os.Stat("testdata/logo_small.png")
+	if err != nil {
+		t.Fatalf("stat fixture: %v", err)
+	}
+	n, err := ValidateLogoFile("testdata/logo_small.png")
+	if err != nil {
+		t.Fatalf("ValidateLogoFile: %v", err)
+	}
+	if n != want.Size() {
+		t.Errorf("size: got %d want %d", n, want.Size())
+	}
+}
+
+func TestValidateLogoFileErrors(t *testing.T) {
+	dir := t.TempDir()
+	notPNG := filepath.Join(dir, "not_png.png")
+	if err := os.WriteFile(notPNG, []byte("this is not a png"), 0o600); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	missing := filepath.Join(dir, "nope.png")
+	cases := []struct {
+		name, path, prefix string
+	}{
+		{"empty", "", "stat : "},
+		{"missing", missing, "stat " + missing + ": "},
+		{"too big", "testdata/logo_too_big.png", "logo testdata/logo_too_big.png is "},
+		{"not png", notPNG, "decode PNG " + notPNG + ": "},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			n, err := ValidateLogoFile(tc.path)
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if n != 0 {
+				t.Errorf("size on error: got %d want 0", n)
+			}
+			if !strings.HasPrefix(err.Error(), tc.prefix) {
+				t.Errorf("error %q, want prefix %q", err.Error(), tc.prefix)
+			}
+		})
 	}
 }

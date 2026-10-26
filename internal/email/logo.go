@@ -53,21 +53,14 @@ func loadLogo(path string) (*logoPart, error) {
 // ValidateLogoFile checks that path points at a readable PNG no larger than
 // MaxLogoBytes. Returns the byte length on success.
 func ValidateLogoFile(path string) (int64, error) {
-	// #nosec G304 - path is the operator's own input
-	info, err := os.Stat(path)
-	if err != nil {
+	if path == "" {
+		// loadLogo treats "" as "no logo"; here it stays a stat error.
+		_, err := os.Stat(path)
 		return 0, fmt.Errorf("stat %s: %w", path, err)
 	}
-	if info.Size() > MaxLogoBytes {
-		return 0, fmt.Errorf("logo %s is %d bytes (max %d)", path, info.Size(), MaxLogoBytes)
-	}
-	// #nosec G304 - see above
-	data, err := os.ReadFile(path)
+	part, err := loadLogo(path)
 	if err != nil {
-		return 0, fmt.Errorf("read %s: %w", path, err)
+		return 0, err
 	}
-	if _, err := png.Decode(bytes.NewReader(data)); err != nil {
-		return 0, fmt.Errorf("decode PNG %s: %w", path, err)
-	}
-	return info.Size(), nil
+	return int64(len(part.Bytes)), nil
 }

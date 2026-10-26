@@ -148,7 +148,21 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 		return fmt.Errorf("read response body: %w", readErr)
 	}
 	if err := json.Unmarshal(data, out); err != nil {
-		return fmt.Errorf("decode response: %w (raw=%q)", err, string(data))
+		return fmt.Errorf("decode response: %w (raw=%q)", err, rawExcerpt(data))
 	}
 	return nil
+}
+
+// maxRawExcerpt bounds how much of an undecodable body goes into an error.
+// It matches the 512 byte limit decodeAPIError uses for error bodies.
+const maxRawExcerpt = 512
+
+// rawExcerpt returns data as a string, cut to maxRawExcerpt bytes with a
+// marker giving the full length when it is longer. A full page of results
+// would otherwise be dumped into the error message.
+func rawExcerpt(data []byte) string {
+	if len(data) <= maxRawExcerpt {
+		return string(data)
+	}
+	return fmt.Sprintf("%s...(%d bytes total)", data[:maxRawExcerpt], len(data))
 }

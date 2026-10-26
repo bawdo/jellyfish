@@ -3,8 +3,11 @@ package iru
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -151,5 +154,85 @@ func TestListUsersStream(t *testing.T) {
 	}
 	if len(pages[2]) != 1 || pages[2][0].ID != "u-5" {
 		t.Fatalf("third page expected 1 user (u-5), got %+v", pages[2])
+	}
+}
+
+// queryTransport records each request's query string and answers in memory
+// via respond, keyed on the request's cursor param.
+type queryTransport struct {
+	queries []url.Values
+	respond func(cursor string) string
+}
+
+func (q *queryTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	q.queries = append(q.queries, r.URL.Query())
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{},
+		Body:       io.NopCloser(strings.NewReader(q.respond(r.URL.Query().Get("cursor")))),
+		Request:    r,
+	}, nil
+}
+
+func TestListUsersPageQueryInMemory(t *testing.T) {
+	qt := &queryTransport{respond: func(string) string {
+		return `{"next": "https://` + testAPIHost + `/api/v1/users?cursor=c2", "previous": null, "results": [{"id": "u-1"}]}`
+	}}
+	c := NewClient(testBaseURL, testToken, withBaseTransport(qt))
+	users, next, err := c.ListUsersPage(context.Background(), 25, "c1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(users) != 1 || users[0].ID != "u-1" || next != "c2" {
+		t.Fatalf("got users=%+v next=%q", users, next)
+	}
+	if len(qt.queries) != 1 {
+		t.Fatalf("requests: got %d want 1", len(qt.queries))
+	}
+	q := qt.queries[0]
+	if q.Get("limit") != "25" || q.Get("cursor") != "c1" {
+		t.Errorf("query %v", q)
+	}
+	if q.Has("email") {
+		t.Errorf("ListUsersPage must not send an email filter: %v", q)
+	}
+
+	// No cursor on the first page.
+	if _, _, err := c.ListUsersPage(context.Background(), 10, ""); err != nil {
+		t.Fatal(err)
+	}
+	if q := qt.queries[1]; q.Has("cursor") || q.Get("limit") != "10" {
+		t.Errorf("first page query %v", q)
+	}
+}
+
+func TestFindUsersByEmailQueryInMemory(t *testing.T) {
+	qt := &queryTransport{respond: func(cursor string) string {
+		if cursor == "" {
+			return `{"next": "https://` + testAPIHost + `/api/v1/users?cursor=p2", "previous": null, "results": [{"id": "u-1"}]}`
+		}
+		return `{"next": null, "previous": null, "results": [{"id": "u-2"}]}`
+	}}
+	c := NewClient(testBaseURL, testToken, withBaseTransport(qt))
+	users, err := c.FindUsersByEmail(context.Background(), "k@x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(users) != 2 || users[0].ID != "u-1" || users[1].ID != "u-2" {
+		t.Fatalf("got %+v", users)
+	}
+	if len(qt.queries) != 2 {
+		t.Fatalf("requests: got %d want 2", len(qt.queries))
+	}
+	for i, q := range qt.queries {
+		if got := q["email"]; len(got) != 1 || got[0] != "k@x" {
+			t.Errorf("request %d: email %v, want exactly [k@x]", i, got)
+		}
+		if q.Get("limit") != strconv.Itoa(DefaultLimit) {
+			t.Errorf("request %d: limit %q", i, q.Get("limit"))
+		}
+	}
+	if qt.queries[0].Has("cursor") || qt.queries[1].Get("cursor") != "p2" {
+		t.Errorf("cursors: %v / %v", qt.queries[0], qt.queries[1])
 	}
 }
