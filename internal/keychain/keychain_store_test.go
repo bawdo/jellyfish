@@ -4,6 +4,7 @@ package keychain
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	kc "github.com/keybase/go-keychain"
@@ -224,4 +225,51 @@ func TestGetGmailServiceAccountPassesErrorThrough(t *testing.T) {
 	if !errors.Is(err, errBoom) || got != nil {
 		t.Fatalf("got %q, %v; want nil and errBoom", got, err)
 	}
+}
+
+// The guard used by the real-Keychain tests refuses production accounts
+// without passing the call on. Checked against a fake so it runs ungated.
+func TestGuardedStoreRefusesProductionAccounts(t *testing.T) {
+	for _, account := range []string{"default", productionGmailAccount} {
+		t.Run(account, func(t *testing.T) {
+			inner := &fakeStore{items: map[string][]byte{account: []byte("real")}}
+			var reports []string
+			g := guardedStore{next: inner, fail: func(format string, args ...any) {
+				reports = append(reports, fmt.Sprintf(format, args...))
+			}}
+			if _, err := g.query(account); err == nil {
+				t.Error("query was allowed")
+			}
+			if err := g.add(account, []byte("x")); err == nil {
+				t.Error("add was allowed")
+			}
+			if err := g.remove(account); err == nil {
+				t.Error("remove was allowed")
+			}
+			if len(inner.calls) != 0 {
+				t.Errorf("calls reached the store: %q", inner.calls)
+			}
+			if string(inner.items[account]) != "real" {
+				t.Error("production item changed")
+			}
+			if len(reports) != 3 {
+				t.Errorf("want one failure report per refused call, got %q", reports)
+			}
+		})
+	}
+}
+
+func TestGuardedStorePassesTestAccountsThrough(t *testing.T) {
+	inner := &fakeStore{items: map[string][]byte{}}
+	g := guardedStore{fail: t.Errorf, next: inner}
+	if err := g.add("jellyfish-test-x", []byte("v")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.query("jellyfish-test-x"); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.remove("jellyfish-test-x"); err != nil {
+		t.Fatal(err)
+	}
+	assertCalls(t, inner, "add jellyfish-test-x", "query jellyfish-test-x", "remove jellyfish-test-x")
 }
