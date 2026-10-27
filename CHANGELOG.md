@@ -9,10 +9,10 @@ All notable changes to jellyfish are documented here. The format follows
 ### Added
 
 - Releases are cut automatically. A merge to `main` whose newest
-  `CHANGELOG.md` heading names an untagged version tags that commit, builds
-  the darwin arm64 and amd64 binaries, attests the checksums with build
-  provenance and publishes the release with the changelog section as its
-  notes. CI fails if the newest changelog version is behind the latest tag,
+  `CHANGELOG.md` heading names a version with no published release tags
+  that commit (or builds an existing hand-made tag's commit), builds
+  the darwin arm64 and amd64 archives, attests them with build provenance
+  and publishes the release with the changelog section as its notes. CI fails if the newest changelog version is behind the latest tag,
   has a malformed date or no link reference.
 - `SECURITY.md`, `CONTRIBUTING.md`, a pull request template and Dependabot
   version updates for Go modules and GitHub Actions.
