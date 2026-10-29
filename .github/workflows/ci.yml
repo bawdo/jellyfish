@@ -6,9 +6,10 @@ permissions:
 # Pull requests run this workflow directly. Pushes to main run it through
 # release.yml (workflow_call, where github.event_name is push) so a release
 # is only cut once every job here except fuzz has passed on the merge
-# commit. Fuzz is left off that path so a crash it finds by chance cannot
-# hold up an unrelated release; its seed corpus still runs in the coverage
-# job, which is the test of record (go test -race over every package).
+# commit. Fuzz runs only on the weekly schedule and by hand, so a crash it
+# finds by chance cannot hold up an unrelated pull request or release; its
+# seed corpus still runs in the coverage job, which is the test of record
+# (go test -race over every package).
 # There is no push trigger for other branches: with a pull request open it
 # would run every job a second time on the same commit. A branch with no
 # pull request can be run by hand (workflow_dispatch, every job including
@@ -178,14 +179,17 @@ jobs:
             exit 1
           fi
 
-  # Short fuzz runs on pull requests and manual runs, a longer one on the
-  # weekly schedule. Skipped on pushes to main (the release path) so fuzzing
-  # never gates a release. The fuzzed packages do not touch the Keychain or
+  # A short fuzz run on manual runs, a longer one on the weekly schedule.
+  # Skipped on pull requests and on pushes to main (the release path) so
+  # random fuzzing never gates a merge or a release; the seed corpus runs
+  # in the coverage job on every trigger that runs tests. Listed by the
+  # triggers that run it, so a new trigger does not fuzz by default. The
+  # fuzzed packages do not touch the Keychain or
   # need cgo, so this runs on Linux. A failing input is kept as an artifact
   # so it can be reproduced locally.
   fuzz:
     name: Fuzz
-    if: github.event_name != 'push'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: ${{ github.event_name == 'schedule' && 60 || 15 }}
     steps:
@@ -223,7 +227,8 @@ jobs:
   #
   # Every job in needs is expected to succeed, except the ones a trigger
   # skips on purpose:
-  #   pull_request, workflow_dispatch: none (all six jobs run)
+  #   workflow_dispatch: none (all six jobs run)
+  #   pull_request: fuzz
   #   push (release.yml via workflow_call): fuzz
   #   schedule: lint, coverage, changelog and build (fuzz and vuln run)
   # Any other event expects every job. A failed or cancelled job always
@@ -245,7 +250,7 @@ jobs:
         run: |
           set -euo pipefail
           case "$EVENT" in
-            push)     may_skip='["fuzz"]' ;;
+            pull_request|push) may_skip='["fuzz"]' ;;
             schedule) may_skip='["lint","coverage","changelog","build"]' ;;
             *)        may_skip='[]' ;;
           esac

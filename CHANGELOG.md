@@ -11,6 +11,9 @@ All notable changes to jellyfish are documented here. The format follows
 - CI no longer runs the test suite twice. The separate `Test` job is gone;
   the coverage job (now shown as `Test & Coverage`) is the test of record
   and still runs `go test -race` over every package.
+- CI no longer fuzzes on pull requests. Fuzzing runs on the weekly schedule
+  and on manual runs only, as it already did not run on the release path;
+  the fuzz seed corpus still runs with the normal tests.
 
 ## [0.4.0] - 2026-10-30
 
