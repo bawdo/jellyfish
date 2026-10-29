@@ -39,3 +39,23 @@ altered, run both against the archive you downloaded:
 gh attestation verify jellyfish_<version>_darwin_<arch>.tar.gz --repo bawdo/jellyfish
 shasum -a 256 -c checksums.txt --ignore-missing
 ```
+
+The attestation is also attached to each release as a Sigstore bundle,
+`jellyfish_<version>_provenance.sigstore.json`. Download it next to the
+archive to verify without querying GitHub's attestation API:
+
+```bash
+gh attestation verify jellyfish_<version>_darwin_<arch>.tar.gz --repo bawdo/jellyfish \
+  --bundle jellyfish_<version>_provenance.sigstore.json
+```
+
+On a machine with no network access at all, `gh` can't fetch the Sigstore
+trusted root itself. Save it on a connected machine, copy it across and
+pass it in:
+
+```bash
+gh attestation trusted-root > trusted_root.jsonl
+gh attestation verify jellyfish_<version>_darwin_<arch>.tar.gz --repo bawdo/jellyfish \
+  --bundle jellyfish_<version>_provenance.sigstore.json \
+  --custom-trusted-root trusted_root.jsonl
+```
