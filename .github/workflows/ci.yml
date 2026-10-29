@@ -8,9 +8,13 @@ permissions:
 # has passed on the merge commit. There is no push trigger for other
 # branches: with a pull request open it would run every job a second time
 # on the same commit. A branch with no pull request can be run by hand
-# (workflow_dispatch) or checked locally with make pre-ci.
+# (workflow_dispatch) or checked locally with make pre-ci. The weekly
+# schedule runs on main and exists for the fuzz job's longer run; it runs
+# only this workflow, so it never reaches release.yml.
 on:
   pull_request:
+  schedule:
+    - cron: '23 4 * * 1'
   workflow_call:
     secrets:
       CODECOV_TOKEN:
@@ -19,9 +23,10 @@ on:
 
 # A literal prefix, not github.workflow: when this file runs as a reusable
 # workflow that context names the caller, which would put caller and callee
-# in the same group and deadlock the run.
+# in the same group and deadlock the run. A scheduled run gets a group of
+# its own so its long fuzz run never holds up the CI of a push to main.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'schedule' && 'schedule-' || '' }}${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
@@ -186,12 +191,48 @@ jobs:
             exit 1
           fi
 
+  # Short fuzz runs on pull requests, a longer one on the weekly schedule.
+  # A failing input is kept as an artifact so it can be reproduced locally.
+  fuzz:
+    name: Fuzz
+    runs-on: macos-latest
+    timeout-minutes: ${{ github.event_name == 'schedule' && 60 || 15 }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.x'
+          check-latest: true
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run fuzz targets
+        env:
+          FUZZTIME: ${{ github.event_name == 'schedule' && '5m' || '15s' }}
+        run: make fuzz FUZZTIME="$FUZZTIME"
+
+      - name: Keep failing fuzz inputs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzz-failures
+          path: internal/*/testdata/fuzz/
+          if-no-files-found: ignore
+          retention-days: 14
+
   # One stable check name for the main ruleset to require, so adding or
   # renaming a job above does not mean editing the ruleset as well.
   ci-result:
     name: CI result
     if: always()
-    needs: [test, lint, coverage, changelog, vuln, build]
+    needs: [test, lint, coverage, changelog, vuln, build, fuzz]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
