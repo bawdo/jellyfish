@@ -18,7 +18,8 @@ All notable changes to jellyfish are documented here. The format follows
   version updates for Go modules and GitHub Actions.
 - `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), issue forms for bugs and
   feature requests that send security reports to the private advisory form,
-  and an OpenSSF Scorecard workflow.
+  and an OpenSSF Scorecard workflow. Conduct reports go privately to
+  conduct@bawdo.com.
 - Each release carries its build provenance attestation as a Sigstore
   bundle, `jellyfish_<version>_provenance.sigstore.json`, so an archive can
   be verified with `gh attestation verify --bundle` without the attestation
