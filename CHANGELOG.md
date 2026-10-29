@@ -4,6 +4,20 @@ All notable changes to jellyfish are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- CI no longer runs the test suite twice. The separate `Test` job is gone;
+  the coverage job (now shown as `Test & Coverage`) is the test of record
+  and still runs `go test -race` over every package.
+- CI no longer fuzzes on pull requests. Fuzzing runs on the weekly schedule
+  and on manual runs only, as it already did not run on the release path;
+  the fuzz seed corpus still runs with the normal tests.
+- The CI changelog check runs on Linux, as it needs nothing from macOS.
+- CI no longer runs a separate `go mod download` step; the Go module cache
+  is restored by `setup-go` and anything missing is fetched by the build.
+
 ## [0.4.0] - 2026-10-30
 
 ### Added
@@ -252,6 +266,7 @@ First release.
 - A `help` bareword alias for `--help`, and `jellyfish version` with commit
   and tag.
 
+[Unreleased]: https://github.com/bawdo/jellyfish/compare/v0.4.0...HEAD
 [0.4.0]: https://github.com/bawdo/jellyfish/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/bawdo/jellyfish/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/bawdo/jellyfish/compare/v0.1.1...v0.2.0

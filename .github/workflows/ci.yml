@@ -6,8 +6,10 @@ permissions:
 # Pull requests run this workflow directly. Pushes to main run it through
 # release.yml (workflow_call, where github.event_name is push) so a release
 # is only cut once every job here except fuzz has passed on the merge
-# commit. Fuzz is left off that path so a crash it finds by chance cannot
-# hold up an unrelated release; its seed corpus still runs in the test job.
+# commit. Fuzz runs only on the weekly schedule and by hand, so a crash it
+# finds by chance cannot hold up an unrelated pull request or release; its
+# seed corpus still runs in the coverage job, which is the test of record
+# (go test -race over every package).
 # There is no push trigger for other branches: with a pull request open it
 # would run every job a second time on the same commit. A branch with no
 # pull request can be run by hand (workflow_dispatch, every job including
@@ -33,30 +35,6 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  test:
-    name: Test
-    if: github.event_name != 'schedule'
-    runs-on: macos-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: '1.26.x'
-          check-latest: true
-          cache: true
-
-      - name: Download dependencies
-        run: go mod download
-
-      - name: Run tests (race detector)
-        run: go test -race ./...
-
   lint:
     name: Lint
     if: github.event_name != 'schedule'
@@ -90,8 +68,10 @@ jobs:
           version: v2.9.0
           args: --timeout=5m
 
+  # The test of record: one race-enabled run over every package, with
+  # -coverpkg so the profile counts cross-package coverage for Codecov.
   coverage:
-    name: Coverage
+    name: Test & Coverage
     if: github.event_name != 'schedule'
     runs-on: macos-latest
     timeout-minutes: 15
@@ -108,9 +88,6 @@ jobs:
           check-latest: true
           cache: true
 
-      - name: Download dependencies
-        run: go mod download
-
       - name: Run tests with coverage
         run: |
           COVERPKG=$(go list ./... | grep -v testutil | tr '\n' ',' | sed 's/,$//')
@@ -124,10 +101,11 @@ jobs:
           fail_ci_if_error: false
           verbose: true
 
+  # Pure shell and git, so it needs nothing from macOS.
   changelog:
     name: Changelog
     if: github.event_name != 'schedule'
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout code
@@ -139,6 +117,10 @@ jobs:
       - name: Check the newest CHANGELOG.md version is releasable
         run: ./scripts/changelog-version.sh check
 
+  # Stays on macOS. internal/keychain uses github.com/keybase/go-keychain,
+  # whose darwin code needs cgo. Cross-compiling from Linux turns cgo off,
+  # and govulncheck then fails to load the package (undefined kc.* symbols)
+  # instead of scanning it.
   vuln:
     name: Vulnerability Scan
     runs-on: macos-latest
@@ -199,14 +181,17 @@ jobs:
             exit 1
           fi
 
-  # Short fuzz runs on pull requests and manual runs, a longer one on the
-  # weekly schedule. Skipped on pushes to main (the release path) so fuzzing
-  # never gates a release. The fuzzed packages do not touch the Keychain or
+  # A short fuzz run on manual runs, a longer one on the weekly schedule.
+  # Skipped on pull requests and on pushes to main (the release path) so
+  # random fuzzing never gates a merge or a release; the seed corpus runs
+  # in the coverage job on every trigger that runs tests. Listed by the
+  # triggers that run it, so a new trigger does not fuzz by default. The
+  # fuzzed packages do not touch the Keychain or
   # need cgo, so this runs on Linux. A failing input is kept as an artifact
   # so it can be reproduced locally.
   fuzz:
     name: Fuzz
-    if: github.event_name != 'push'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: ${{ github.event_name == 'schedule' && 60 || 15 }}
     steps:
@@ -221,9 +206,6 @@ jobs:
           go-version: '1.26.x'
           check-latest: true
           cache: true
-
-      - name: Download dependencies
-        run: go mod download
 
       - name: Run fuzz targets
         env:
@@ -244,9 +226,10 @@ jobs:
   #
   # Every job in needs is expected to succeed, except the ones a trigger
   # skips on purpose:
-  #   pull_request, workflow_dispatch: none (all seven jobs run)
+  #   workflow_dispatch: none (all six jobs run)
+  #   pull_request: fuzz
   #   push (release.yml via workflow_call): fuzz
-  #   schedule: test, lint, coverage, changelog and build (fuzz and vuln run)
+  #   schedule: lint, coverage, changelog and build (fuzz and vuln run)
   # Any other event expects every job. A failed or cancelled job always
   # fails the gate, and so does a skip that the event does not allow, so a
   # job left out by a bad if: condition cannot pass unnoticed. A job added
@@ -255,7 +238,7 @@ jobs:
   ci-result:
     name: CI result
     if: always()
-    needs: [test, lint, coverage, changelog, vuln, build, fuzz]
+    needs: [lint, coverage, changelog, vuln, build, fuzz]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -266,12 +249,12 @@ jobs:
         run: |
           set -euo pipefail
           case "$EVENT" in
-            push)     may_skip='["fuzz"]' ;;
-            schedule) may_skip='["test","lint","coverage","changelog","build"]' ;;
+            pull_request|push) may_skip='["fuzz"]' ;;
+            schedule) may_skip='["lint","coverage","changelog","build"]' ;;
             *)        may_skip='[]' ;;
           esac
           # Mirrors needs above, so a job missing from the results fails too.
-          all='["test","lint","coverage","changelog","vuln","build","fuzz"]'
+          all='["lint","coverage","changelog","vuln","build","fuzz"]'
           echo "Event: $EVENT (may skip: $may_skip)"
           jq -r 'to_entries[] | "  \(.key): \(.value.result)"' <<<"$NEEDS"
           bad=$(jq -r --argjson all "$all" --argjson skip "$may_skip" '
