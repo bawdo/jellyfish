@@ -19,6 +19,10 @@ All notable changes to jellyfish are documented here. The format follows
 - `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), issue forms for bugs and
   feature requests that send security reports to the private advisory form,
   and an OpenSSF Scorecard workflow.
+- Each release carries its build provenance attestation as a Sigstore
+  bundle, `jellyfish_<version>_provenance.sigstore.json`, so an archive can
+  be verified with `gh attestation verify --bundle` without the attestation
+  API, and OpenSSF Scorecard sees the release as signed.
 
 ### Security
 
