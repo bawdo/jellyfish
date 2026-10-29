@@ -1238,7 +1238,7 @@ func TestConfigureGoodTokenVerifiesThenStoresThenSaves(t *testing.T) {
 		Stdout:     out,
 		Stderr:     out,
 		StoreToken: func(account, token string) error {
-			if account != "default" || token != "good-tkn" {
+			if account != "iru:newco-us" || token != "good-tkn" {
 				t.Errorf("StoreToken(%q, %q)", account, token)
 			}
 			order = append(order, "store")
@@ -1353,8 +1353,10 @@ func TestConfigureKeepTokenTenantChangeVerifiesExistingToken(t *testing.T) {
 			if err != nil {
 				t.Fatalf("runConfigure: %v", err)
 			}
-			if readAccount != "default" {
-				t.Errorf("ReadToken account: got %q", readAccount)
+			// The fake holds a token under every account, so the new tenant's
+			// own account answers first and nothing needs storing.
+			if want := "iru:" + c.wantSub + "-" + c.wantRegion; readAccount != want {
+				t.Errorf("ReadToken account: got %q want %q", readAccount, want)
 			}
 			if verifiedToken != "kept-tkn" {
 				t.Errorf("verify token: got %q", verifiedToken)

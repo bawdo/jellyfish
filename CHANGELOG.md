@@ -33,6 +33,17 @@ All notable changes to jellyfish are documented here. The format follows
   `main`, so it never holds up a release; the seed inputs still run with
   the normal tests.
 
+### Changed
+
+- The Iru API token is now kept per tenant, under Keychain account
+  `iru:<subdomain>-<region>` instead of one shared `default` account.
+  Running `jellyfish configure` with a second config file used to replace
+  the first tenant's token, so the first config then sent the second
+  tenant's token. A tenant with no token of its own still uses the old
+  `default` item, so existing setups keep working. `configure` stores a new
+  token, or a kept token after a tenant change, under the tenant's account
+  and leaves `default` alone.
+
 ### Fixed
 
 - `users send-email` and `overview --send-email` read both the

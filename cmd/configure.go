@@ -149,10 +149,12 @@ func runConfigure(ctx context.Context, o configureOpts) error {
 	}
 
 	tenantChanged := existing && (subdomain != prof.Subdomain || region != prof.Region)
+	oldAccount := tokenAccount(prof)
 
 	prof.Subdomain = subdomain
 	prof.Region = region
 	file["default"] = prof
+	account := tokenAccount(prof)
 
 	verify := o.Verify
 	if verify == nil {
@@ -162,10 +164,17 @@ func runConfigure(ctx context.Context, o configureOpts) error {
 	if token == "" {
 		// Keeping the stored token while pointing the config at a different
 		// tenant would leave the old tenant's token paired with the new
-		// tenant's URL, so check the kept token against the new tenant first.
+		// tenant's URL, so check the kept token against the new tenant first,
+		// then file it under the new tenant's account.
 		if tenantChanged {
-			if err := verifyKeptToken(ctx, o.ReadToken, verify, baseURL); err != nil {
+			kept, from, err := verifyKeptToken(ctx, o.ReadToken, verify, baseURL, account, oldAccount, legacyTokenAccount)
+			if err != nil {
 				return err
+			}
+			if from != account {
+				if err := o.StoreToken(account, kept); err != nil {
+					return fmt.Errorf("store token in Keychain (config left unchanged): %w", err)
+				}
 			}
 		}
 		if err := config.Save(o.ConfigPath, file); err != nil {
@@ -186,7 +195,7 @@ func runConfigure(ctx context.Context, o configureOpts) error {
 		return fmt.Errorf("could not verify new token against Iru (%w); the existing Keychain token and config were left unchanged. Re-run `jellyfish configure` once Iru is reachable", err)
 	}
 
-	if err := o.StoreToken("default", token); err != nil {
+	if err := o.StoreToken(account, token); err != nil {
 		return fmt.Errorf("store token in Keychain (config left unchanged): %w", err)
 	}
 	if err := config.Save(o.ConfigPath, file); err != nil {
@@ -196,33 +205,34 @@ func runConfigure(ctx context.Context, o configureOpts) error {
 	return nil
 }
 
-// verifyKeptToken reads the token already in the Keychain and checks it
-// against baseURL (the new tenant). It is used when the user changes
-// subdomain or region but presses Enter to keep the existing token. Errors
-// wrap the underlying sentinel so classifyError maps them onto the same exit
-// codes as a rejected or unverifiable new token.
+// verifyKeptToken reads the token already in the Keychain, from the first of
+// accounts that holds one, and checks it against baseURL (the new tenant).
+// It returns the token and the account it came from. It is used when the
+// user changes subdomain or region but presses Enter to keep the existing
+// token. Errors wrap the underlying sentinel so classifyError maps them onto
+// the same exit codes as a rejected or unverifiable new token.
 //
 // A nil readToken is a wiring bug rather than a cue to fall back to the real
 // Keychain: production always sets configureOpts.ReadToken, and a fallback
 // would only let a test that forgot the seam touch the admin's Keychain.
-func verifyKeptToken(ctx context.Context, readToken func(string) (string, error), verify func(context.Context, string, string) error, baseURL string) error {
+func verifyKeptToken(ctx context.Context, readToken func(string) (string, error), verify func(context.Context, string, string) error, baseURL string, accounts ...string) (token, account string, err error) {
 	if readToken == nil {
-		return errors.New("internal error: no Keychain reader configured to check the existing token; the config was left unchanged")
+		return "", "", errors.New("internal error: no Keychain reader configured to check the existing token; the config was left unchanged")
 	}
-	token, err := readToken("default")
+	token, account, err = readIruToken(readToken, accounts...)
 	if errors.Is(err, keychain.ErrNotFound) {
-		return errors.New("an API token is required when changing tenant and none is stored in the Keychain; the config was left unchanged. Re-run `jellyfish configure` and enter the token for the new tenant")
+		return "", "", errors.New("an API token is required when changing tenant and none is stored in the Keychain; the config was left unchanged. Re-run `jellyfish configure` and enter the token for the new tenant")
 	}
 	if err != nil {
-		return fmt.Errorf("read existing token from Keychain (config left unchanged): %w", err)
+		return "", "", fmt.Errorf("read existing token from Keychain (config left unchanged): %w", err)
 	}
 	if err := verify(ctx, baseURL, token); err != nil {
 		if errors.Is(err, iru.ErrUnauthorized) || errors.Is(err, iru.ErrForbidden) {
-			return fmt.Errorf("existing token was rejected by the new tenant (%w); the config was left unchanged. Re-run `jellyfish configure` and enter the token for the new tenant", err)
+			return "", "", fmt.Errorf("existing token was rejected by the new tenant (%w); the config was left unchanged. Re-run `jellyfish configure` and enter the token for the new tenant", err)
 		}
-		return fmt.Errorf("could not verify existing token against the new tenant (%w); the config was left unchanged. Re-run `jellyfish configure` once Iru is reachable, or enter the token for the new tenant", err)
+		return "", "", fmt.Errorf("could not verify existing token against the new tenant (%w); the config was left unchanged. Re-run `jellyfish configure` once Iru is reachable, or enter the token for the new tenant", err)
 	}
-	return nil
+	return token, account, nil
 }
 
 func readLine(r *bufio.Reader) (string, error) {

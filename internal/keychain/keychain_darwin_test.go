@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -28,9 +29,16 @@ func skipIfNoKeychain(t *testing.T) {
 	t.Cleanup(func() { store = prev })
 }
 
-// productionAccounts are the real jellyfish credentials: the Iru API token
-// and the Gmail service-account JSON.
+// productionAccounts are the real jellyfish credentials: the legacy Iru API
+// token and the Gmail service-account JSON. Per-tenant Iru tokens are every
+// account under productionTenantPrefix.
 var productionAccounts = map[string]bool{"default": true, productionGmailAccount: true}
+
+const productionTenantPrefix = "iru:"
+
+func isProductionAccount(account string) bool {
+	return productionAccounts[account] || strings.HasPrefix(account, productionTenantPrefix)
+}
 
 // guardedStore passes calls to next unless the account is a production one,
 // in which case it reports through fail and returns an error instead.
@@ -40,7 +48,7 @@ type guardedStore struct {
 }
 
 func (g guardedStore) check(op, account string) error {
-	if productionAccounts[account] {
+	if isProductionAccount(account) {
 		g.fail("real-Keychain test tried to %s production account %q", op, account)
 		return fmt.Errorf("refused to %s production account %q", op, account)
 	}

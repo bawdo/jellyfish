@@ -31,6 +31,45 @@ func resolveConfigPath(cmd *cobra.Command) (string, error) {
 // variable so tests can stub it without touching the real macOS Keychain.
 var keychainGet = keychain.Get
 
+// legacyTokenAccount is the one Keychain account older releases kept the Iru
+// token under, whatever the tenant. It is still read as a fallback so those
+// installs keep working, but nothing new is written to it.
+const legacyTokenAccount = "default"
+
+// tokenAccount returns the Keychain account for the profile's tenant's Iru
+// token, "iru:<subdomain>-<region>", or "" when the tenant is incomplete.
+// The Keychain tells generic passwords apart by service and account only, so
+// each tenant needs its own account to keep its own token.
+func tokenAccount(prof config.Profile) string {
+	key := cacheTenantKey(prof)
+	if key == "" {
+		return ""
+	}
+	return "iru:" + key
+}
+
+// readIruToken returns the token from the first of accounts that holds one,
+// and which account that was. Empty accounts are skipped. Only
+// keychain.ErrNotFound moves on to the next account: any other Keychain
+// failure is returned, so a locked or denied read never falls through to a
+// token kept for another tenant.
+func readIruToken(get func(string) (string, error), accounts ...string) (token, account string, err error) {
+	for _, account := range accounts {
+		if account == "" {
+			continue
+		}
+		token, err := get(account)
+		if errors.Is(err, keychain.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return "", "", err
+		}
+		return token, account, nil
+	}
+	return "", "", keychain.ErrNotFound
+}
+
 // newIruClient constructs the concrete Iru client from an already validated
 // base URL and token. It is a variable so tests can inject a fake iruClient
 // while still exercising the real config and Keychain resolution.
@@ -79,7 +118,7 @@ func (lc loadedConfig) client() (iruClient, error) {
 	if err != nil {
 		return nil, fmt.Errorf(`invalid tenant config in %s (%w). Re-run "jellyfish configure"`, lc.path, err)
 	}
-	tok, err := keychainGet("default")
+	tok, _, err := readIruToken(keychainGet, tokenAccount(prof), legacyTokenAccount)
 	if errors.Is(err, keychain.ErrNotFound) {
 		return nil, errors.New(`no token found in Keychain. Run "jellyfish configure" to set up`)
 	}
