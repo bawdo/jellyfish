@@ -5,7 +5,7 @@ name: Release
 # CHANGELOG.md names a version with no published release. If vX.Y.Z is not
 # tagged, the pushed commit is tagged and built. If the tag already exists
 # (made by hand), its commit is built instead and a stale draft of the same
-# name is replaced. The darwin binaries are attached with a checksums file,
+# name is replaced; the run fails if that commit is not on main. The darwin binaries are attached with a checksums file,
 # and the archives listed in it are attested with build provenance so
 # anyone can run:
 #   gh attestation verify <archive> --repo bawdo/jellyfish \
@@ -66,14 +66,10 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
           # Build from the tag's commit when the tag was made by hand,
-          # otherwise from the pushed commit, which the release will tag.
-          if git rev-parse -q --verify "refs/tags/$tag^{commit}" >/dev/null; then
-            commit=$(git rev-parse "refs/tags/$tag^{commit}")
-            echo "$tag exists at $commit"
-          else
-            commit=$GITHUB_SHA
-            echo "$tag is not tagged; it will be created at $commit"
-          fi
+          # otherwise from the pushed commit, which the release will tag. A
+          # hand-made tag must point at a commit on main, or the run fails:
+          # the attestation says main, so the binary must come from main.
+          commit=$(./scripts/release-commit.sh "$tag" "$GITHUB_SHA")
           echo "commit=$commit" >> "$GITHUB_OUTPUT"
 
           # A published release ends it. Drafts are invisible to this

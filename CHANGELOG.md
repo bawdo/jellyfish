@@ -4,7 +4,7 @@ All notable changes to jellyfish are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] - 2026-10-30
 
 ### Added
 
@@ -33,8 +33,34 @@ All notable changes to jellyfish are documented here. The format follows
   `main`, so it never holds up a release; the seed inputs still run with
   the normal tests.
 
+### Changed
+
+- The Iru API token is now kept per tenant, under Keychain account
+  `iru:<subdomain>-<region>` instead of one shared `default` account.
+  Running `jellyfish configure` with a second config file used to replace
+  the first tenant's token, so the first config then sent the second
+  tenant's token. A tenant with no token of its own still uses the old
+  `default` item, so existing setups keep working. `configure` stores a new
+  token, or a kept token after a tenant change, under the tenant's account
+  and leaves `default` alone.
+
 ### Fixed
 
+- `users send-email` and `overview --send-email` read both the
+  confirmation answer and `--message-file -` from stdin, so a piped message
+  was swallowed by the prompt (an empty message error) or taken as the
+  answer (no mail sent). `--message-file -` now needs `--yes` or
+  `--dry-run` with these commands, and is refused before any API work.
+- A Gmail send that Google refused at the sign-in step (domain-wide
+  delegation not granted, a deleted or revoked service-account key, or a
+  From address Google doesn't recognise) exited 1 for a single send and 4
+  for a bulk send. It now exits 2, like any other auth failure; a rate
+  limit or server error from that step exits 4. If Google's sign-in
+  endpoint can't be reached at all, the send still exits 1.
+- An email Subject with non-ASCII text, such as a user's name with an
+  accent, was written as raw 8-bit bytes, which RFC 5322 does not allow and
+  some mail clients garble. It is now RFC 2047 encoded. ASCII subjects are
+  unchanged.
 - A `Retry-After` header with more digits than fit in a 64-bit integer was
   treated as unreadable, so the client retried after its short backoff
   instead of giving up as it does for any other wait over 10 seconds. It now
@@ -53,6 +79,11 @@ All notable changes to jellyfish are documented here. The format follows
 - Every `gh attestation verify` command in the docs and release notes now
   pins the signer to `release.yml` run from `refs/heads/main` on a
   GitHub-hosted runner, not just any workflow in the repository on any ref.
+- The release workflow refuses to build a hand-made version tag that points
+  at a commit not on `main`. Before, any pushed `vX.Y.Z` tag was built and
+  released once the changelog reached that version, with an attestation
+  saying it came from `main`, even if the commit had never been through
+  review or CI.
 - `golang.org/x/net` is updated to v0.62.0 to pick up the fixes for
   GO-2026-6866 and GO-2026-6860. It is an indirect dependency of the Gmail
   client.
@@ -62,6 +93,22 @@ All notable changes to jellyfish are documented here. The format follows
   exists; `x/crypto` stays because the Gmail client needs other packages
   from it (`cryptobyte`, `chacha20poly1305` and `hkdf`). The ignore
   expires on 2027-10-29 so it gets looked at again.
+- A user report no longer trusts Iru's filters to pick out the right
+  devices or users. An empty user ID dropped the `user_id` filter, so
+  `user show ""` (or an unset shell variable) built a report from every
+  device in the fleet and could email it; empty, `.` and `..` user IDs and
+  user records with no ID are now refused. Only devices assigned to the
+  user go into a report, and an email lookup keeps only users whose address
+  matches exactly, ignoring case.
+- `vulns list --serial` matched the first device whose serial number
+  contained the input, because Iru's `serial_number` filter is a contains
+  match. It now needs an exact serial (ignoring case), reports not found
+  otherwise, and fails if more than one device has that serial.
+- CSV, JSON and `-o email` output no longer carry terminal escape
+  sequences from API data, such as a device name chosen on the endpoint.
+  CSV cells drop control characters (tab and newline are kept), JSON
+  escapes DEL and C1 controls as `\u` escapes so it still decodes to the
+  same value, and email headers drop every control character.
 
 ## [0.3.0] - 2026-10-27
 
@@ -205,7 +252,7 @@ First release.
 - A `help` bareword alias for `--help`, and `jellyfish version` with commit
   and tag.
 
-[Unreleased]: https://github.com/bawdo/jellyfish/compare/v0.3.0...HEAD
+[0.4.0]: https://github.com/bawdo/jellyfish/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/bawdo/jellyfish/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/bawdo/jellyfish/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/bawdo/jellyfish/compare/v0.1.0...v0.1.1

@@ -2,9 +2,11 @@ package iru
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 )
 
 // ListDevicesPage fetches one page of devices.
@@ -44,14 +46,32 @@ func (c *Client) ListDevicesStream(ctx context.Context, f DeviceFilters, cb func
 	)
 }
 
-// GetDeviceBySerial returns the device with the given serial number, or ErrNotFound.
+// GetDeviceBySerial returns the device with the given serial number, or
+// ErrNotFound. Iru's serial_number filter is a contains match, so every
+// filtered result is walked and only a serial equal to the input (ignoring
+// case) counts. More than one exact match is an error rather than a guess.
 func (c *Client) GetDeviceBySerial(ctx context.Context, serial string) (Device, error) {
-	page, err := c.ListDevicesPage(ctx, DeviceFilters{SerialNumber: serial}, 1, 0)
+	if strings.TrimSpace(serial) == "" {
+		return Device{}, fmt.Errorf("invalid serial number %q", serial)
+	}
+	var matches []Device
+	err := c.ListDevicesStream(ctx, DeviceFilters{SerialNumber: serial}, func(page []Device) error {
+		for _, d := range page {
+			if strings.EqualFold(d.SerialNumber, serial) {
+				matches = append(matches, d)
+			}
+		}
+		return nil
+	})
 	if err != nil {
 		return Device{}, err
 	}
-	if len(page) == 0 {
+	switch len(matches) {
+	case 0:
 		return Device{}, ErrNotFound
+	case 1:
+		return matches[0], nil
+	default:
+		return Device{}, fmt.Errorf("serial number %q matches %d devices", serial, len(matches))
 	}
-	return page[0], nil
 }

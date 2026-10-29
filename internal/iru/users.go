@@ -2,16 +2,29 @@ package iru
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 )
 
-// GetUser fetches a single user by ID.
+// GetUser fetches a single user by ID. An empty ID, or "." / "..", would
+// address the /users list endpoint (or its parent) rather than one user, so
+// it is refused before any request. A record that comes back without an id
+// is refused too: the list body decodes into a zero User without error.
 func (c *Client) GetUser(ctx context.Context, id string) (User, error) {
+	switch strings.TrimSpace(id) {
+	case "", ".", "..":
+		return User{}, fmt.Errorf("invalid user id %q", id)
+	}
 	var u User
 	if err := c.do(ctx, http.MethodGet, "/users/"+url.PathEscape(id), nil, &u); err != nil {
 		return User{}, err
+	}
+	if u.ID == "" {
+		return User{}, errors.New("iru returned a user record with no id")
 	}
 	return u, nil
 }
@@ -42,12 +55,13 @@ func (c *Client) listUsersPage(ctx context.Context, limit int, cursor string, ex
 	return p.Results, p.nextCursor(), nil
 }
 
-// FindUsersByEmail returns every user with the given email address. Iru's
-// `?email=` filter is an exact server-side match but the same address can
-// legitimately belong to more than one user record (e.g. when a single human
-// is represented by multiple Iru accounts). The walk is paginated via
-// WalkCursor so all matches are returned. Returns ErrNotFound when no
-// records match.
+// FindUsersByEmail returns every user with the given email address. The same
+// address can legitimately belong to more than one user record (e.g. when a
+// single human is represented by multiple Iru accounts). The walk is
+// paginated via WalkCursor so all matches are returned. Iru's `?email=`
+// filter is not trusted to be exact (its /devices email filter is a contains
+// match), so results are kept only when the address matches ignoring case.
+// Returns ErrNotFound when no records match.
 func (c *Client) FindUsersByEmail(ctx context.Context, email string) ([]User, error) {
 	var out []User
 	filter := url.Values{"email": {email}}
@@ -56,7 +70,11 @@ func (c *Client) FindUsersByEmail(ctx context.Context, email string) ([]User, er
 			return c.listUsersPage(ctx, limit, cursor, filter)
 		},
 		func(page []User) error {
-			out = append(out, page...)
+			for _, u := range page {
+				if strings.EqualFold(u.Email, email) {
+					out = append(out, u)
+				}
+			}
 			return nil
 		},
 	)

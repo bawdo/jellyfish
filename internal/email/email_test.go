@@ -173,6 +173,72 @@ func TestAssembleMessageStripsHeaderInjection(t *testing.T) {
 	}
 }
 
+// Header values can carry server-controlled text (the user's name in the
+// default Subject, their address in To), and -o email prints the message to
+// the terminal. No header may carry a raw control character.
+func TestAssembleMessageStripsHeaderControls(t *testing.T) {
+	hdr := messageHeaders{
+		From:    "alice@example.com",
+		To:      "bob\x1b]52;c;cHduZWQ=\x07@example.com",
+		Subject: "Report for Bob\x1b[2J\u009b31m\x7f",
+		Date:    time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	out, err := assembleMessage(hdr, "<p>h</p>", "h\n", "=_jf_X", "<i@b.c>", "", nil)
+	if err != nil {
+		t.Fatalf("assemble: %v", err)
+	}
+	head, _, _ := strings.Cut(string(out), "\r\n\r\n")
+	for _, r := range strings.ReplaceAll(head, "\r\n", "") {
+		if r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) {
+			t.Fatalf("raw control %U in headers %q", r, head)
+		}
+	}
+	msg, err := mail.ReadMessage(bytes.NewReader(out))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if got := msg.Header.Get("To"); got != "bob]52;c;cHduZWQ=@example.com" {
+		t.Errorf("To: got %q", got)
+	}
+	if got := msg.Header.Get("Subject"); got != "Report for Bob[2J31m" {
+		t.Errorf("Subject: got %q", got)
+	}
+}
+
+// RFC 5322 headers are ASCII; a non-ASCII Subject must be RFC 2047 encoded
+// and decode back to the original text. ASCII subjects stay as they are.
+func TestAssembleMessageEncodesNonASCIISubject(t *testing.T) {
+	hdr := messageHeaders{
+		From: "alice@example.com", To: "bob@example.com",
+		Subject: "Vulnerability report for José Zoë",
+		Date:    time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	out, err := assembleMessage(hdr, "<p>h</p>", "h\n", "=_jf_X", "<i@b.c>", "", nil)
+	if err != nil {
+		t.Fatalf("assemble: %v", err)
+	}
+	head, _, _ := strings.Cut(string(out), "\r\n\r\n")
+	for _, r := range head {
+		if r > 0x7e {
+			t.Fatalf("non-ASCII %U in headers %q", r, head)
+		}
+	}
+	msg, err := mail.ReadMessage(bytes.NewReader(out))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	got, err := new(mime.WordDecoder).DecodeHeader(msg.Header.Get("Subject"))
+	if err != nil {
+		t.Fatalf("decode subject: %v", err)
+	}
+	if got != hdr.Subject {
+		t.Fatalf("Subject: got %q want %q", got, hdr.Subject)
+	}
+	if !strings.Contains(head, "\r\nSubject: =?utf-8?q?") {
+		t.Fatalf("expected a Q-encoded Subject, got %q", head)
+	}
+}
+
 func TestAssembleMessageWithLogoEmitsMultipartRelated(t *testing.T) {
 	hdr := messageHeaders{
 		From: "alice@example.com", To: "bob@example.com",
