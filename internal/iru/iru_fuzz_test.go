@@ -102,32 +102,35 @@ func FuzzDecodeAPIError(f *testing.F) {
 			t.Fatalf("Error() = %q does not name status %d", err.Error(), status)
 		}
 
+		// The contract: a usable JSON detail (the body, as far as it is
+		// read, decodes cleanly with a non-empty detail) is the Message;
+		// failing that, a non-empty body under 512 bytes is the Message
+		// verbatim; otherwise Message is empty.
 		read := body
 		if len(read) > maxErrorBody {
 			read = read[:maxErrorBody]
 		}
 		var payload struct {
 			Detail string `json:"detail"`
-			Code   string `json:"code"`
 		}
-		decoded := json.Unmarshal(read, &payload) == nil
+		var want string
 		switch {
-		case apiErr.Message == "":
-			if decoded && payload.Detail != "" {
-				t.Fatalf("detail %q dropped", payload.Detail)
-			}
-		case decoded && apiErr.Message == payload.Detail:
-		case apiErr.Message == string(read) && len(read) < 512:
-		default:
-			t.Fatalf("Message %q is neither the detail nor a short raw body", apiErr.Message)
+		case json.Unmarshal(read, &payload) == nil && payload.Detail != "":
+			want = payload.Detail
+		case len(body) > 0 && len(body) < 512:
+			want = string(body)
+		}
+		if apiErr.Message != want {
+			t.Fatalf("body %q: Message = %q, want %q", body, apiErr.Message, want)
 		}
 	})
 }
 
 // FuzzRetryWait checks the Retry-After handling, a server-controlled header.
-// Whatever the header says, the wait is either the caller's backoff or a
-// whole number of seconds no longer than maxRetryAfter, and the transport is
-// only told to give up when the header is a whole number above that cap.
+// Each input class has one exact answer. A value strconv reads as a whole
+// number of seconds from 0 to maxRetryAfter is honoured to the second; one
+// above the cap gives up (wait 0, ok false); anything else (empty, negative,
+// HTTP-date, fractional, out of int64 range, garbage) falls back to backoff.
 func FuzzRetryWait(f *testing.F) {
 	const backoff = int64(200 * time.Millisecond)
 	for _, s := range []string{
@@ -136,25 +139,24 @@ func FuzzRetryWait(f *testing.F) {
 	} {
 		f.Add(s, backoff)
 	}
+	const capSecs = 10 // maxRetryAfter, in seconds
 	f.Fuzz(func(t *testing.T, retryAfter string, backoffNs int64) {
 		if backoffNs < 0 {
 			return
 		}
 		backoff := time.Duration(backoffNs)
-		wait, ok := retryWait(retryAfter, backoff)
-		secs, parseErr := strconv.ParseInt(retryAfter, 10, 64)
-		if !ok {
-			if parseErr != nil || secs <= int64(maxRetryAfter/time.Second) || wait != 0 {
-				t.Fatalf("retryWait(%q) gave up (wait %v) on a value within the cap", retryAfter, wait)
+		wantWait, wantOK := backoff, true
+		if secs, err := strconv.ParseInt(retryAfter, 10, 64); err == nil && secs >= 0 {
+			if secs > capSecs {
+				wantWait, wantOK = 0, false
+			} else {
+				wantWait = time.Duration(secs) * time.Second
 			}
-			return
 		}
-		if wait == backoff {
-			return
-		}
-		if parseErr != nil || secs < 0 || wait != time.Duration(secs)*time.Second || wait > maxRetryAfter {
-			t.Fatalf("retryWait(%q, %v) = %v: neither backoff nor an honoured Retry-After",
-				retryAfter, backoff, wait)
+		wait, ok := retryWait(retryAfter, backoff)
+		if wait != wantWait || ok != wantOK {
+			t.Fatalf("retryWait(%q, %v) = (%v, %v), want (%v, %v)",
+				retryAfter, backoff, wait, ok, wantWait, wantOK)
 		}
 	})
 }
