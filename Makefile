@@ -7,6 +7,19 @@ LDFLAGS := -X github.com/bawdo/jellyfish/internal/version.Version=$(VERSION) \
            -X github.com/bawdo/jellyfish/internal/version.Tag=$(TAG) \
            -X github.com/bawdo/jellyfish/internal/version.Dirty=$(DIRTY)
 
+# Each fuzz target as <package>:<FuzzName>. go test -fuzz takes one target
+# per invocation, so make fuzz runs them in turn for FUZZTIME each.
+FUZZTIME ?= 15s
+FUZZ_TARGETS := \
+	./internal/cache:FuzzDefaultPath \
+	./internal/config:FuzzBuildBaseURL \
+	./internal/email:FuzzLinkifyHTML \
+	./internal/iru:FuzzDecodeAPIError \
+	./internal/iru:FuzzDeviceUnmarshal \
+	./internal/iru:FuzzNextCursor \
+	./internal/iru:FuzzRetryWait \
+	./internal/output:FuzzSanitiseTerminal
+
 .DEFAULT_GOAL := build
 
 help: ## List the available targets
@@ -26,10 +39,17 @@ test: ## Run the full test suite
 lint: ## Run golangci-lint
 	golangci-lint run
 
+fuzz: ## Run every fuzz target for FUZZTIME each (default 15s)
+	@set -e; for t in $(FUZZ_TARGETS); do \
+		pkg=$${t%%:*}; name=$${t##*:}; \
+		echo "==> $$name ($$pkg, $(FUZZTIME))"; \
+		go test "$$pkg" -run='^$$' -fuzz="^$$name\$$" -fuzztime=$(FUZZTIME); \
+	done
+
 pre-ci: ## Run the full local CI validation suite
 	./scripts/pre-ci-check.sh
 
 pre-ci-fix: ## Run pre-ci, auto-formatting with gofmt first
 	./scripts/pre-ci-check.sh --fix gofmt
 
-.PHONY: help build install test lint pre-ci pre-ci-fix
+.PHONY: help build install test lint fuzz pre-ci pre-ci-fix

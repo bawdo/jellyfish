@@ -7,7 +7,14 @@ name: Release
 # (made by hand), its commit is built instead and a stale draft of the same
 # name is replaced. The darwin binaries are attached with a checksums file,
 # and the archives listed in it are attested with build provenance so
-# anyone can run: gh attestation verify <archive> --repo bawdo/jellyfish
+# anyone can run:
+#   gh attestation verify <archive> --repo bawdo/jellyfish \
+#     --signer-workflow bawdo/jellyfish/.github/workflows/release.yml \
+#     --source-ref refs/heads/main --deny-self-hosted-runners
+# The attestation's Sigstore bundle is attached too, so --bundle can check
+# it without the attestation API. That still fetches the Sigstore trusted
+# root; a fully offline check also needs --custom-trusted-root (see
+# SECURITY.md).
 #
 # Only the publish job can write to the repository, and it has no checkout
 # and runs no project code. The build job compiles with a read-only token
@@ -99,7 +106,14 @@ jobs:
             echo "Verify a downloaded archive with:"
             echo
             echo '```'
-            echo "gh attestation verify jellyfish_${VERSION}_darwin_<arch>.tar.gz --repo $GITHUB_REPOSITORY"
+            echo "gh attestation verify jellyfish_${VERSION}_darwin_<arch>.tar.gz --repo $GITHUB_REPOSITORY \\"
+            echo "  --signer-workflow $GITHUB_REPOSITORY/.github/workflows/release.yml \\"
+            echo "  --source-ref refs/heads/main --deny-self-hosted-runners"
+            echo "# or from the attached Sigstore bundle, without the attestation API:"
+            echo "gh attestation verify jellyfish_${VERSION}_darwin_<arch>.tar.gz --repo $GITHUB_REPOSITORY \\"
+            echo "  --signer-workflow $GITHUB_REPOSITORY/.github/workflows/release.yml \\"
+            echo "  --source-ref refs/heads/main --deny-self-hosted-runners \\"
+            echo "  --bundle jellyfish_${VERSION}_provenance.sigstore.json"
             echo "shasum -a 256 -c checksums.txt --ignore-missing"
             echo '```'
             if [ -n "$previous" ]; then
@@ -209,6 +223,7 @@ jobs:
         run: cd dist && sha256sum -c checksums.txt
 
       - name: Attest build provenance
+        id: attest
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-checksums: dist/checksums.txt
@@ -219,9 +234,15 @@ jobs:
           GH_REPO: ${{ github.repository }}
           VERSION: ${{ needs.plan.outputs.version }}
           COMMIT: ${{ needs.plan.outputs.commit }}
+          BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
         run: |
           set -euo pipefail
           tag="v$VERSION"
+          # The attestation as a Sigstore bundle (one JSON document), named
+          # so gh attestation verify --bundle reads it as JSON and Scorecard
+          # counts it as a signed release asset.
+          bundle="dist/jellyfish_${VERSION}_provenance.sigstore.json"
+          cp "$BUNDLE_PATH" "$bundle"
           # A draft is stale (it has no attested assets) and is replaced. A
           # published release that appeared since the plan job is left alone.
           draft=$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || echo missing)
@@ -237,6 +258,6 @@ jobs:
             --target "$COMMIT" \
             --title "$tag" \
             --notes-file notes/notes.md \
-            dist/*.tar.gz dist/checksums.txt
+            dist/*.tar.gz dist/checksums.txt "$bundle"
           gh release edit "$tag" --draft=false --latest
           gh release view "$tag" --json url --jq .url

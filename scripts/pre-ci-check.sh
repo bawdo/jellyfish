@@ -2,7 +2,7 @@
 #
 # Jellyfish Local Build Validation
 #
-# Runs the same ten quality checks every developer should run before
+# Runs the same eleven quality checks every developer should run before
 # pushing. Adapted from the Datum pre-CI script for Jellyfish's
 # single-binary cobra CLI layout (module root builds ./).
 #
@@ -372,6 +372,21 @@ check_changelog() {
     fi
 }
 
+# Check 11: Fuzz (short run of every fuzz target, as CI does on pull requests)
+check_fuzz() {
+    print_header "Check 11: Fuzz (make fuzz, 5s per target)"
+    print_step "Running make fuzz FUZZTIME=5s..."
+
+    if make fuzz FUZZTIME=5s 2>&1 | tee coverage/pre-ci-fuzz.txt; then
+        record_result "Fuzz" "PASS" ""
+        echo -e "${GREEN}✓ No fuzz failures found${NC}"
+    else
+        record_result "Fuzz" "FAIL" "A fuzz target failed (failing inputs are under internal/*/testdata/fuzz/)"
+        echo -e "${RED}✗ Fuzz check failed${NC}"
+        return 1
+    fi
+}
+
 # Generate summary report
 generate_report() {
     print_header "Local Build Readiness Report"
@@ -442,7 +457,7 @@ generate_report() {
     fi
 
     echo ""
-    echo "Detailed logs saved in: coverage/pre-ci-*.txt  (checks 1–10)"
+    echo "Detailed logs saved in: coverage/pre-ci-*.txt  (checks 1 to 11)"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
 
@@ -488,6 +503,7 @@ main() {
     check_vulnerability_scan || true
     check_cli_smoke || true
     check_changelog || true
+    check_fuzz || true
 
     generate_report
 

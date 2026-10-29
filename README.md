@@ -26,8 +26,10 @@ macOS only. Either download a release or build from source.
 Each [release](https://github.com/bawdo/jellyfish/releases) ships `darwin_arm64` (Apple silicon) and `darwin_amd64` (Intel) archives plus a `checksums.txt`. Download the archive for your Mac and the checksums file, then verify and install:
 
 ```bash
-gh attestation verify jellyfish_*_darwin_arm64.tar.gz --repo bawdo/jellyfish   # built by this repo's CI
-shasum -a 256 -c checksums.txt --ignore-missing                                # archive matches
+gh attestation verify jellyfish_*_darwin_arm64.tar.gz --repo bawdo/jellyfish \
+  --signer-workflow bawdo/jellyfish/.github/workflows/release.yml \
+  --source-ref refs/heads/main --deny-self-hosted-runners   # built by this repo's release workflow on main
+shasum -a 256 -c checksums.txt --ignore-missing             # archive matches
 tar -xzf jellyfish_*_darwin_arm64.tar.gz
 install -m 0755 jellyfish_*_darwin_arm64/jellyfish /usr/local/bin/jellyfish
 ```
@@ -303,7 +305,7 @@ Stderr emits one line per recipient (`sent` / `would-send` / `skip` / `error`) a
 ```bash
 make test     # go test ./...
 make lint     # golangci-lint run
-make pre-ci   # ten-check local build validator
+make pre-ci   # eleven-check local build validator
 make build    # ./bin/jellyfish with version ldflags
 ```
 

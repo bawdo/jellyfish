@@ -18,7 +18,27 @@ All notable changes to jellyfish are documented here. The format follows
   version updates for Go modules and GitHub Actions.
 - `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), issue forms for bugs and
   feature requests that send security reports to the private advisory form,
-  and an OpenSSF Scorecard workflow.
+  and an OpenSSF Scorecard workflow. Conduct reports go privately to
+  conduct@bawdo.com.
+- Each release carries its build provenance attestation as a Sigstore
+  bundle, `jellyfish_<version>_provenance.sigstore.json`, so an archive can
+  be verified with `gh attestation verify --bundle` without the attestation
+  API, and OpenSSF Scorecard sees the release as signed.
+- Go native fuzz tests for code that handles untrusted input (terminal
+  sanitising, API base URL and cache path derivation, pagination cursors,
+  API error bodies, `Retry-After`, device JSON and email linkifying),
+  run by `make fuzz` and briefly by `make pre-ci`. CI fuzzes briefly on
+  every pull request and manual run, and for longer in a weekly run that
+  checks only fuzzing and `govulncheck`. Fuzzing does not run on pushes to
+  `main`, so it never holds up a release; the seed inputs still run with
+  the normal tests.
+
+### Fixed
+
+- A `Retry-After` header with more digits than fit in a 64-bit integer was
+  treated as unreadable, so the client retried after its short backoff
+  instead of giving up as it does for any other wait over 10 seconds. It now
+  gives up and reports the rate limit (exit code 4).
 
 ### Security
 
@@ -30,6 +50,18 @@ All notable changes to jellyfish are documented here. The format follows
   every job has a timeout.
 - Dependabot waits seven days before proposing a new dependency version.
   Security updates are not delayed.
+- Every `gh attestation verify` command in the docs and release notes now
+  pins the signer to `release.yml` run from `refs/heads/main` on a
+  GitHub-hosted runner, not just any workflow in the repository on any ref.
+- `golang.org/x/net` is updated to v0.62.0 to pick up the fixes for
+  GO-2026-6866 and GO-2026-6860. It is an indirect dependency of the Gmail
+  client.
+- `osv-scanner.toml` now ignores GO-2026-5932, which flags every
+  `golang.org/x/crypto` version because its `openpgp` package is
+  unmaintained. jellyfish never imports `openpgp` and no fixed version
+  exists; `x/crypto` stays because the Gmail client needs other packages
+  from it (`cryptobyte`, `chacha20poly1305` and `hkdf`). The ignore
+  expires on 2027-10-29 so it gets looked at again.
 
 ## [0.3.0] - 2026-10-27
 
