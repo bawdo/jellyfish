@@ -209,9 +209,9 @@ func TestListUsersPageQueryInMemory(t *testing.T) {
 func TestFindUsersByEmailQueryInMemory(t *testing.T) {
 	qt := &queryTransport{respond: func(cursor string) string {
 		if cursor == "" {
-			return `{"next": "https://` + testAPIHost + `/api/v1/users?cursor=p2", "previous": null, "results": [{"id": "u-1"}]}`
+			return `{"next": "https://` + testAPIHost + `/api/v1/users?cursor=p2", "previous": null, "results": [{"id": "u-1", "email": "k@x"}]}`
 		}
-		return `{"next": null, "previous": null, "results": [{"id": "u-2"}]}`
+		return `{"next": null, "previous": null, "results": [{"id": "u-2", "email": "k@x"}]}`
 	}}
 	c := NewClient(testBaseURL, testToken, withBaseTransport(qt))
 	users, err := c.FindUsersByEmail(context.Background(), "k@x")

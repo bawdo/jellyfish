@@ -514,6 +514,41 @@ func TestBuildBundleForUserBucketsDetections(t *testing.T) {
 	}
 }
 
+// filterIgnoringClient behaves like an Iru that ignores the user_id filter
+// and returns every device in the tenant.
+type filterIgnoringClient struct{ *fakeClient }
+
+func (c filterIgnoringClient) ListDevices(_ context.Context, _ iru.DeviceFilters) ([]iru.Device, error) {
+	return c.devices, nil
+}
+
+func TestBuildBundleForUserKeepsOnlyOwnedDevices(t *testing.T) {
+	client := filterIgnoringClient{&fakeClient{devices: []iru.Device{
+		{DeviceID: "d-mine", User: iru.User{ID: "u-1"}},
+		{DeviceID: "d-theirs", User: iru.User{ID: "u-2"}},
+		{DeviceID: "d-nobody"},
+	}}}
+	all := []iru.Detection{
+		{DeviceID: "d-mine", CVEID: "CVE-A"},
+		{DeviceID: "d-theirs", CVEID: "CVE-B"},
+		{DeviceID: "d-nobody", CVEID: "CVE-C"},
+	}
+	b, err := buildBundleForUser(context.Background(), client, iru.User{ID: "u-1"}, all)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b.Devices) != 1 || b.Devices[0].Device.DeviceID != "d-mine" {
+		t.Fatalf("got devices %+v, want only d-mine", b.Devices)
+	}
+}
+
+func TestBuildBundleForUserRejectsEmptyUserID(t *testing.T) {
+	client := &fakeClient{devices: []iru.Device{{DeviceID: "d-1"}}}
+	if _, err := buildBundleForUser(context.Background(), client, iru.User{Email: "k@x"}, nil); err == nil {
+		t.Fatal("expected an error for a user with no id, got nil")
+	}
+}
+
 func TestResolveSelectedUserSingleMatchReturnsUser(t *testing.T) {
 	client := &fakeClient{usersByEmail: map[string][]iru.User{
 		"k@x": {{ID: "u-1", Name: "Keith", Email: "k@x", Active: true}},
