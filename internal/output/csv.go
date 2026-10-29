@@ -36,7 +36,7 @@ func (r *csvRenderer) Render(w io.Writer, v any) error {
 
 	if err := eachRow(r.columns, v, func(cells []string) error {
 		for i := range cells {
-			cells[i] = sanitiseCell(cells[i])
+			cells[i] = sanitiseCell(stripControls(cells[i], isCSVControl))
 		}
 		return cw.Write(cells)
 	}); err != nil {
@@ -44,6 +44,15 @@ func (r *csvRenderer) Render(w io.Writer, v any) error {
 	}
 	cw.Flush()
 	return cw.Error()
+}
+
+// isCSVControl reports whether r is a terminal control that has no place in
+// a CSV cell. CSV is often printed straight to a terminal, so escape
+// sequences in endpoint-chosen text (device names, paths) are removed. Tab
+// and newline are kept: encoding/csv quotes them and they are real data, such
+// as a multi-line CVE description.
+func isCSVControl(r rune) bool {
+	return r != '\t' && r != '\n' && isTerminalControl(r)
 }
 
 // formulaTriggers are the leading characters a spreadsheet (Excel, Numbers,

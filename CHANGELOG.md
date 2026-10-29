@@ -35,6 +35,10 @@ All notable changes to jellyfish are documented here. The format follows
 
 ### Fixed
 
+- An email Subject with non-ASCII text, such as a user's name with an
+  accent, was written as raw 8-bit bytes, which RFC 5322 does not allow and
+  some mail clients garble. It is now RFC 2047 encoded. ASCII subjects are
+  unchanged.
 - A `Retry-After` header with more digits than fit in a 64-bit integer was
   treated as unreadable, so the client retried after its short backoff
   instead of giving up as it does for any other wait over 10 seconds. It now
@@ -73,6 +77,11 @@ All notable changes to jellyfish are documented here. The format follows
   contained the input, because Iru's `serial_number` filter is a contains
   match. It now needs an exact serial (ignoring case), reports not found
   otherwise, and fails if more than one device has that serial.
+- CSV, JSON and `-o email` output no longer carry terminal escape
+  sequences from API data, such as a device name chosen on the endpoint.
+  CSV cells drop control characters (tab and newline are kept), JSON
+  escapes DEL and C1 controls as `\u` escapes so it still decodes to the
+  same value, and email headers drop every control character.
 
 ## [0.3.0] - 2026-10-27
 
