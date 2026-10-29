@@ -399,9 +399,20 @@ func renderUserBundleCSV(w io.Writer, b UserBundle) error {
 // the caller is responsible for resolution (and for any disambiguation in
 // the multi-match-by-email case).
 func buildBundleForUser(ctx context.Context, client iruClient, user iru.User, allDetections []iru.Detection) (UserBundle, error) {
-	devices, err := client.ListDevices(ctx, iru.DeviceFilters{UserID: user.ID})
+	// An empty UserID drops the server filter and lists the whole fleet.
+	if user.ID == "" {
+		return UserBundle{}, fmt.Errorf("user %q has no id", user.Email)
+	}
+	listed, err := client.ListDevices(ctx, iru.DeviceFilters{UserID: user.ID})
 	if err != nil {
 		return UserBundle{}, err
+	}
+	// Keep only devices assigned to this user, whatever the server filter did.
+	var devices []iru.Device
+	for _, d := range listed {
+		if d.User.ID == user.ID {
+			devices = append(devices, d)
+		}
 	}
 	deviceIDs := make(map[string]struct{}, len(devices))
 	for _, d := range devices {

@@ -62,6 +62,17 @@ All notable changes to jellyfish are documented here. The format follows
   exists; `x/crypto` stays because the Gmail client needs other packages
   from it (`cryptobyte`, `chacha20poly1305` and `hkdf`). The ignore
   expires on 2027-10-29 so it gets looked at again.
+- A user report no longer trusts Iru's filters to pick out the right
+  devices or users. An empty user ID dropped the `user_id` filter, so
+  `user show ""` (or an unset shell variable) built a report from every
+  device in the fleet and could email it; empty, `.` and `..` user IDs and
+  user records with no ID are now refused. Only devices assigned to the
+  user go into a report, and an email lookup keeps only users whose address
+  matches exactly, ignoring case.
+- `vulns list --serial` matched the first device whose serial number
+  contained the input, because Iru's `serial_number` filter is a contains
+  match. It now needs an exact serial (ignoring case), reports not found
+  otherwise, and fails if more than one device has that serial.
 
 ## [0.3.0] - 2026-10-27
 
