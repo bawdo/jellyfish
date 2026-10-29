@@ -47,7 +47,9 @@ All notable changes to jellyfish are documented here. The format follows
 - `osv-scanner.toml` now ignores GO-2026-5932, which flags every
   `golang.org/x/crypto` version because its `openpgp` package is
   unmaintained. jellyfish never imports `openpgp` and no fixed version
-  exists; `x/crypto` stays because the Gmail client needs `cryptobyte`.
+  exists; `x/crypto` stays because the Gmail client needs other packages
+  from it (`cryptobyte`, `chacha20poly1305` and `hkdf`). The ignore
+  expires on 2027-10-29 so it gets looked at again.
 
 ## [0.3.0] - 2026-10-27
 
