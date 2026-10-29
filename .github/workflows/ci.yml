@@ -88,9 +88,6 @@ jobs:
           check-latest: true
           cache: true
 
-      - name: Download dependencies
-        run: go mod download
-
       - name: Run tests with coverage
         run: |
           COVERPKG=$(go list ./... | grep -v testutil | tr '\n' ',' | sed 's/,$//')
@@ -209,9 +206,6 @@ jobs:
           go-version: '1.26.x'
           check-latest: true
           cache: true
-
-      - name: Download dependencies
-        run: go mod download
 
       - name: Run fuzz targets
         env:

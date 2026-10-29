@@ -15,6 +15,8 @@ All notable changes to jellyfish are documented here. The format follows
   and on manual runs only, as it already did not run on the release path;
   the fuzz seed corpus still runs with the normal tests.
 - The CI changelog check runs on Linux, as it needs nothing from macOS.
+- CI no longer runs a separate `go mod download` step; the Go module cache
+  is restored by `setup-go` and anything missing is fetched by the build.
 
 ## [0.4.0] - 2026-10-30
 
