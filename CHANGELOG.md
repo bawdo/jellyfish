@@ -16,6 +16,20 @@ All notable changes to jellyfish are documented here. The format follows
   has a malformed date or no link reference.
 - `SECURITY.md`, `CONTRIBUTING.md`, a pull request template and Dependabot
   version updates for Go modules and GitHub Actions.
+- `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), issue forms for bugs and
+  feature requests that send security reports to the private advisory form,
+  and an OpenSSF Scorecard workflow.
+
+### Security
+
+- The release workflow is split so only its final publish job can write to
+  the repository, and that job has no checkout and runs no project code.
+  The binaries are built with a read-only token and without the Go build
+  cache, so neither is in reach of the code that ships.
+- Workflow checkouts no longer leave the job token in `.git/config`, and
+  every job has a timeout.
+- Dependabot waits seven days before proposing a new dependency version.
+  Security updates are not delayed.
 
 ## [0.3.0] - 2026-10-27
 

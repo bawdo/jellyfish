@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/bawdo/jellyfish/actions/workflows/ci.yml/badge.svg)](https://github.com/bawdo/jellyfish/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/bawdo/jellyfish/graph/badge.svg?token=CODECOV_GRAPH_TOKEN)](https://codecov.io/gh/bawdo/jellyfish)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/bawdo/jellyfish/badge)](https://scorecard.dev/viewer/?uri=github.com/bawdo/jellyfish)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Go 1.26+](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white)](go.mod)
 

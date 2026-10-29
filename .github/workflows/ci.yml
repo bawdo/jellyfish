@@ -5,12 +5,12 @@ permissions:
 
 # Pull requests run this workflow directly. Pushes to main run it through
 # release.yml (workflow_call) so a release is only cut once every job here
-# has passed on the merge commit.
+# has passed on the merge commit. There is no push trigger for other
+# branches: with a pull request open it would run every job a second time
+# on the same commit. A branch with no pull request can be run by hand
+# (workflow_dispatch) or checked locally with make pre-ci.
 on:
-  push:
-    branches-ignore: [ main ]
   pull_request:
-    branches: [ '*' ]
   workflow_call:
     secrets:
       CODECOV_TOKEN:
@@ -28,9 +28,12 @@ jobs:
   test:
     name: Test
     runs-on: macos-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -48,9 +51,12 @@ jobs:
   lint:
     name: Lint
     runs-on: macos-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -77,9 +83,12 @@ jobs:
   coverage:
     name: Coverage
     runs-on: macos-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -107,11 +116,13 @@ jobs:
   changelog:
     name: Changelog
     runs-on: macos-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Check the newest CHANGELOG.md version is releasable
         run: ./scripts/changelog-version.sh check
@@ -119,9 +130,12 @@ jobs:
   vuln:
     name: Vulnerability Scan
     runs-on: macos-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -136,11 +150,13 @@ jobs:
   build:
     name: Build & Smoke
     runs-on: macos-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -169,3 +185,16 @@ jobs:
             echo "Smoke test failed: 'jellyfish version' did not print build identity"
             exit 1
           fi
+
+  # One stable check name for the main ruleset to require, so adding or
+  # renaming a job above does not mean editing the ruleset as well.
+  ci-result:
+    name: CI result
+    if: always()
+    needs: [test, lint, coverage, changelog, vuln, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail unless every job passed
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
+        run: exit 1
