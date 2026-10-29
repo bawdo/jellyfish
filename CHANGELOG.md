@@ -23,6 +23,10 @@ All notable changes to jellyfish are documented here. The format follows
   bundle, `jellyfish_<version>_provenance.sigstore.json`, so an archive can
   be verified with `gh attestation verify --bundle` without the attestation
   API, and OpenSSF Scorecard sees the release as signed.
+- Go native fuzz tests for code that handles untrusted input (terminal
+  sanitising, API base URL and cache path derivation, pagination cursors,
+  API error bodies, `Retry-After`, device JSON and email linkifying),
+  run by `make fuzz`, briefly on every pull request and for longer weekly.
 
 ### Security
 
