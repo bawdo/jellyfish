@@ -79,6 +79,11 @@ All notable changes to jellyfish are documented here. The format follows
 - Every `gh attestation verify` command in the docs and release notes now
   pins the signer to `release.yml` run from `refs/heads/main` on a
   GitHub-hosted runner, not just any workflow in the repository on any ref.
+- The release workflow refuses to build a hand-made version tag that points
+  at a commit not on `main`. Before, any pushed `vX.Y.Z` tag was built and
+  released once the changelog reached that version, with an attestation
+  saying it came from `main`, even if the commit had never been through
+  review or CI.
 - `golang.org/x/net` is updated to v0.62.0 to pick up the fixes for
   GO-2026-6866 and GO-2026-6860. It is an indirect dependency of the Gmail
   client.
