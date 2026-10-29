@@ -1,0 +1,45 @@
+name: Bug report
+description: Something does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste API tokens, service-account JSON, device serials or
+        anything else from your tenant you would not want public. Trim
+        output to the parts that show the problem.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The command and flags you ran, and the exit code.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: version
+    attributes:
+      label: jellyfish version
+      description: The output of `jellyfish version`.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: macOS version
+      placeholder: macOS 26.1 (arm64)
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Error output with `-v`, or whether it happens on another tenant or region.

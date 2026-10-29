@@ -5,6 +5,9 @@ person, so the process is light.
 
 ## Before you start
 
+Everyone taking part is expected to follow the
+[Code of Conduct](CODE_OF_CONDUCT.md).
+
 Open an issue for anything bigger than a typo or a one-line fix, so the
 approach can be agreed before you spend time on it. Security problems go
 through [SECURITY.md](SECURITY.md), not the issue tracker.
@@ -17,8 +20,10 @@ through [SECURITY.md](SECURITY.md), not the issue tracker.
    `govulncheck`, a CLI smoke test and the changelog check).
 3. Add a line under `[Unreleased]` in `CHANGELOG.md` for anything a user
    would notice. Follow the existing Keep a Changelog headings.
-4. Open a pull request. CI must pass before it can be merged. There is no
-   reviewer requirement, but expect questions.
+4. Open a pull request. CI (the `CI result` check) and CodeQL must pass
+   before it can be merged, and it lands as a merge commit so signed
+   commits keep their signatures. There is no reviewer requirement, but
+   expect questions.
 
 Commits are signed and written in the past tense with a subject of about
 50 characters. Australian English in prose.

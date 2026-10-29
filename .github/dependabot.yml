@@ -6,6 +6,11 @@ updates:
       interval: weekly
       day: monday
       timezone: Australia/Sydney
+    # Wait a week before taking a new release, so one that is found to be
+    # compromised or broken soon after publishing never lands here. Security
+    # updates are not delayed.
+    cooldown:
+      default-days: 7
     groups:
       go-modules:
         patterns: ["*"]
@@ -19,6 +24,11 @@ updates:
       interval: weekly
       day: monday
       timezone: Australia/Sydney
+    # Wait a week before taking a new release, so one that is found to be
+    # compromised or broken soon after publishing never lands here. Security
+    # updates are not delayed.
+    cooldown:
+      default-days: 7
     groups:
       actions:
         patterns: ["*"]

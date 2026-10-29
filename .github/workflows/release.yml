@@ -8,6 +8,11 @@ name: Release
 # name is replaced. The darwin binaries are attached with a checksums file,
 # and the archives listed in it are attested with build provenance so
 # anyone can run: gh attestation verify <archive> --repo bawdo/jellyfish
+#
+# Only the publish job can write to the repository, and it has no checkout
+# and runs no project code. The build job compiles with a read-only token
+# and without the Go cache, so neither a token nor a poisoned cache entry is
+# in reach of the code that ends up in the release.
 
 permissions:
   contents: read
@@ -27,19 +32,21 @@ jobs:
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  release:
-    name: Release
+  plan:
+    name: Plan
     needs: ci
-    runs-on: macos-latest
-    permissions:
-      contents: write
-      id-token: write
-      attestations: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      due: ${{ steps.plan.outputs.due }}
+      version: ${{ steps.plan.outputs.version }}
+      commit: ${{ steps.plan.outputs.commit }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Decide whether a release is due
         id: plan
@@ -62,25 +69,19 @@ jobs:
           fi
           echo "commit=$commit" >> "$GITHUB_OUTPUT"
 
-          # A published release ends it. A draft is stale (it has no attested
-          # assets) and is replaced.
-          draft=$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || echo missing)
-          case "$draft" in
-            false)
-              echo "$tag already has a published release; nothing to release"
-              echo "due=false" >> "$GITHUB_OUTPUT" ;;
-            true)
-              echo "$tag has a draft release; replacing it"
-              gh release delete "$tag" --yes
-              echo "due=true" >> "$GITHUB_OUTPUT" ;;
-            *)
-              echo "$tag has no release; releasing"
-              echo "due=true" >> "$GITHUB_OUTPUT" ;;
-          esac
+          # A published release ends it. Drafts are invisible to this
+          # read-only token; the publish job deals with them.
+          if gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null | grep -qx false; then
+            echo "$tag already has a published release; nothing to release"
+            echo "due=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "$tag has no published release; releasing"
+            echo "due=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Write release notes
-        # Before the checkout below, so the notes and the previous-tag lookup
-        # come from main, where the changelog script and section both exist.
+        # From main, where the changelog script and section both exist, even
+        # when the release builds an older hand-made tag.
         if: steps.plan.outputs.due == 'true'
         env:
           VERSION: ${{ steps.plan.outputs.version }}
@@ -108,23 +109,39 @@ jobs:
           } > "$RUNNER_TEMP/notes.md"
           cat "$RUNNER_TEMP/notes.md"
 
-      - name: Check out the commit to release
+      - name: Keep the release notes for the publish job
         if: steps.plan.outputs.due == 'true'
-        run: git checkout -q --detach "${{ steps.plan.outputs.commit }}"
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-notes
+          path: ${{ runner.temp }}/notes.md
+          if-no-files-found: error
+          retention-days: 1
+
+  build:
+    name: Build
+    needs: plan
+    if: needs.plan.outputs.due == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout the commit to release
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.commit }}
+          persist-credentials: false
 
       - name: Set up Go
-        if: steps.plan.outputs.due == 'true'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26.x'
           check-latest: true
-          cache: true
+          cache: false
 
       - name: Build darwin binaries
-        if: steps.plan.outputs.due == 'true'
         env:
-          VERSION: ${{ steps.plan.outputs.version }}
-          COMMIT: ${{ steps.plan.outputs.commit }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          COMMIT: ${{ needs.plan.outputs.commit }}
         run: |
           set -euo pipefail
           tag="v$VERSION"
@@ -145,9 +162,8 @@ jobs:
           (cd dist && shasum -a 256 *.tar.gz > checksums.txt && cat checksums.txt)
 
       - name: Smoke test the native binary
-        if: steps.plan.outputs.due == 'true'
         env:
-          VERSION: ${{ steps.plan.outputs.version }}
+          VERSION: ${{ needs.plan.outputs.version }}
         run: |
           set -euo pipefail
           arch=$(uname -m | sed 's/x86_64/amd64/')
@@ -157,28 +173,70 @@ jobs:
           echo "$output" | head -1 | grep -q "^jellyfish v$VERSION" \
             || { echo "built binary does not report v$VERSION"; exit 1; }
 
+      - name: Keep the archives for the publish job
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: |
+            dist/*.tar.gz
+            dist/checksums.txt
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish
+    needs: [plan, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Fetch the archives
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist
+
+      - name: Fetch the release notes
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-notes
+          path: notes
+
+      - name: Check the archives match their checksums
+        run: cd dist && sha256sum -c checksums.txt
+
       - name: Attest build provenance
-        if: steps.plan.outputs.due == 'true'
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-checksums: dist/checksums.txt
 
       - name: Create the release
-        if: steps.plan.outputs.due == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.plan.outputs.version }}
-          COMMIT: ${{ steps.plan.outputs.commit }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          COMMIT: ${{ needs.plan.outputs.commit }}
         run: |
           set -euo pipefail
+          tag="v$VERSION"
+          # A draft is stale (it has no attested assets) and is replaced. A
+          # published release that appeared since the plan job is left alone.
+          draft=$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || echo missing)
+          case "$draft" in
+            false) echo "$tag was published since planning; leaving it"; exit 0 ;;
+            true)  echo "$tag has a draft release; replacing it"; gh release delete "$tag" --yes ;;
+          esac
           # Created as a draft, assets uploaded, then published, so an
           # immutable release never exists without its assets. --target is
           # ignored when the tag already exists.
-          gh release create "v$VERSION" \
+          gh release create "$tag" \
             --draft \
             --target "$COMMIT" \
-            --title "v$VERSION" \
-            --notes-file "$RUNNER_TEMP/notes.md" \
+            --title "$tag" \
+            --notes-file notes/notes.md \
             dist/*.tar.gz dist/checksums.txt
-          gh release edit "v$VERSION" --draft=false --latest
-          gh release view "v$VERSION" --json url --jq .url
+          gh release edit "$tag" --draft=false --latest
+          gh release view "$tag" --json url --jq .url
