@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 
+	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	gmailapi "google.golang.org/api/gmail/v1"
 	"google.golang.org/api/googleapi"
@@ -85,8 +86,14 @@ func ValidateServiceAccountJSON(b []byte) error {
 }
 
 // classifyAPIError wraps a Gmail API error with one of the package sentinels
-// based on the HTTP status code. Non-googleapi errors pass through unchanged.
+// based on the HTTP status code. A refused OAuth token request never reaches
+// Gmail, so it is classified from the token endpoint's status instead. Other
+// errors pass through unchanged.
 func classifyAPIError(err error) error {
+	var re *oauth2.RetrieveError
+	if errors.As(err, &re) {
+		return classifyTokenError(err, re)
+	}
 	var ge *googleapi.Error
 	if !errors.As(err, &ge) {
 		return err
@@ -102,5 +109,23 @@ func classifyAPIError(err error) error {
 		return fmt.Errorf("%w: %w", ErrUpstream, ge)
 	default:
 		return err
+	}
+}
+
+// classifyTokenError maps a failed token request. Google answers a bad grant
+// (delegation not granted, key revoked, unknown subject) with a 4xx, so any
+// refusal other than a rate limit or server error is an auth failure.
+func classifyTokenError(err error, re *oauth2.RetrieveError) error {
+	status := 0
+	if re.Response != nil {
+		status = re.Response.StatusCode
+	}
+	switch {
+	case status == 429:
+		return fmt.Errorf("%w: %w", ErrRateLimited, err)
+	case status >= 500:
+		return fmt.Errorf("%w: %w", ErrUpstream, err)
+	default:
+		return fmt.Errorf("%w: %w", ErrUnauthorized, err)
 	}
 }

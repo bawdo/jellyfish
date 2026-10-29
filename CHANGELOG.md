@@ -40,6 +40,12 @@ All notable changes to jellyfish are documented here. The format follows
   was swallowed by the prompt (an empty message error) or taken as the
   answer (no mail sent). `--message-file -` now needs `--yes` or
   `--dry-run` with these commands, and is refused before any API work.
+- A Gmail send that Google refused at the sign-in step (domain-wide
+  delegation not granted, a deleted or revoked service-account key, or a
+  From address Google doesn't recognise) exited 1 for a single send and 4
+  for a bulk send. It now exits 2, like any other auth failure; a rate
+  limit or server error from that step exits 4. If Google's sign-in
+  endpoint can't be reached at all, the send still exits 1.
 - An email Subject with non-ASCII text, such as a user's name with an
   accent, was written as raw 8-bit bytes, which RFC 5322 does not allow and
   some mail clients garble. It is now RFC 2047 encoded. ASCII subjects are
