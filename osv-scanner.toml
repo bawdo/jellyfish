@@ -1,0 +1,6 @@
+# Read by osv-scanner, and so by the OpenSSF Scorecard Vulnerabilities check.
+# Every entry needs a reason a reviewer can check against the code.
+
+[[IgnoredVulns]]
+id = "GO-2026-5932"
+reason = "Advisory says golang.org/x/crypto/openpgp is unmaintained. No fixed version exists, so every x/crypto version matches. jellyfish never imports openpgp (govulncheck reports it unreachable). x/crypto is still needed for x/crypto/cryptobyte, which the Gmail client pulls in through google.golang.org/api and s2a-go. Revisit if openpgp is ever imported."
