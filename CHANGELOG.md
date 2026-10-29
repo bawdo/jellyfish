@@ -38,6 +38,9 @@ All notable changes to jellyfish are documented here. The format follows
   every job has a timeout.
 - Dependabot waits seven days before proposing a new dependency version.
   Security updates are not delayed.
+- Every `gh attestation verify` command in the docs and release notes now
+  pins the signer to `release.yml` run from `refs/heads/main` on a
+  GitHub-hosted runner, not just any workflow in the repository on any ref.
 - `golang.org/x/net` is updated to v0.62.0 to pick up the fixes for
   GO-2026-6866 and GO-2026-6860. It is an indirect dependency of the Gmail
   client.

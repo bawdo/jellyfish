@@ -36,16 +36,26 @@ confirm a download came from this repository's CI and has not been
 altered, run both against the archive you downloaded:
 
 ```bash
-gh attestation verify jellyfish_<version>_darwin_<arch>.tar.gz --repo bawdo/jellyfish
+gh attestation verify jellyfish_<version>_darwin_<arch>.tar.gz --repo bawdo/jellyfish \
+  --signer-workflow bawdo/jellyfish/.github/workflows/release.yml \
+  --source-ref refs/heads/main --deny-self-hosted-runners
 shasum -a 256 -c checksums.txt --ignore-missing
 ```
 
-The attestation is also attached to each release as a Sigstore bundle,
+`--repo` on its own only proves that some workflow in this repository, run
+from any branch, signed the archive. The other three flags pin it to the
+release workflow running from `main` on a GitHub-hosted runner, which rules
+out an attestation that someone with push access makes from a throwaway
+branch, from any other workflow file or on a self-hosted runner.
+
+Releases after v0.3.0 also carry the attestation as a Sigstore bundle,
 `jellyfish_<version>_provenance.sigstore.json`. Download it next to the
 archive to verify without querying GitHub's attestation API:
 
 ```bash
 gh attestation verify jellyfish_<version>_darwin_<arch>.tar.gz --repo bawdo/jellyfish \
+  --signer-workflow bawdo/jellyfish/.github/workflows/release.yml \
+  --source-ref refs/heads/main --deny-self-hosted-runners \
   --bundle jellyfish_<version>_provenance.sigstore.json
 ```
 
@@ -56,6 +66,8 @@ pass it in:
 ```bash
 gh attestation trusted-root > trusted_root.jsonl
 gh attestation verify jellyfish_<version>_darwin_<arch>.tar.gz --repo bawdo/jellyfish \
+  --signer-workflow bawdo/jellyfish/.github/workflows/release.yml \
+  --source-ref refs/heads/main --deny-self-hosted-runners \
   --bundle jellyfish_<version>_provenance.sigstore.json \
   --custom-trusted-root trusted_root.jsonl
 ```
