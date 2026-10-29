@@ -305,7 +305,7 @@ Stderr emits one line per recipient (`sent` / `would-send` / `skip` / `error`) a
 ```bash
 make test     # go test ./...
 make lint     # golangci-lint run
-make pre-ci   # ten-check local build validator
+make pre-ci   # eleven-check local build validator
 make build    # ./bin/jellyfish with version ldflags
 ```
 

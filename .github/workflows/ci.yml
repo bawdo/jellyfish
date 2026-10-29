@@ -4,13 +4,16 @@ permissions:
   contents: read
 
 # Pull requests run this workflow directly. Pushes to main run it through
-# release.yml (workflow_call) so a release is only cut once every job here
-# has passed on the merge commit. There is no push trigger for other
-# branches: with a pull request open it would run every job a second time
-# on the same commit. A branch with no pull request can be run by hand
-# (workflow_dispatch) or checked locally with make pre-ci. The weekly
-# schedule runs on main and exists for the fuzz job's longer run; it runs
-# only this workflow, so it never reaches release.yml.
+# release.yml (workflow_call, where github.event_name is push) so a release
+# is only cut once every job here except fuzz has passed on the merge
+# commit. Fuzz is left off that path so a crash it finds by chance cannot
+# hold up an unrelated release; its seed corpus still runs in the test job.
+# There is no push trigger for other branches: with a pull request open it
+# would run every job a second time on the same commit. A branch with no
+# pull request can be run by hand (workflow_dispatch, every job including
+# fuzz) or checked locally with make pre-ci. The weekly schedule runs on
+# main and runs only the long fuzz job and govulncheck; it runs only this
+# workflow, so it never reaches release.yml.
 on:
   pull_request:
   schedule:
@@ -32,6 +35,7 @@ concurrency:
 jobs:
   test:
     name: Test
+    if: github.event_name != 'schedule'
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
@@ -55,6 +59,7 @@ jobs:
 
   lint:
     name: Lint
+    if: github.event_name != 'schedule'
     runs-on: macos-latest
     timeout-minutes: 10
     steps:
@@ -87,6 +92,7 @@ jobs:
 
   coverage:
     name: Coverage
+    if: github.event_name != 'schedule'
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
@@ -120,6 +126,7 @@ jobs:
 
   changelog:
     name: Changelog
+    if: github.event_name != 'schedule'
     runs-on: macos-latest
     timeout-minutes: 5
     steps:
@@ -154,6 +161,7 @@ jobs:
 
   build:
     name: Build & Smoke
+    if: github.event_name != 'schedule'
     runs-on: macos-latest
     timeout-minutes: 10
     steps:
@@ -191,11 +199,15 @@ jobs:
             exit 1
           fi
 
-  # Short fuzz runs on pull requests, a longer one on the weekly schedule.
-  # A failing input is kept as an artifact so it can be reproduced locally.
+  # Short fuzz runs on pull requests and manual runs, a longer one on the
+  # weekly schedule. Skipped on pushes to main (the release path) so fuzzing
+  # never gates a release. The fuzzed packages do not touch the Keychain or
+  # need cgo, so this runs on Linux. A failing input is kept as an artifact
+  # so it can be reproduced locally.
   fuzz:
     name: Fuzz
-    runs-on: macos-latest
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
     timeout-minutes: ${{ github.event_name == 'schedule' && 60 || 15 }}
     steps:
       - name: Checkout code
@@ -229,6 +241,17 @@ jobs:
 
   # One stable check name for the main ruleset to require, so adding or
   # renaming a job above does not mean editing the ruleset as well.
+  #
+  # Every job in needs is expected to succeed, except the ones a trigger
+  # skips on purpose:
+  #   pull_request, workflow_dispatch: none (all seven jobs run)
+  #   push (release.yml via workflow_call): fuzz
+  #   schedule: test, lint, coverage, changelog and build (fuzz and vuln run)
+  # Any other event expects every job. A failed or cancelled job always
+  # fails the gate, and so does a skip that the event does not allow, so a
+  # job left out by a bad if: condition cannot pass unnoticed. A job added
+  # to needs is expected under every trigger unless it is listed as a
+  # permitted skip in the script below.
   ci-result:
     name: CI result
     if: always()
@@ -236,6 +259,32 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Fail unless every job passed
-        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
-        run: exit 1
+      - name: Fail unless every expected job passed
+        env:
+          EVENT: ${{ github.event_name }}
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          case "$EVENT" in
+            push)     may_skip='["fuzz"]' ;;
+            schedule) may_skip='["test","lint","coverage","changelog","build"]' ;;
+            *)        may_skip='[]' ;;
+          esac
+          # Mirrors needs above, so a job missing from the results fails too.
+          all='["test","lint","coverage","changelog","vuln","build","fuzz"]'
+          echo "Event: $EVENT (may skip: $may_skip)"
+          jq -r 'to_entries[] | "  \(.key): \(.value.result)"' <<<"$NEEDS"
+          bad=$(jq -r --argjson all "$all" --argjson skip "$may_skip" '
+            if type != "object" then "job results are not an object"
+            else . as $needs | ($all + keys | unique)[]
+              | . as $job | ($needs[$job].result // "missing") as $r
+              | if $r == "success" then empty
+                elif $r == "skipped" and ($skip | any(. == $job)) then empty
+                else "\($job): \($r)" end
+            end' <<<"$NEEDS")
+          if [ -n "$bad" ]; then
+            echo "Not passed:"
+            echo "$bad" | sed 's/^/  /'
+            exit 1
+          fi
+          echo "Every expected job passed."

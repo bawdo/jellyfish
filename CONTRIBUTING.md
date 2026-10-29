@@ -17,9 +17,9 @@ through [SECURITY.md](SECURITY.md), not the issue tracker.
 1. Fork and branch from `main`.
 2. Run `make pre-ci` before pushing. It mirrors the GitHub Actions checks
    (format, tests with the race detector, lint, coverage, build,
-   `govulncheck`, a CLI smoke test and the changelog check).
-   If you touch code that parses untrusted input, `make fuzz` runs the
-   fuzz targets too (15s each, or set `FUZZTIME`).
+   `govulncheck`, a CLI smoke test, the changelog check and a short fuzz
+   run of 5s per target). If you touch code that parses untrusted input,
+   run `make fuzz` for longer too (15s each, or set `FUZZTIME`).
 3. Add a line under `[Unreleased]` in `CHANGELOG.md` for anything a user
    would notice. Follow the existing Keep a Changelog headings.
 4. Open a pull request. CI (the `CI result` check) and CodeQL must pass

@@ -27,7 +27,11 @@ All notable changes to jellyfish are documented here. The format follows
 - Go native fuzz tests for code that handles untrusted input (terminal
   sanitising, API base URL and cache path derivation, pagination cursors,
   API error bodies, `Retry-After`, device JSON and email linkifying),
-  run by `make fuzz`, briefly on every pull request and for longer weekly.
+  run by `make fuzz` and briefly by `make pre-ci`. CI fuzzes briefly on
+  every pull request and manual run, and for longer in a weekly run that
+  checks only fuzzing and `govulncheck`. Fuzzing does not run on pushes to
+  `main`, so it never holds up a release; the seed inputs still run with
+  the normal tests.
 
 ### Security
 
