@@ -5,12 +5,12 @@ permissions:
 
 # Pull requests run this workflow directly. Pushes to main run it through
 # release.yml (workflow_call) so a release is only cut once every job here
-# has passed on the merge commit.
+# has passed on the merge commit. There is no push trigger for other
+# branches: with a pull request open it would run every job a second time
+# on the same commit. A branch with no pull request can be run by hand
+# (workflow_dispatch) or checked locally with make pre-ci.
 on:
-  push:
-    branches-ignore: [ main ]
   pull_request:
-    branches: [ '*' ]
   workflow_call:
     secrets:
       CODECOV_TOKEN:
