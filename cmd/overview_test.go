@@ -1006,3 +1006,22 @@ func TestRunOverviewPerUserSendsBothDuplicates(t *testing.T) {
 		t.Fatalf("expected 2 personalised sends, got %d", fake.calls)
 	}
 }
+
+// See TestUsersSendEmailMessageFileStdinNeedsYes: the same prompt and stdin
+// clash applies to overview --send-email.
+func TestRunOverviewMessageFileStdinNeedsYes(t *testing.T) {
+	for _, perUser := range []bool{false, true} {
+		opts := overviewOpts{
+			PerUser:    perUser,
+			EmailFlags: emailFlagValues{Send: true, To: "ops@example.com", From: "noreply@example.com", MessageFile: "-"},
+		}
+		err := runOverview(context.Background(), &fakeClient{}, io.Discard, io.Discard, opts)
+		if err == nil || !strings.Contains(err.Error(), "--yes") {
+			t.Fatalf("perUser=%v: expected a --yes error, got %v", perUser, err)
+		}
+		opts.DryRun = true
+		if err := validateOverviewFlags(opts); err != nil {
+			t.Fatalf("perUser=%v: --dry-run should allow --message-file -: %v", perUser, err)
+		}
+	}
+}

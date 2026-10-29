@@ -97,6 +97,9 @@ func runUsersSendEmail(ctx context.Context, client iruClient, stderr io.Writer, 
 	if err := validateMessageFlags(opts.EmailFlags, true); err != nil {
 		return err
 	}
+	if err := validateStdinConfirm(opts.EmailFlags, opts.Yes, opts.DryRun); err != nil {
+		return err
+	}
 	if opts.EmailFlags.To != "" {
 		if _, err := mail.ParseAddress(opts.EmailFlags.To); err != nil {
 			return fmt.Errorf("--email-to %q: %w", opts.EmailFlags.To, err)

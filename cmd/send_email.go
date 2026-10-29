@@ -84,6 +84,17 @@ func buildGmailSender(ctx context.Context, keychainGet func() ([]byte, error), n
 	return newSender(ctx, saJSON, from)
 }
 
+// validateStdinConfirm refuses --message-file - on a command that prompts
+// for confirmation, unless --yes or --dry-run skips the prompt. Both would
+// read stdin: the prompt's buffered read swallows the message, or takes the
+// message's first line as its answer.
+func validateStdinConfirm(flags emailFlagValues, yes, dryRun bool) error {
+	if flags.MessageFile == "-" && !yes && !dryRun {
+		return errors.New("--message-file - reads the message from stdin, so stdin cannot also answer the confirmation prompt; add --yes (or --dry-run)")
+	}
+	return nil
+}
+
 // confirmSend prompts the operator before sending mail. Returns (true, nil)
 // when the operator confirms (or the prompt is short-circuited by --yes or
 // --dry-run). Returns (false, nil) on "n", blank, or EOF. Errors propagate

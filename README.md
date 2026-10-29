@@ -193,6 +193,7 @@ Adds a short note to the top of an email. Supported by `vulns summary` and `user
 
 - `--message` opens `$VISUAL` / `$EDITOR` / `vi` on a scratch file; `#` lines are dropped on save, and an empty result aborts. As with git, the editor may include arguments (e.g. `VISUAL="code -w"`).
 - `--message-file <path>` reads the note verbatim (use `-` for stdin; `#` lines are kept).
+- `users send-email` and `overview --send-email` ask for confirmation on stdin, so `--message-file -` with them needs `--yes` (or `--dry-run`).
 - The two are mutually exclusive and require email output. URLs in the note become clickable links.
 
 ```bash

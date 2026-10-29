@@ -739,3 +739,59 @@ func TestUsersSendEmailMultiMatchOneSkipped(t *testing.T) {
 		t.Fatalf("expected skip line for u-2: %s", stderr.String())
 	}
 }
+
+// --message-file - reads the message from stdin, so stdin cannot also answer
+// the confirmation prompt: a buffered prompt read swallows the message. The
+// combination is refused before any API or Gmail work unless --yes or
+// --dry-run skips the prompt.
+func TestUsersSendEmailMessageFileStdinNeedsYes(t *testing.T) {
+	walkErr := errors.New("detections walked")
+	client := &usercovErrClient{fakeClient: &fakeClient{}, detectionsErr: walkErr}
+	senderBuilt := false
+	opts := usersSendEmailOpts{
+		Emails:      "keith@x",
+		EmailFlags:  emailFlagValues{From: "ops@example.com", MessageFile: "-"},
+		NoCache:     true,
+		Profile:     config.Profile{Email: config.EmailConfig{GmailConfigured: true, From: "ops@example.com"}},
+		KeychainGet: func() ([]byte, error) { return []byte(`{}`), nil },
+		NewSender: func(_ context.Context, _ []byte, _ string) (gmail.Sender, error) {
+			senderBuilt = true
+			return &fakeSender{}, nil
+		},
+		ConfirmReader: strings.NewReader("y\nHello team\n"),
+		MessageReader: strings.NewReader("y\nHello team\n"),
+	}
+	err := runUsersSendEmail(context.Background(), client, io.Discard, opts)
+	if err == nil || errors.Is(err, walkErr) || !strings.Contains(err.Error(), "--yes") {
+		t.Fatalf("expected a --yes error before any work, got %v", err)
+	}
+	if senderBuilt {
+		t.Fatal("Gmail sender was built before the flag check")
+	}
+}
+
+func TestUsersSendEmailMessageFileStdinWithYes(t *testing.T) {
+	client := &fakeClient{
+		usersByEmail: map[string][]iru.User{"keith@x": {{ID: "u-1", Email: "keith@x"}}},
+		devices:      []iru.Device{{DeviceID: "d-1", User: iru.User{ID: "u-1"}}},
+		detections:   []iru.Detection{{DeviceID: "d-1", CVEID: "CVE-A", Severity: "High", CVSSScore: 7.0}},
+	}
+	fake := &fakeSender{}
+	opts := usersSendEmailOpts{
+		Emails:        "keith@x",
+		EmailFlags:    emailFlagValues{From: "ops@example.com", MessageFile: "-"},
+		Yes:           true,
+		NoCache:       true,
+		Profile:       config.Profile{Email: config.EmailConfig{GmailConfigured: true, From: "ops@example.com"}},
+		KeychainGet:   func() ([]byte, error) { return []byte(`{}`), nil },
+		NewSender:     func(_ context.Context, _ []byte, _ string) (gmail.Sender, error) { return fake, nil },
+		ConfirmReader: strings.NewReader(""),
+		MessageReader: strings.NewReader("Hello team, please patch.\n"),
+	}
+	if err := runUsersSendEmail(context.Background(), client, io.Discard, opts); err != nil {
+		t.Fatal(err)
+	}
+	if fake.calls != 1 {
+		t.Fatalf("expected 1 send, got %d", fake.calls)
+	}
+}

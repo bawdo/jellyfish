@@ -35,6 +35,11 @@ All notable changes to jellyfish are documented here. The format follows
 
 ### Fixed
 
+- `users send-email` and `overview --send-email` read both the
+  confirmation answer and `--message-file -` from stdin, so a piped message
+  was swallowed by the prompt (an empty message error) or taken as the
+  answer (no mail sent). `--message-file -` now needs `--yes` or
+  `--dry-run` with these commands, and is refused before any API work.
 - An email Subject with non-ASCII text, such as a user's name with an
   accent, was written as raw 8-bit bytes, which RFC 5322 does not allow and
   some mail clients garble. It is now RFC 2047 encoded. ASCII subjects are
