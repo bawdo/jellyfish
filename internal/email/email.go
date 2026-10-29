@@ -7,10 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"mime/quotedprintable"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/bawdo/jellyfish/internal/output"
 )
 
 // ErrRender is returned wrapped by any renderer error so callers can
@@ -145,7 +148,9 @@ func assembleMessage(
 
 	writeHeader("From", h.From)
 	writeHeader("To", to)
-	writeHeader("Subject", h.Subject)
+	// RFC 5322 headers are ASCII: a Subject carrying a user's name may not be.
+	// QEncoding leaves printable ASCII as it is and encodes anything else.
+	writeHeader("Subject", mime.QEncoding.Encode("utf-8", sanitiseHeaderValue(h.Subject)))
 	writeHeader("Date", h.Date.Format(time.RFC1123Z))
 	writeHeader("Message-ID", messageID)
 	writeHeader("MIME-Version", "1.0")
@@ -344,10 +349,12 @@ func randomMessageID(domain string) (string, error) {
 	return fmt.Sprintf("<%d.%s@%s>", time.Now().UnixNano(), hex.EncodeToString(b[:]), domain), nil
 }
 
-// sanitiseHeaderValue strips CR/LF so a caller-supplied header value cannot
-// inject additional headers (RFC 5322 header injection).
+// sanitiseHeaderValue strips every control character (C0 including CR, LF
+// and tab, DEL and C1) so a caller- or server-supplied header value can
+// neither inject further headers nor carry a terminal escape sequence when
+// the message is printed with -o email.
 func sanitiseHeaderValue(v string) string {
-	return strings.NewReplacer("\r", "", "\n", "").Replace(v)
+	return output.SanitiseTerminal(v)
 }
 
 // sevPalette is the colour set for one severity tier in the HTML email.

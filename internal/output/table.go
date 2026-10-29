@@ -66,8 +66,9 @@ func (r *tableRenderer) Render(w io.Writer, v any) error {
 // be interpreted by the admin's terminal. Every C0 control (including tab and
 // newline, which also break the table layout), DEL and every C1 control is
 // removed outright rather than replaced, so the remaining text stays
-// readable. The table renderer uses this: CSV, JSON and YAML are data formats
-// and must round-trip as is.
+// readable. The table renderer uses this. The data formats are handled
+// separately: CSV strips the same controls but keeps tab and newline, JSON
+// escapes DEL and C1 losslessly, and YAML escapes every control itself.
 func SanitiseTerminal(s string) string {
 	return stripControls(s, isTerminalControl)
 }
