@@ -424,6 +424,8 @@ func runOverview(ctx context.Context, client iruClient, stdout, stderr io.Writer
 //     mirrors the cmd/send_email.go resolveSendOptions check
 //   - --send-email without --per-user requires an explicit --email-to so the
 //     admin path has a recipient
+//   - --send-email with --message-file - requires --yes or --dry-run, since
+//     the confirmation prompt would also read stdin
 //   - --csv and --emails are mutually exclusive (only one input source)
 func validateOverviewFlags(opts overviewOpts) error {
 	hasEmailOutput := opts.Output == "email" || opts.EmailFlags.Send
@@ -439,6 +441,9 @@ func validateOverviewFlags(opts overviewOpts) error {
 		}
 		if !opts.PerUser && opts.EmailFlags.To == "" {
 			return errors.New("--send-email without --per-user requires --email-to")
+		}
+		if err := validateStdinConfirm(opts.EmailFlags, opts.Yes, opts.DryRun); err != nil {
+			return err
 		}
 	}
 	if opts.CSVPath != "" && opts.Emails != "" {
