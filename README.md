@@ -78,10 +78,16 @@ Prompts for the tenant subdomain (the bit before `.api.kandji.io` - the hostname
 
 A new token is checked against Iru before anything is written. If Iru rejects it, or the check can't complete, the existing Keychain token and config are left untouched and the command exits non-zero: 2 if Iru rejects the token, and 4 for an Iru 5xx, a rate limit, or a network failure (DNS, connection refused, timeout). If you change subdomain or region but press Enter to keep the existing token, that stored token is checked against the new tenant the same way before the config is saved.
 
-Subdomain and region are written to `~/.config/jellyfish/config.yml` (mode `0600`); the token goes to the macOS Keychain under service `jellyfish.secrets`, account `default`:
+Subdomain and region are written to `~/.config/jellyfish/config.yml` (mode `0600`); the token goes to the macOS Keychain under service `jellyfish.secrets`, with one account per tenant, `iru:<subdomain>-<region>`. For tenant `acme` in the US region:
 
 ```bash
-security find-generic-password -s jellyfish.secrets -a default
+security find-generic-password -s jellyfish.secrets -a iru:acme-us
+security delete-generic-password -s jellyfish.secrets -a iru:acme-us
+```
+
+Because each tenant has its own token, you can keep a config file per tenant and switch with `--config`. Releases before per-tenant tokens kept one token under account `default`. It is still used for a tenant with no token of its own, so an existing setup keeps working; the next `jellyfish configure` that changes the tenant or enters a token stores it under the tenant's account. Once every tenant has its own token, the old item can go:
+
+```bash
 security delete-generic-password -s jellyfish.secrets -a default
 ```
 
@@ -125,7 +131,7 @@ Every detection returned is active by definition - Iru drops a detection once th
 
 ### Detection cache
 
-`vulns list` and `user show` walk Iru's detections endpoint in full, because Iru has no per-device server filter. The first call takes 30-90 seconds on a large tenant; results are cached for 15 minutes under `~/Library/Caches/jellyfish/`, one file per tenant (e.g. `detections-<subdomain>-<region>.json`), so switching `--config` between tenants never mixes their data. Pass `--no-cache` to force a fresh fetch. Change the TTL with `cache_ttl_minutes` in `config.yml` or via `jellyfish configure cache`.
+`vulns list` and `user show` walk Iru's detections endpoint in full, because Iru has no per-device server filter. The first call takes 30-90 seconds on a large tenant; results are cached for 15 minutes under `~/Library/Caches/jellyfish/`, one file per tenant (e.g. `detections-<subdomain>-<region>.json`), so switching `--config` between tenants never mixes their cached data. Pass `--no-cache` to force a fresh fetch. Change the TTL with `cache_ttl_minutes` in `config.yml` or via `jellyfish configure cache`.
 
 ### Vulnerability summary
 

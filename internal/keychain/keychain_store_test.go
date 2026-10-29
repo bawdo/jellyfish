@@ -230,7 +230,7 @@ func TestGetGmailServiceAccountPassesErrorThrough(t *testing.T) {
 // The guard used by the real-Keychain tests refuses production accounts
 // without passing the call on. Checked against a fake so it runs ungated.
 func TestGuardedStoreRefusesProductionAccounts(t *testing.T) {
-	for _, account := range []string{"default", productionGmailAccount} {
+	for _, account := range []string{"default", "iru:acme-us", productionGmailAccount} {
 		t.Run(account, func(t *testing.T) {
 			inner := &fakeStore{items: map[string][]byte{account: []byte("real")}}
 			var reports []string
