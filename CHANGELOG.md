@@ -33,6 +33,13 @@ All notable changes to jellyfish are documented here. The format follows
   `main`, so it never holds up a release; the seed inputs still run with
   the normal tests.
 
+### Fixed
+
+- A `Retry-After` header with more digits than fit in a 64-bit integer was
+  treated as unreadable, so the client retried after its short backoff
+  instead of giving up as it does for any other wait over 10 seconds. It now
+  gives up and reports the rate limit (exit code 4).
+
 ### Security
 
 - The release workflow is split so only its final publish job can write to

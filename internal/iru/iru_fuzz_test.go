@@ -6,10 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"net/url"
 	"reflect"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -127,30 +127,32 @@ func FuzzDecodeAPIError(f *testing.F) {
 }
 
 // FuzzRetryWait checks the Retry-After handling, a server-controlled header.
-// Each input class has one exact answer. A value strconv reads as a whole
-// number of seconds from 0 to maxRetryAfter is honoured to the second; one
-// above the cap gives up (wait 0, ok false); anything else (empty, negative,
-// HTTP-date, fractional, out of int64 range, garbage) falls back to backoff.
+// Each input class has one exact answer, worked out with math/big so the
+// oracle shares nothing with the strconv parsing under test. A whole number
+// of seconds from 0 to maxRetryAfter is honoured to the second; one above the
+// cap gives up (wait 0, ok false), however many digits it has; anything else
+// (empty, negative, HTTP-date, fractional, garbage) falls back to backoff.
 func FuzzRetryWait(f *testing.F) {
 	const backoff = int64(200 * time.Millisecond)
 	for _, s := range []string{
 		"", "0", "1", "10", "11", "120", "-1", "+5", " 5", "5s", "1.5",
 		"Wed, 21 Oct 2015 07:28:00 GMT", "99999999999999999999", "9223372036854775807",
+		"+99999999999999999999", "-99999999999999999999", "18700000000000000000A",
 	} {
 		f.Add(s, backoff)
 	}
-	const capSecs = 10 // maxRetryAfter, in seconds
+	capSecs := big.NewInt(10) // maxRetryAfter, in seconds
 	f.Fuzz(func(t *testing.T, retryAfter string, backoffNs int64) {
 		if backoffNs < 0 {
 			return
 		}
 		backoff := time.Duration(backoffNs)
 		wantWait, wantOK := backoff, true
-		if secs, err := strconv.ParseInt(retryAfter, 10, 64); err == nil && secs >= 0 {
-			if secs > capSecs {
+		if n, ok := new(big.Int).SetString(retryAfter, 10); ok && n.Sign() >= 0 {
+			if n.Cmp(capSecs) > 0 {
 				wantWait, wantOK = 0, false
 			} else {
-				wantWait = time.Duration(secs) * time.Second
+				wantWait = time.Duration(n.Int64()) * time.Second
 			}
 		}
 		wait, ok := retryWait(retryAfter, backoff)

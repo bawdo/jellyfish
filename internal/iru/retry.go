@@ -2,9 +2,11 @@ package iru
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -25,13 +27,21 @@ const retryMargin = time.Second
 // retryWait returns how long to wait before the next attempt, and false when
 // the server asked for longer than maxRetryAfter (the caller should stop
 // retrying and return the response it has). A Retry-After value in whole
-// seconds is honoured. Anything else (absent, negative, HTTP-date form,
-// garbage) falls back to backoff.
+// seconds is honoured, including one with too many digits for an int64,
+// which is over the cap by definition. Anything else (absent, negative,
+// HTTP-date form, garbage) falls back to backoff.
 func retryWait(retryAfter string, backoff time.Duration) (time.Duration, bool) {
 	if retryAfter == "" {
 		return backoff, true
 	}
 	secs, err := strconv.ParseInt(retryAfter, 10, 64)
+	// ParseInt reports ErrRange as soon as the digits overflow, before it
+	// reaches any trailing garbage, so only a value that is all digits is a
+	// genuine over-cap number. A negative overflow, or garbage after a long
+	// run of digits, falls back to backoff like any other unusable value.
+	if errors.Is(err, strconv.ErrRange) && secs > 0 && isDigits(strings.TrimPrefix(retryAfter, "+")) {
+		return 0, false
+	}
 	if err != nil || secs < 0 {
 		return backoff, true
 	}
@@ -41,6 +51,19 @@ func retryWait(retryAfter string, backoff time.Duration) (time.Duration, bool) {
 		return 0, false
 	}
 	return time.Duration(secs) * time.Second, true
+}
+
+// isDigits reports whether s is a non-empty run of ASCII digits.
+func isDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // waitFitsDeadline reports whether a wait starting at now still leaves at
