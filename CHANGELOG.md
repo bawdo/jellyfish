@@ -14,6 +14,7 @@ All notable changes to jellyfish are documented here. The format follows
 - CI no longer fuzzes on pull requests. Fuzzing runs on the weekly schedule
   and on manual runs only, as it already did not run on the release path;
   the fuzz seed corpus still runs with the normal tests.
+- The CI changelog check runs on Linux, as it needs nothing from macOS.
 
 ## [0.4.0] - 2026-10-30
 

@@ -104,10 +104,11 @@ jobs:
           fail_ci_if_error: false
           verbose: true
 
+  # Pure shell and git, so it needs nothing from macOS.
   changelog:
     name: Changelog
     if: github.event_name != 'schedule'
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout code
@@ -119,6 +120,10 @@ jobs:
       - name: Check the newest CHANGELOG.md version is releasable
         run: ./scripts/changelog-version.sh check
 
+  # Stays on macOS. internal/keychain uses github.com/keybase/go-keychain,
+  # whose darwin code needs cgo. Cross-compiling from Linux turns cgo off,
+  # and govulncheck then fails to load the package (undefined kc.* symbols)
+  # instead of scanning it.
   vuln:
     name: Vulnerability Scan
     runs-on: macos-latest
