@@ -7,7 +7,8 @@ permissions:
 # release.yml (workflow_call, where github.event_name is push) so a release
 # is only cut once every job here except fuzz has passed on the merge
 # commit. Fuzz is left off that path so a crash it finds by chance cannot
-# hold up an unrelated release; its seed corpus still runs in the test job.
+# hold up an unrelated release; its seed corpus still runs in the coverage
+# job, which is the test of record (go test -race over every package).
 # There is no push trigger for other branches: with a pull request open it
 # would run every job a second time on the same commit. A branch with no
 # pull request can be run by hand (workflow_dispatch, every job including
@@ -33,30 +34,6 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  test:
-    name: Test
-    if: github.event_name != 'schedule'
-    runs-on: macos-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: '1.26.x'
-          check-latest: true
-          cache: true
-
-      - name: Download dependencies
-        run: go mod download
-
-      - name: Run tests (race detector)
-        run: go test -race ./...
-
   lint:
     name: Lint
     if: github.event_name != 'schedule'
@@ -90,8 +67,10 @@ jobs:
           version: v2.9.0
           args: --timeout=5m
 
+  # The test of record: one race-enabled run over every package, with
+  # -coverpkg so the profile counts cross-package coverage for Codecov.
   coverage:
-    name: Coverage
+    name: Test & Coverage
     if: github.event_name != 'schedule'
     runs-on: macos-latest
     timeout-minutes: 15
@@ -244,9 +223,9 @@ jobs:
   #
   # Every job in needs is expected to succeed, except the ones a trigger
   # skips on purpose:
-  #   pull_request, workflow_dispatch: none (all seven jobs run)
+  #   pull_request, workflow_dispatch: none (all six jobs run)
   #   push (release.yml via workflow_call): fuzz
-  #   schedule: test, lint, coverage, changelog and build (fuzz and vuln run)
+  #   schedule: lint, coverage, changelog and build (fuzz and vuln run)
   # Any other event expects every job. A failed or cancelled job always
   # fails the gate, and so does a skip that the event does not allow, so a
   # job left out by a bad if: condition cannot pass unnoticed. A job added
@@ -255,7 +234,7 @@ jobs:
   ci-result:
     name: CI result
     if: always()
-    needs: [test, lint, coverage, changelog, vuln, build, fuzz]
+    needs: [lint, coverage, changelog, vuln, build, fuzz]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -267,11 +246,11 @@ jobs:
           set -euo pipefail
           case "$EVENT" in
             push)     may_skip='["fuzz"]' ;;
-            schedule) may_skip='["test","lint","coverage","changelog","build"]' ;;
+            schedule) may_skip='["lint","coverage","changelog","build"]' ;;
             *)        may_skip='[]' ;;
           esac
           # Mirrors needs above, so a job missing from the results fails too.
-          all='["test","lint","coverage","changelog","vuln","build","fuzz"]'
+          all='["lint","coverage","changelog","vuln","build","fuzz"]'
           echo "Event: $EVENT (may skip: $may_skip)"
           jq -r 'to_entries[] | "  \(.key): \(.value.result)"' <<<"$NEEDS"
           bad=$(jq -r --argjson all "$all" --argjson skip "$may_skip" '
