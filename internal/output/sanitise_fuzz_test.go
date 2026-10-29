@@ -3,6 +3,7 @@ package output
 import (
 	"strings"
 	"testing"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -11,6 +12,11 @@ import (
 // to a terminal. Whatever goes in, the output must be valid UTF-8 with no
 // terminal control left (newline aside, for the multi-line form), must only
 // ever remove text, and must be a fixed point of a second pass.
+//
+// The oracle for "terminal control" is unicode.IsControl rather than the
+// production isTerminalControl, so a change to that predicate can't also
+// change what the fuzzer expects. Unicode category Cc is exactly C0
+// (U+0000 to U+001F), DEL (U+007F) and C1 (U+0080 to U+009F).
 func FuzzSanitiseTerminal(f *testing.F) {
 	for _, s := range []string{
 		"",
@@ -40,7 +46,7 @@ func FuzzSanitiseTerminal(f *testing.F) {
 				t.Fatalf("%s(%q) = %q: invalid UTF-8", name, in, out)
 			}
 			for _, r := range out {
-				if isTerminalControl(r) && !tc.keep(r) {
+				if unicode.IsControl(r) && !tc.keep(r) {
 					t.Fatalf("%s(%q) = %q: control %U survived", name, in, out, r)
 				}
 			}
@@ -57,7 +63,7 @@ func FuzzSanitiseTerminal(f *testing.F) {
 				t.Fatalf("%s not idempotent: %q then %q", name, out, again)
 			}
 			if utf8.ValidString(in) && !strings.ContainsFunc(in, func(r rune) bool {
-				return isTerminalControl(r) && !tc.keep(r)
+				return unicode.IsControl(r) && !tc.keep(r)
 			}) && out != in {
 				t.Fatalf("%s(%q) = %q: clean input was changed", name, in, out)
 			}
