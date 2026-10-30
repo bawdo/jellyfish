@@ -17,6 +17,12 @@ All notable changes to jellyfish are documented here. The format follows
 - The CI changelog check runs on Linux, as it needs nothing from macOS.
 - CI no longer runs a separate `go mod download` step; the Go module cache
   is restored by `setup-go` and anything missing is fetched by the build.
+- The release provenance bundle is now named
+  `jellyfish_<version>_provenance.intoto.jsonl` rather than
+  `jellyfish_<version>_provenance.sigstore.json`. The content is unchanged
+  and `gh attestation verify --bundle` reads either name; the SLSA
+  `.intoto.jsonl` name lets OpenSSF Scorecard count it as provenance, not
+  only a signature.
 
 ## [0.4.0] - 2026-10-30
 
