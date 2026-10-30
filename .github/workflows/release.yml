@@ -109,7 +109,7 @@ jobs:
             echo "gh attestation verify jellyfish_${VERSION}_darwin_<arch>.tar.gz --repo $GITHUB_REPOSITORY \\"
             echo "  --signer-workflow $GITHUB_REPOSITORY/.github/workflows/release.yml \\"
             echo "  --source-ref refs/heads/main --deny-self-hosted-runners \\"
-            echo "  --bundle jellyfish_${VERSION}_provenance.sigstore.json"
+            echo "  --bundle jellyfish_${VERSION}_provenance.intoto.jsonl"
             echo "shasum -a 256 -c checksums.txt --ignore-missing"
             echo '```'
             if [ -n "$previous" ]; then
@@ -234,11 +234,14 @@ jobs:
         run: |
           set -euo pipefail
           tag="v$VERSION"
-          # The attestation as a Sigstore bundle (one JSON document), named
-          # so gh attestation verify --bundle reads it as JSON and Scorecard
-          # counts it as a signed release asset.
-          bundle="dist/jellyfish_${VERSION}_provenance.sigstore.json"
-          cp "$BUNDLE_PATH" "$bundle"
+          # The attestation as a Sigstore bundle wrapping the in-toto SLSA
+          # provenance statement, compacted onto one line so it is a valid
+          # JSON lines file: .jsonl is what gh attestation download writes
+          # and gh attestation verify --bundle reads, and .intoto.jsonl is
+          # the SLSA name for provenance, which Scorecard scores as such.
+          bundle="dist/jellyfish_${VERSION}_provenance.intoto.jsonl"
+          jq -c . "$BUNDLE_PATH" > "$bundle"
+          test "$(wc -l < "$bundle")" -eq 1
           # A draft is stale (it has no attested assets) and is replaced. A
           # published release that appeared since the plan job is left alone.
           draft=$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || echo missing)

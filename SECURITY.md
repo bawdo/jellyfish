@@ -48,15 +48,17 @@ release workflow running from `main` on a GitHub-hosted runner, which rules
 out an attestation that someone with push access makes from a throwaway
 branch, from any other workflow file or on a self-hosted runner.
 
-Releases after v0.3.0 also carry the attestation as a Sigstore bundle,
-`jellyfish_<version>_provenance.sigstore.json`. Download it next to the
-archive to verify without querying GitHub's attestation API:
+Releases after v0.4.0 also carry the attestation as a Sigstore bundle,
+`jellyfish_<version>_provenance.intoto.jsonl` (v0.4.0 named it
+`jellyfish_0.4.0_provenance.sigstore.json`; the content is the same kind
+of bundle). Download it next to the archive to verify without querying
+GitHub's attestation API:
 
 ```bash
 gh attestation verify jellyfish_<version>_darwin_<arch>.tar.gz --repo bawdo/jellyfish \
   --signer-workflow bawdo/jellyfish/.github/workflows/release.yml \
   --source-ref refs/heads/main --deny-self-hosted-runners \
-  --bundle jellyfish_<version>_provenance.sigstore.json
+  --bundle jellyfish_<version>_provenance.intoto.jsonl
 ```
 
 On a machine with no network access at all, `gh` can't fetch the Sigstore
@@ -68,6 +70,6 @@ gh attestation trusted-root > trusted_root.jsonl
 gh attestation verify jellyfish_<version>_darwin_<arch>.tar.gz --repo bawdo/jellyfish \
   --signer-workflow bawdo/jellyfish/.github/workflows/release.yml \
   --source-ref refs/heads/main --deny-self-hosted-runners \
-  --bundle jellyfish_<version>_provenance.sigstore.json \
+  --bundle jellyfish_<version>_provenance.intoto.jsonl \
   --custom-trusted-root trusted_root.jsonl
 ```
