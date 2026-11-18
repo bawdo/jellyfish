@@ -314,9 +314,12 @@ make test     # go test ./...
 make lint     # golangci-lint run
 make pre-ci   # eleven-check local build validator
 make build    # ./bin/jellyfish with version ldflags
+make outdated # outdated modules and CI tool pins, with an upgrade prompt
 ```
 
 `make pre-ci` (`scripts/pre-ci-check.sh`) runs the Go version check, `go mod download`, `gofmt -s`, `go test -race`, `golangci-lint`, coverage tracking, a versioned build, `govulncheck`, a CLI smoke test and the changelog check; logs land in `coverage/`. `make pre-ci-fix` auto-fixes gofmt issues first.
+
+`make outdated` (`scripts/outdated.sh`) lists direct Go modules with a newer release (and any deprecated or retracted ones), and reports the golangci-lint, govulncheck and Go versions pinned in `.github/workflows/ci.yml` against their latest releases, since Dependabot cannot bump those. Releases younger than `COOLDOWN_DAYS` (default 7, as in `dependabot.yml`) are marked too fresh and left out of "all". On a terminal it then offers to upgrade all, pick, or none; an upgrade runs `go get`, `go mod tidy`, `go build` and `go test` and shows the `go.mod` diff, without committing. Tool pins are report only.
 
 ### Releasing
 

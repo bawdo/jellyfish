@@ -6,6 +6,15 @@ All notable changes to jellyfish are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `make outdated` reports direct Go modules with newer releases, deprecated
+  or retracted modules, and the golangci-lint, govulncheck and Go versions
+  pinned in CI, then offers to upgrade the modules (all, pick or none).
+  Releases under seven days old are flagged and left out of "all", matching
+  the Dependabot cooldown. An upgrade tidies, builds and tests, and is left
+  uncommitted.
+
 ### Changed
 
 - CI no longer runs the test suite twice. The separate `Test` job is gone;
