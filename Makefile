@@ -46,10 +46,13 @@ fuzz: ## Run every fuzz target for FUZZTIME each (default 15s)
 		go test "$$pkg" -run='^$$' -fuzz="^$$name\$$" -fuzztime=$(FUZZTIME); \
 	done
 
+outdated: ## Report outdated modules and CI tool pins, offer upgrades
+	./scripts/outdated.sh
+
 pre-ci: ## Run the full local CI validation suite
 	./scripts/pre-ci-check.sh
 
 pre-ci-fix: ## Run pre-ci, auto-formatting with gofmt first
 	./scripts/pre-ci-check.sh --fix gofmt
 
-.PHONY: help build install test lint fuzz pre-ci pre-ci-fix
+.PHONY: help build install test lint fuzz outdated pre-ci pre-ci-fix
