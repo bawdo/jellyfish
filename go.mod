@@ -3,12 +3,12 @@ module github.com/bawdo/jellyfish
 go 1.26.0
 
 require (
-	github.com/jedib0t/go-pretty/v6 v6.8.3
+	github.com/jedib0t/go-pretty/v6 v6.9.2
 	github.com/keybase/go-keychain v0.0.1
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/oauth2 v0.38.0
 	golang.org/x/term v0.48.0
-	google.golang.org/api v0.313.0
+	google.golang.org/api v0.315.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
